@@ -24,3 +24,14 @@ class UpdateProfileEvent extends ProfileEvent {
   @override
   List<Object?> get props => [userId, bio, profileImage];
 }
+
+class GetUserPostsEvent extends ProfileEvent {
+  final String userId;
+  final int page;
+  final int limit;
+
+  GetUserPostsEvent({required this.userId, this.page = 1, this.limit = 20});
+
+  @override
+  List<Object?> get props => [userId, page, limit];
+}

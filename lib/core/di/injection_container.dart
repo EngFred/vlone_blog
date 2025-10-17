@@ -102,6 +102,7 @@ Future<void> init() async {
     () => ProfileBloc(
       getProfileUseCase: sl<GetProfileUseCase>(),
       updateProfileUseCase: sl<UpdateProfileUseCase>(),
+      getUserPostsUseCase: sl<GetUserPostsUseCase>(),
     ),
   );
 
@@ -119,7 +120,7 @@ Future<void> init() async {
     () => GetFeedUseCase(sl<PostsRepository>()),
   );
   sl.registerLazySingleton<GetUserPostsUseCase>(
-    () => GetUserPostsUseCase(sl<PostsRepository>()),
+    () => GetUserPostsUseCase(sl<ProfileRepository>()),
   );
   sl.registerLazySingleton<LikePostUseCase>(
     () => LikePostUseCase(sl<PostsRepository>()),
@@ -131,7 +132,6 @@ Future<void> init() async {
     () => PostsBloc(
       createPostUseCase: sl<CreatePostUseCase>(),
       getFeedUseCase: sl<GetFeedUseCase>(),
-      getUserPostsUseCase: sl<GetUserPostsUseCase>(),
       likePostUseCase: sl<LikePostUseCase>(),
       sharePostUseCase: sl<SharePostUseCase>(),
       repository: sl<PostsRepository>(),

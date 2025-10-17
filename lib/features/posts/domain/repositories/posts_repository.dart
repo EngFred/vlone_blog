@@ -11,20 +11,17 @@ abstract class PostsRepository {
     File? mediaFile,
     String? mediaType,
   });
+
   Future<Either<Failure, List<PostEntity>>> getFeed({
     int page = 1,
     int limit = 20,
   });
-  Future<Either<Failure, List<PostEntity>>> getUserPosts({
-    required String userId,
-    int page = 1,
-    int limit = 20,
-  });
+
   Future<Either<Failure, Unit>> likePost({
     required String postId,
     required String userId,
     required bool isLiked,
   });
+
   Future<Either<Failure, Unit>> sharePost({required String postId});
-  Stream<List<PostEntity>> getFeedStream();
 }

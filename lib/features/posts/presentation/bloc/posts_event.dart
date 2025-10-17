@@ -32,17 +32,6 @@ class GetFeedEvent extends PostsEvent {
   List<Object?> get props => [page, limit];
 }
 
-class GetUserPostsEvent extends PostsEvent {
-  final String userId;
-  final int page;
-  final int limit;
-
-  GetUserPostsEvent({required this.userId, this.page = 1, this.limit = 20});
-
-  @override
-  List<Object?> get props => [userId, page, limit];
-}
-
 class LikePostEvent extends PostsEvent {
   final String postId;
   final String userId;
@@ -65,15 +54,4 @@ class SharePostEvent extends PostsEvent {
 
   @override
   List<Object?> get props => [postId];
-}
-
-class SubscribeToFeedEvent extends PostsEvent {}
-
-class NewPostsEvent extends PostsEvent {
-  final List<PostEntity> newPosts;
-
-  NewPostsEvent(this.newPosts);
-
-  @override
-  List<Object?> get props => [newPosts];
 }

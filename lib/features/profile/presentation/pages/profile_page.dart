@@ -29,6 +29,7 @@ class _ProfilePageState extends State<ProfilePage> {
     super.initState();
     AppLogger.info('Loading profile for user: ${widget.userId}');
     context.read<ProfileBloc>().add(GetProfileEvent(widget.userId));
+    context.read<ProfileBloc>().add(GetUserPostsEvent(userId: widget.userId));
     _checkIfOwnProfile();
   }
 
@@ -78,43 +79,41 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
         ],
       ),
-      body: BlocConsumer<ProfileBloc, ProfileState>(
-        listener: (context, state) {
-          if (state is ProfileError) {
-            AppLogger.error('Profile load failed: ${state.message}');
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(state.message)));
-          }
-        },
-        builder: (context, state) {
-          if (state is ProfileLoading) {
-            return const LoadingIndicator();
-          } else if (state is ProfileLoaded) {
-            return SingleChildScrollView(
-              child: Column(
-                children: [
-                  ProfileHeader(
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            BlocBuilder<ProfileBloc, ProfileState>(
+              buildWhen: (prev, curr) =>
+                  curr is ProfileLoaded ||
+                  curr is ProfileLoading ||
+                  curr is ProfileError,
+              builder: (context, state) {
+                if (state is ProfileLoading) {
+                  return const LoadingIndicator();
+                } else if (state is ProfileLoaded) {
+                  return ProfileHeader(
                     profile: state.profile,
                     isOwnProfile: _isOwnProfile,
-                  ),
-                  ProfilePostsList(userId: widget.userId),
-                ],
-              ),
-            );
-          } else if (state is ProfileError) {
-            return CustomErrorWidget(
-              message: state.message,
-              onRetry: () {
-                AppLogger.info(
-                  'Retrying profile load for user: ${widget.userId}',
-                );
-                context.read<ProfileBloc>().add(GetProfileEvent(widget.userId));
+                  );
+                } else if (state is ProfileError) {
+                  return CustomErrorWidget(
+                    message: state.message,
+                    onRetry: () {
+                      AppLogger.info(
+                        'Retrying profile load for user: ${widget.userId}',
+                      );
+                      context.read<ProfileBloc>().add(
+                        GetProfileEvent(widget.userId),
+                      );
+                    },
+                  );
+                }
+                return const SizedBox.shrink();
               },
-            );
-          }
-          return const SizedBox.shrink();
-        },
+            ),
+            ProfilePostsList(userId: widget.userId),
+          ],
+        ),
       ),
     );
   }

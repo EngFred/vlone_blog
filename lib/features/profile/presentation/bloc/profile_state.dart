@@ -18,6 +18,15 @@ class ProfileLoaded extends ProfileState {
   List<Object?> get props => [profile];
 }
 
+class UserPostsLoaded extends ProfileState {
+  final List<PostEntity> posts;
+
+  UserPostsLoaded(this.posts);
+
+  @override
+  List<Object?> get props => [posts];
+}
+
 class ProfileError extends ProfileState {
   final String message;
 

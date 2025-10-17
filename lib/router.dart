@@ -28,6 +28,10 @@ final GoRouter appRouter = GoRouter(
       path: Constants.signupRoute,
       builder: (context, state) => const SignupPage(),
     ),
+    GoRoute(
+      path: Constants.createPostRoute,
+      builder: (context, state) => const CreatePostPage(),
+    ),
 
     // ShellRoute provides a persistent shell (MainPage) that wraps all child
     // routes. This guarantees the BottomNavigationBar is always visible while
@@ -45,10 +49,6 @@ final GoRouter appRouter = GoRouter(
           path: Constants.profileRoute + '/:userId',
           builder: (context, state) =>
               ProfilePage(userId: state.pathParameters['userId']!),
-        ),
-        GoRoute(
-          path: 'create-post',
-          builder: (context, state) => const CreatePostPage(),
         ),
         GoRoute(
           path: Constants.commentsRoute + '/:postId',

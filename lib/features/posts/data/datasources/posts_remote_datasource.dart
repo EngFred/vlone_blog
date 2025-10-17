@@ -96,16 +96,6 @@ class PostsRemoteDataSource {
     }
   }
 
-  Stream<List<PostModel>> getFeedStream() {
-    AppLogger.info('Starting feed stream subscription');
-    return client
-        .from('posts')
-        .stream(primaryKey: ['id'])
-        .order('created_at', ascending: false)
-        .limit(Constants.pageSize)
-        .map((list) => list.map((map) => PostModel.fromMap(map)).toList());
-  }
-
   Future<List<PostModel>> getFeed({int page = 1, int limit = 20}) async {
     try {
       AppLogger.info('Fetching feed for page: $page, limit: $limit');
@@ -114,7 +104,7 @@ class PostsRemoteDataSource {
 
       final response = await client
           .from('posts')
-          .select()
+          .select('*, profiles ( username, profile_image_url )')
           .order('created_at', ascending: false)
           .range(from, to);
 
@@ -126,33 +116,6 @@ class PostsRemoteDataSource {
     }
   }
 
-  Future<List<PostModel>> getUserPosts({
-    required String userId,
-    int page = 1,
-    int limit = 20,
-  }) async {
-    try {
-      AppLogger.info(
-        'Fetching user posts for $userId, page: $page, limit: $limit',
-      );
-      final from = (page - 1) * limit;
-      final to = from + limit - 1;
-
-      final response = await client
-          .from('posts')
-          .select()
-          .eq('user_id', userId)
-          .order('created_at', ascending: false)
-          .range(from, to);
-
-      AppLogger.info('User posts fetched with ${response.length} posts');
-      return response.map((map) => PostModel.fromMap(map)).toList();
-    } catch (e) {
-      AppLogger.error('Error fetching user posts: $e', error: e);
-      throw ServerException(e.toString());
-    }
-  }
-
   Future<void> likePost({
     required String postId,
     required String userId,
@@ -160,15 +123,15 @@ class PostsRemoteDataSource {
   }) async {
     try {
       AppLogger.info(
-        'Attempting to ${isLiked ? 'unlike' : 'like'} post: $postId by user: $userId',
+        'Attempting to ${isLiked ? 'like' : 'unlike'} post: $postId by user: $userId',
       );
       if (isLiked) {
-        await client.from('likes').delete().match({
+        await client.from('likes').insert({
           'post_id': postId,
           'user_id': userId,
         });
       } else {
-        await client.from('likes').insert({
+        await client.from('likes').delete().match({
           'post_id': postId,
           'user_id': userId,
         });

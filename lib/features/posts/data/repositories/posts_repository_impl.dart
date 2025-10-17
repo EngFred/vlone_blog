@@ -58,28 +58,6 @@ class PostsRepositoryImpl implements PostsRepository {
   }
 
   @override
-  Future<Either<Failure, List<PostEntity>>> getUserPosts({
-    required String userId,
-    int page = 1,
-    int limit = 20,
-  }) async {
-    try {
-      final postModels = await remoteDataSource.getUserPosts(
-        userId: userId,
-        page: page,
-        limit: limit,
-      );
-      return Right(postModels.map((model) => model.toEntity()).toList());
-    } on ServerException catch (e) {
-      AppLogger.error(
-        'ServerException in getUserPosts repo: ${e.message}',
-        error: e,
-      );
-      return Left(ServerFailure(e.message));
-    }
-  }
-
-  @override
   Future<Either<Failure, Unit>> likePost({
     required String postId,
     required String userId,
@@ -113,13 +91,5 @@ class PostsRepositoryImpl implements PostsRepository {
       );
       return Left(ServerFailure(e.message));
     }
-  }
-
-  @override
-  Stream<List<PostEntity>> getFeedStream() {
-    AppLogger.info('Subscribing to feed stream in repo');
-    return remoteDataSource.getFeedStream().map(
-      (models) => models.map((m) => m.toEntity()).toList(),
-    );
   }
 }

@@ -15,18 +15,10 @@ class FavoritesRemoteDataSource {
     required bool isFavorited,
   }) async {
     AppLogger.info(
-      'Attempting to ${isFavorited ? 'remove' : 'add'} favorite for post: $postId by user: $userId',
+      'Attempting to ${isFavorited ? 'add' : 'remove'} favorite for post: $postId by user: $userId',
     );
     try {
       if (isFavorited) {
-        AppLogger.info('Removing favorite for post: $postId by user: $userId');
-        await client.from('favorites').delete().match({
-          'post_id': postId,
-          'user_id': userId,
-        });
-        AppLogger.info('Favorite removed successfully');
-        return FavoriteModel(id: '', postId: postId, userId: userId);
-      } else {
         AppLogger.info('Adding favorite for post: $postId by user: $userId');
         final response = await client
             .from('favorites')
@@ -35,10 +27,18 @@ class FavoritesRemoteDataSource {
             .single();
         AppLogger.info('Favorite added successfully');
         return FavoriteModel.fromMap(response);
+      } else {
+        AppLogger.info('Removing favorite for post: $postId by user: $userId');
+        await client.from('favorites').delete().match({
+          'post_id': postId,
+          'user_id': userId,
+        });
+        AppLogger.info('Favorite removed successfully');
+        return FavoriteModel(id: '', postId: postId, userId: userId);
       }
     } catch (e, stackTrace) {
       AppLogger.error(
-        'Failed to ${isFavorited ? 'remove' : 'add'} favorite for post: $postId, error: $e',
+        'Failed to ${isFavorited ? 'add' : 'remove'} favorite for post: $postId, error: $e',
         error: e,
         stackTrace: stackTrace,
       );

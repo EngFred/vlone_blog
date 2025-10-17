@@ -94,9 +94,7 @@ class MyApp extends StatelessWidget {
         BlocProvider<AuthBloc>(
           create: (_) => di.sl<AuthBloc>()..add(CheckAuthStatusEvent()),
         ),
-        BlocProvider<PostsBloc>(
-          create: (_) => di.sl<PostsBloc>()..add(SubscribeToFeedEvent()),
-        ),
+        BlocProvider<PostsBloc>(create: (_) => di.sl<PostsBloc>()),
         BlocProvider<ProfileBloc>(create: (_) => di.sl<ProfileBloc>()),
         BlocProvider<CommentsBloc>(create: (_) => di.sl<CommentsBloc>()),
         BlocProvider<FavoritesBloc>(create: (_) => di.sl<FavoritesBloc>()),

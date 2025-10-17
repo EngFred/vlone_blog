@@ -14,6 +14,8 @@ class PostModel {
   final DateTime? updatedAt;
   final bool isPublic;
   final int viewsCount;
+  final String? username;
+  final String? avatarUrl;
 
   PostModel({
     required this.id,
@@ -29,6 +31,8 @@ class PostModel {
     this.updatedAt,
     this.isPublic = true,
     this.viewsCount = 0,
+    this.username,
+    this.avatarUrl,
   });
 
   factory PostModel.fromMap(Map<String, dynamic> map) {
@@ -48,6 +52,8 @@ class PostModel {
           : null,
       isPublic: map['is_public'] as bool? ?? true,
       viewsCount: map['views_count'] as int? ?? 0,
+      username: map['profiles']?['username'] as String?,
+      avatarUrl: map['profiles']?['profile_image_url'] as String?,
     );
   }
 
@@ -66,6 +72,8 @@ class PostModel {
       updatedAt: updatedAt,
       isPublic: isPublic,
       viewsCount: viewsCount,
+      username: username,
+      avatarUrl: avatarUrl,
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
@@ -8,6 +9,7 @@ import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
+import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_card.dart';
@@ -25,6 +27,7 @@ class _FeedPageState extends State<FeedPage> {
   final List<PostEntity> _posts = [];
   bool _isLoadingMore = false;
   String? _userId;
+  final _client = sl<SupabaseClient>();
 
   @override
   void initState() {
@@ -51,7 +54,7 @@ class _FeedPageState extends State<FeedPage> {
           setState(() => _userId = user.id);
           if (_userId != null) {
             AppLogger.info(
-              'Fetching initial feed for user: ${_userId}, page: $_currentPage',
+              'Fetching initial feed for user: $_userId, page: $_currentPage',
             );
             context.read<PostsBloc>().add(GetFeedEvent(page: _currentPage));
           }
@@ -73,9 +76,55 @@ class _FeedPageState extends State<FeedPage> {
       _isLoadingMore = true;
       _currentPage++;
       AppLogger.info(
-        'Fetching more posts for user: ${_userId}, page: $_currentPage',
+        'Fetching more posts for user: $_userId, page: $_currentPage',
       );
       context.read<PostsBloc>().add(GetFeedEvent(page: _currentPage));
+    }
+  }
+
+  Future<void> _fetchInteractionStates() async {
+    if (_userId == null || _posts.isEmpty) return;
+
+    final postIds = _posts.map((p) => p.id).toList();
+
+    try {
+      final likesResponse = await _client
+          .from('likes')
+          .select('post_id')
+          .inFilter('post_id', postIds)
+          .eq('user_id', _userId!);
+
+      final likedIds = <String>{};
+      for (final like in likesResponse) {
+        likedIds.add(like['post_id'] as String);
+      }
+
+      final favoritesResponse = await _client
+          .from('favorites')
+          .select('post_id')
+          .inFilter('post_id', postIds)
+          .eq('user_id', _userId!);
+
+      final favoritedIds = <String>{};
+      for (final favorite in favoritesResponse) {
+        favoritedIds.add(favorite['post_id'] as String);
+      }
+
+      final updatedPosts = _posts.map((post) {
+        return post.copyWith(
+          isLiked: likedIds.contains(post.id),
+          isFavorited: favoritedIds.contains(post.id),
+        );
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _posts.clear();
+          _posts.addAll(updatedPosts);
+        });
+      }
+    } catch (e) {
+      AppLogger.error('Error fetching interaction states: $e', error: e);
     }
   }
 
@@ -87,66 +136,99 @@ class _FeedPageState extends State<FeedPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Feed')),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          AppLogger.info('Refreshing feed for user: $_userId');
-          _posts.clear();
-          _currentPage = 1;
-          context.read<PostsBloc>().add(GetFeedEvent(page: _currentPage));
-        },
-        child: BlocConsumer<PostsBloc, PostsState>(
-          listener: (context, state) {
-            if (state is FeedLoaded) {
-              AppLogger.info(
-                'Feed loaded with ${state.posts.length} posts for user: $_userId',
-              );
-              if (_currentPage == 1) _posts.clear();
-              _posts.addAll(state.posts);
-              _isLoadingMore = false;
-            } else if (state is PostCreated) {
-              AppLogger.info('New post created: ${state.post.id}');
-              _posts.insert(0, state.post);
-            }
-          },
-          builder: (context, state) {
-            if (state is PostsLoading && _posts.isEmpty) {
-              return const LoadingIndicator();
-            } else if (state is PostsError) {
-              return EmptyStateWidget(
-                message: state.message,
-                icon: Icons.error_outline,
-                onRetry: () {
-                  AppLogger.info(
-                    'Retrying feed fetch for user: $_userId, page: $_currentPage',
+      body: MultiBlocListener(
+        listeners: [
+          BlocListener<PostsBloc, PostsState>(
+            listener: (context, state) {
+              if (state is FeedLoaded) {
+                AppLogger.info(
+                  'Feed loaded with ${state.posts.length} posts for user: $_userId',
+                );
+                if (_currentPage == 1) _posts.clear();
+                _posts.addAll(state.posts);
+                _fetchInteractionStates();
+                _isLoadingMore = false;
+              } else if (state is PostCreated) {
+                AppLogger.info('New post created: ${state.post.id}');
+                _posts.insert(0, state.post);
+              } else if (state is PostLiked) {
+                final index = _posts.indexWhere((p) => p.id == state.postId);
+                if (index != -1) {
+                  final updatedPost = _posts[index].copyWith(
+                    likesCount:
+                        _posts[index].likesCount + (state.isLiked ? 1 : -1),
                   );
-                  context.read<PostsBloc>().add(
-                    GetFeedEvent(page: _currentPage),
-                  );
-                },
-                actionText: 'Retry',
-              );
-            } else if (_posts.isEmpty) {
-              return const EmptyStateWidget(
-                message: 'No posts yet. Create one to get started!',
-                icon: Icons.post_add,
-              );
-            }
-            return ListView.builder(
-              controller: _scrollController,
-              itemCount: _posts.length + (_isLoadingMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index < _posts.length) {
-                  return PostCard(post: _posts[index]);
-                } else {
-                  return const LoadingIndicator();
+                  setState(() => _posts[index] = updatedPost);
                 }
-              },
-            );
+              }
+            },
+          ),
+          BlocListener<FavoritesBloc, FavoritesState>(
+            listener: (context, state) {
+              if (state is FavoriteAdded) {
+                final index = _posts.indexWhere((p) => p.id == state.postId);
+                if (index != -1) {
+                  final updatedPost = _posts[index].copyWith(
+                    favoritesCount:
+                        _posts[index].favoritesCount +
+                        (state.isFavorited ? 1 : -1),
+                  );
+                  setState(() => _posts[index] = updatedPost);
+                }
+              } else if (state is FavoritesError) {
+                // Handle error if needed
+              }
+            },
+          ),
+        ],
+        child: RefreshIndicator(
+          onRefresh: () async {
+            AppLogger.info('Refreshing feed for user: $_userId');
+            _posts.clear();
+            _currentPage = 1;
+            context.read<PostsBloc>().add(GetFeedEvent(page: _currentPage));
           },
+          child: BlocBuilder<PostsBloc, PostsState>(
+            builder: (context, state) {
+              if (state is PostsLoading && _posts.isEmpty) {
+                return const LoadingIndicator();
+              } else if (state is PostsError) {
+                return EmptyStateWidget(
+                  message: state.message,
+                  icon: Icons.error_outline,
+                  onRetry: () {
+                    AppLogger.info(
+                      'Retrying feed fetch for user: $_userId, page: $_currentPage',
+                    );
+                    context.read<PostsBloc>().add(
+                      GetFeedEvent(page: _currentPage),
+                    );
+                  },
+                  actionText: 'Retry',
+                );
+              } else if (_posts.isEmpty) {
+                return const EmptyStateWidget(
+                  message: 'No posts yet. Create one to get started!',
+                  icon: Icons.post_add,
+                );
+              }
+              return ListView.builder(
+                controller: _scrollController,
+                itemCount: _posts.length + (_isLoadingMore ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index < _posts.length) {
+                    return PostCard(post: _posts[index]);
+                  } else {
+                    return const LoadingIndicator();
+                  }
+                },
+              );
+            },
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/create-post'),
+        onPressed: () => context.push(Constants.createPostRoute),
         child: const Icon(Icons.add),
       ),
     );

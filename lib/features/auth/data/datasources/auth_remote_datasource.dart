@@ -168,8 +168,7 @@ class AuthRemoteDataSource {
       }
 
       AppLogger.info('Found persisted session, attempting recoverSession');
-      final session = await client.auth.recoverSession(persisted);
-      final hasSession = session != null && client.auth.currentUser != null;
+      final hasSession = client.auth.currentUser != null;
       AppLogger.info(
         'Session restoration ${hasSession ? 'successful' : 'failed'}',
       );

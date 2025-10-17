@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:vlone_blog_app/core/error/exceptions.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
 import 'package:vlone_blog_app/features/profile/data/models/profile_model.dart';
 
 class ProfileRemoteDataSource {
@@ -79,6 +80,33 @@ class ProfileRemoteDataSource {
         error: e,
         stackTrace: stackTrace,
       );
+      throw ServerException(e.toString());
+    }
+  }
+
+  Future<List<PostModel>> getUserPosts({
+    required String userId,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    try {
+      AppLogger.info(
+        'Fetching user posts for $userId, page: $page, limit: $limit',
+      );
+      final from = (page - 1) * limit;
+      final to = from + limit - 1;
+
+      final response = await client
+          .from('posts')
+          .select('*, profiles ( username, profile_image_url )')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .range(from, to);
+
+      AppLogger.info('User posts fetched with ${response.length} posts');
+      return response.map((map) => PostModel.fromMap(map)).toList();
+    } catch (e) {
+      AppLogger.error('Error fetching user posts: $e', error: e);
       throw ServerException(e.toString());
     }
   }

@@ -2,6 +2,7 @@ import 'package:dartz/dartz.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:vlone_blog_app/core/error/exceptions.dart';
 import 'package:vlone_blog_app/core/error/failures.dart';
+import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/profile/data/datasources/profile_remote_datasource.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 import 'package:vlone_blog_app/features/profile/domain/repositories/profile_repository.dart';
@@ -34,6 +35,24 @@ class ProfileRepositoryImpl implements ProfileRepository {
         profileImage: profileImage,
       );
       return Right(profileModel.toEntity());
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
+  Future<Either<Failure, List<PostEntity>>> getUserPosts({
+    required String userId,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    try {
+      final postModels = await remoteDataSource.getUserPosts(
+        userId: userId,
+        page: page,
+        limit: limit,
+      );
+      return Right(postModels.map((model) => model.toEntity()).toList());
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }
