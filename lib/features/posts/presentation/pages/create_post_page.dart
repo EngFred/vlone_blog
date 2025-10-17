@@ -22,14 +22,11 @@ class _CreatePostPageState extends State<CreatePostPage> {
   File? _mediaFile;
   String? _mediaType;
 
-  @override
-  void initState() {
-    super.initState();
-  }
-
   void _onMediaSelected(File? file, String? type) {
-    _mediaFile = file;
-    _mediaType = type;
+    setState(() {
+      _mediaFile = file;
+      _mediaType = type;
+    });
   }
 
   @override
@@ -50,7 +47,37 @@ class _CreatePostPageState extends State<CreatePostPage> {
         return BlocProvider<PostsBloc>(
           create: (_) => sl<PostsBloc>(),
           child: Scaffold(
-            appBar: AppBar(title: const Text('Create Post')),
+            appBar: AppBar(
+              title: const Text('Create Post'),
+              // UI/UX 1: Move the "Post" button to the AppBar
+              actions: [
+                BlocBuilder<PostsBloc, PostsState>(
+                  builder: (context, state) {
+                    if (state is PostsLoading) {
+                      return const Padding(
+                        padding: EdgeInsets.only(right: 16.0),
+                        child: Center(child: LoadingIndicator()),
+                      );
+                    }
+                    return TextButton(
+                      onPressed: () {
+                        context.read<PostsBloc>().add(
+                          CreatePostEvent(
+                            userId: userId,
+                            content: _contentController.text.trim().isEmpty
+                                ? null
+                                : _contentController.text.trim(),
+                            mediaFile: _mediaFile,
+                            mediaType: _mediaType,
+                          ),
+                        );
+                      },
+                      child: const Text('Post'),
+                    );
+                  },
+                ),
+              ],
+            ),
             body: BlocListener<PostsBloc, PostsState>(
               listener: (context, state) {
                 if (state is PostCreated) {
@@ -61,42 +88,29 @@ class _CreatePostPageState extends State<CreatePostPage> {
                   ).showSnackBar(SnackBar(content: Text(state.message)));
                 }
               },
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _contentController,
-                      decoration: const InputDecoration(
-                        labelText: 'Content/Caption',
+              // FIX 1: Wrap the body in a SingleChildScrollView
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      // UI/UX 5: Use hintText for a cleaner look
+                      TextField(
+                        controller: _contentController,
+                        decoration: const InputDecoration(
+                          hintText: "What's on your mind?",
+                          border: InputBorder.none, // Minimal design
+                        ),
+                        maxLines: 8, // Give more room for text
+                        minLines: 3,
                       ),
-                      maxLines: 5,
-                    ),
-                    const SizedBox(height: 20),
-                    MediaUploadWidget(onMediaSelected: _onMediaSelected),
-                    const SizedBox(height: 20),
-                    BlocBuilder<PostsBloc, PostsState>(
-                      builder: (context, state) {
-                        if (state is PostsLoading)
-                          return const LoadingIndicator();
-                        return ElevatedButton(
-                          onPressed: () {
-                            context.read<PostsBloc>().add(
-                              CreatePostEvent(
-                                userId: userId,
-                                content: _contentController.text.trim().isEmpty
-                                    ? null
-                                    : _contentController.text.trim(),
-                                mediaFile: _mediaFile,
-                                mediaType: _mediaType,
-                              ),
-                            );
-                          },
-                          child: const Text('Post'),
-                        );
-                      },
-                    ),
-                  ],
+                      const SizedBox(height: 20),
+                      MediaUploadWidget(
+                        onMediaSelected: _onMediaSelected,
+                        // The `key` property has been removed from here.
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

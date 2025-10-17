@@ -3,12 +3,47 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+
+/// Manages the currently playing video to ensure only one plays at a time.
+class _VideoPlaybackManager {
+  static VideoPlayerController? _controller;
+  static VoidCallback? _onPauseCallback;
+
+  static void play(
+    VideoPlayerController controller,
+    VoidCallback onPauseCallback,
+  ) {
+    // If another video is playing, pause it and notify its card to update UI.
+    if (_controller != null && _controller != controller) {
+      _controller?.pause();
+      _onPauseCallback?.call();
+    }
+    _controller = controller;
+    _onPauseCallback = onPauseCallback;
+    _controller?.play();
+  }
+
+  /// Pauses the currently playing video.
+  static void pause() {
+    _controller?.pause();
+    _onPauseCallback?.call();
+    // Clear the references
+    _controller = null;
+    _onPauseCallback = null;
+  }
+
+  /// Checks if the given controller is the one currently playing.
+  static bool isPlaying(VideoPlayerController controller) {
+    return _controller == controller;
+  }
+}
 
 class PostCard extends StatefulWidget {
   final PostEntity post;
@@ -35,18 +70,49 @@ class _PostCardState extends State<PostCard> {
     _isFavorited = widget.post.isFavorited;
     _favoritesCount = widget.post.favoritesCount;
     _loadCurrentUser();
+
     if (widget.post.mediaType == 'video' && widget.post.mediaUrl != null) {
-      _videoController = VideoPlayerController.network(widget.post.mediaUrl!)
-        ..initialize().then((_) => setState(() {}));
+      _videoController = VideoPlayerController.networkUrl(
+        Uri.parse(widget.post.mediaUrl!),
+      )..initialize().then((_) => setState(() {}));
+
+      _videoController!.addListener(() {
+        // When video finishes, ensure UI updates to show play icon again.
+        if (_videoController!.value.isPlaying == false &&
+            _videoController!.value.position >=
+                _videoController!.value.duration) {
+          if (mounted) {
+            setState(() {});
+          }
+          _videoController!.seekTo(Duration.zero);
+        }
+      });
     }
   }
 
   Future<void> _loadCurrentUser() async {
     final result = await sl<GetCurrentUserUseCase>()(NoParams());
-    result.fold(
-      (failure) => null, // Handle error appropriately in production
-      (user) => setState(() => _userId = user.id),
+    result.fold((failure) => null, (user) => setState(() => _userId = user.id));
+  }
+
+  void _togglePlayPause() {
+    if (_videoController == null) return;
+
+    final isCurrentlyPlaying = _VideoPlaybackManager.isPlaying(
+      _videoController!,
     );
+
+    if (isCurrentlyPlaying) {
+      _VideoPlaybackManager.pause();
+    } else {
+      _VideoPlaybackManager.play(_videoController!, () {
+        // This callback is triggered on the video card that needs to be paused.
+        if (mounted) {
+          setState(() {}); // Rebuild to show the play icon.
+        }
+      });
+    }
+    setState(() {}); // Rebuild current card to show pause/play icon.
   }
 
   @override
@@ -59,14 +125,16 @@ class _PostCardState extends State<PostCard> {
         BlocProvider.value(value: context.read<FavoritesBloc>()),
       ],
       child: MultiBlocListener(
+        // FIX: The listeners list was empty, causing the crash.
+        // We need these listeners to roll back the optimistic UI state on an error.
         listeners: [
           BlocListener<PostsBloc, PostsState>(
             listener: (context, state) {
               if (state is PostsError) {
-                // Basic reversion on error (assumes last action was for this post; refine if needed)
+                // If there's an error liking/unliking, revert the UI state
                 setState(() {
                   _isLiked = !_isLiked;
-                  _likesCount += _isLiked ? -1 : 1;
+                  _likesCount += _isLiked ? 1 : -1;
                 });
               }
             },
@@ -74,10 +142,10 @@ class _PostCardState extends State<PostCard> {
           BlocListener<FavoritesBloc, FavoritesState>(
             listener: (context, state) {
               if (state is FavoritesError) {
-                // Basic reversion
+                // If there's an error favoriting/unfavoriting, revert the UI state
                 setState(() {
                   _isFavorited = !_isFavorited;
-                  _favoritesCount += _isFavorited ? -1 : 1;
+                  _favoritesCount += _isFavorited ? 1 : -1;
                 });
               }
             },
@@ -117,9 +185,43 @@ class _PostCardState extends State<PostCard> {
                 else if (widget.post.mediaType == 'video' &&
                     _videoController != null &&
                     _videoController!.value.isInitialized)
-                  AspectRatio(
-                    aspectRatio: _videoController!.value.aspectRatio,
-                    child: VideoPlayer(_videoController!),
+                  VisibilityDetector(
+                    key: Key(widget.post.id),
+                    onVisibilityChanged: (visibilityInfo) {
+                      if (_videoController == null) return;
+                      final visiblePercentage =
+                          visibilityInfo.visibleFraction * 100;
+                      if (visiblePercentage < 70 &&
+                          _VideoPlaybackManager.isPlaying(_videoController!)) {
+                        _VideoPlaybackManager.pause();
+                      }
+                    },
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        GestureDetector(
+                          onTap: _togglePlayPause,
+                          child: AspectRatio(
+                            aspectRatio: _videoController!.value.aspectRatio,
+                            child: VideoPlayer(_videoController!),
+                          ),
+                        ),
+                        if (!_VideoPlaybackManager.isPlaying(_videoController!))
+                          IconButton(
+                            icon: const Icon(
+                              Icons.play_circle_fill,
+                              color: Colors.white,
+                              size: 64.0,
+                            ),
+                            onPressed: _togglePlayPause,
+                          ),
+                      ],
+                    ),
+                  )
+                else
+                  const SizedBox(
+                    height: 300,
+                    child: Center(child: CircularProgressIndicator()),
                   ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -188,6 +290,10 @@ class _PostCardState extends State<PostCard> {
 
   @override
   void dispose() {
+    if (_videoController != null &&
+        _VideoPlaybackManager.isPlaying(_videoController!)) {
+      _VideoPlaybackManager.pause();
+    }
     _videoController?.dispose();
     super.dispose();
   }
