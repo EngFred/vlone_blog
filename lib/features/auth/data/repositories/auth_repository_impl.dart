@@ -80,4 +80,17 @@ class AuthRepositoryImpl implements AuthRepository {
       return Left(ServerFailure(e.message));
     }
   }
+
+  Future<Either<Failure, bool>> restoreSession() async {
+    try {
+      final restored = await remoteDataSource.restoreSession();
+      return Right(restored);
+    } on ServerException catch (e) {
+      AppLogger.error(
+        'ServerException in restoreSession repository: ${e.message}',
+        error: e,
+      );
+      return Left(ServerFailure(e.message));
+    }
+  }
 }

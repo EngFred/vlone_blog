@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:vlone_blog_app/core/di/injection_container.dart';
+import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
 import 'package:vlone_blog_app/features/followers/presentation/widgets/user_list_item.dart';
@@ -24,6 +25,7 @@ class _FollowingPageState extends State<FollowingPage> {
   @override
   void initState() {
     super.initState();
+    AppLogger.info('Initializing FollowingPage for user: ${widget.userId}');
     context.read<FollowersBloc>().add(
       GetFollowingEvent(userId: widget.userId, page: _currentPage),
     );
@@ -34,6 +36,9 @@ class _FollowingPageState extends State<FollowingPage> {
     if (_scrollController.position.extentAfter < 500 && !_isLoadingMore) {
       _isLoadingMore = true;
       _currentPage++;
+      AppLogger.info(
+        'Fetching more following for user: ${widget.userId}, page: $_currentPage',
+      );
       context.read<FollowersBloc>().add(
         GetFollowingEvent(userId: widget.userId, page: _currentPage),
       );
@@ -42,40 +47,66 @@ class _FollowingPageState extends State<FollowingPage> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider<FollowersBloc>(
-      create: (_) => sl<FollowersBloc>(),
-      child: Scaffold(
-        appBar: AppBar(title: const Text('Following')),
-        body: BlocBuilder<FollowersBloc, FollowersState>(
-          builder: (context, state) {
-            if (state is FollowersLoading && _users.isEmpty) {
-              return const LoadingIndicator();
-            } else if (state is FollowersError) {
-              return Center(child: Text(state.message));
-            } else if (state is FollowingLoaded) {
-              if (_currentPage == 1) _users.clear();
-              _users.addAll(state.users);
-              _isLoadingMore = false;
-            }
-            return ListView.builder(
-              controller: _scrollController,
-              itemCount: _users.length + (_isLoadingMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index < _users.length) {
-                  return UserListItem(user: _users[index]);
-                } else {
-                  return const LoadingIndicator();
-                }
-              },
+    return Scaffold(
+      appBar: AppBar(title: const Text('Following')),
+      body: BlocConsumer<FollowersBloc, FollowersState>(
+        listener: (context, state) {
+          if (state is FollowingLoaded) {
+            AppLogger.info(
+              'Following loaded with ${state.users.length} users for user: ${widget.userId}',
             );
-          },
-        ),
+            if (_currentPage == 1) _users.clear();
+            _users.addAll(state.users);
+            _isLoadingMore = false;
+          } else if (state is FollowersError) {
+            AppLogger.error('Following load failed: ${state.message}');
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+          }
+        },
+        builder: (context, state) {
+          if (state is FollowersLoading && _users.isEmpty) {
+            return const LoadingIndicator();
+          } else if (state is FollowersError) {
+            return EmptyStateWidget(
+              message: state.message,
+              icon: Icons.error_outline,
+              onRetry: () {
+                AppLogger.info(
+                  'Retrying following load for user: ${widget.userId}, page: $_currentPage',
+                );
+                context.read<FollowersBloc>().add(
+                  GetFollowingEvent(userId: widget.userId, page: _currentPage),
+                );
+              },
+              actionText: 'Retry',
+            );
+          } else if (_users.isEmpty) {
+            return const EmptyStateWidget(
+              message: 'Not following anyone yet.',
+              icon: Icons.people_outline,
+            );
+          }
+          return ListView.builder(
+            controller: _scrollController,
+            itemCount: _users.length + (_isLoadingMore ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index < _users.length) {
+                return UserListItem(user: _users[index]);
+              } else {
+                return const LoadingIndicator();
+              }
+            },
+          );
+        },
       ),
     );
   }
 
   @override
   void dispose() {
+    AppLogger.info('Disposing FollowingPage, cleaning up scroll controller');
     _scrollController.dispose();
     super.dispose();
   }

@@ -1,28 +1,87 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 import 'package:vlone_blog_app/core/theme/app_theme.dart';
+import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
-import 'package:vlone_blog_app/router.dart';
+import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
+import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
+import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
+import 'router.dart';
 import 'package:workmanager/workmanager.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 @pragma('vm:entry-point')
 void backgroundCallbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
+    AppLogger.info('Executing background task: $task');
     return Future.value(true);
   });
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  AppLogger.info('Initializing app dependencies');
+
+  // Initialize Supabase with flutter_secure_storage
+  await Supabase.initialize(
+    url: Constants.supabaseUrl,
+    anonKey: Constants.supabaseAnonKey,
+    authOptions: FlutterAuthClientOptions(localStorage: SecureStorage()),
+  );
+
   await di.init();
+  AppLogger.info('Initializing Workmanager');
   await Workmanager().initialize(
     backgroundCallbackDispatcher,
     isInDebugMode: false,
   );
+  AppLogger.info('Starting app');
   runApp(const MyApp());
+}
+
+// Custom secure storage implementation for Supabase
+class SecureStorage implements LocalStorage {
+  final _storage = const FlutterSecureStorage();
+
+  @override
+  Future<void> initialize() async {
+    AppLogger.info('Initializing secure storage for Supabase');
+  }
+
+  @override
+  Future<bool> hasAccessToken() async {
+    final token = await _storage.read(key: 'supabase_access_token');
+    AppLogger.info('Checking access token in secure storage: ${token != null}');
+    return token != null;
+  }
+
+  @override
+  Future<String?> accessToken() async {
+    final token = await _storage.read(key: 'supabase_access_token');
+    AppLogger.info('Retrieved access token from secure storage');
+    return token;
+  }
+
+  @override
+  Future<void> persistSession(String persistSessionString) async {
+    AppLogger.info('Persisting session to secure storage');
+    await _storage.write(
+      key: 'supabase_access_token',
+      value: persistSessionString,
+    );
+  }
+
+  @override
+  Future<void> removePersistedSession() async {
+    AppLogger.info('Removing persisted session from secure storage');
+    await _storage.delete(key: 'supabase_access_token');
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -30,13 +89,30 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider<AuthBloc>(
-      create: (_) => di.sl<AuthBloc>()..add(CheckAuthStatusEvent()),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider<AuthBloc>(
+          create: (_) => di.sl<AuthBloc>()..add(CheckAuthStatusEvent()),
+        ),
+        BlocProvider<PostsBloc>(
+          create: (_) => di.sl<PostsBloc>()..add(SubscribeToFeedEvent()),
+        ),
+        BlocProvider<ProfileBloc>(create: (_) => di.sl<ProfileBloc>()),
+        BlocProvider<CommentsBloc>(create: (_) => di.sl<CommentsBloc>()),
+        BlocProvider<FavoritesBloc>(create: (_) => di.sl<FavoritesBloc>()),
+        BlocProvider<FollowersBloc>(create: (_) => di.sl<FollowersBloc>()),
+      ],
       child: BlocListener<AuthBloc, AuthState>(
         listener: (context, state) {
           if (state is AuthAuthenticated) {
-            context.go(Constants.feedRoute);
+            AppLogger.info(
+              'AuthBloc: User authenticated, navigating to main page',
+            );
+            context.go('/');
           } else if (state is AuthUnauthenticated) {
+            AppLogger.info(
+              'AuthBloc: User unauthenticated, navigating to login',
+            );
             context.go(Constants.loginRoute);
           }
         },
@@ -78,6 +154,12 @@ class MyApp extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
+            ),
+            bottomNavigationBarTheme: BottomNavigationBarThemeData(
+              backgroundColor: Colors.grey[900],
+              selectedItemColor: Constants.primaryColor,
+              unselectedItemColor: Colors.white60,
+              showUnselectedLabels: true,
             ),
           ),
           themeMode: ThemeMode.system,

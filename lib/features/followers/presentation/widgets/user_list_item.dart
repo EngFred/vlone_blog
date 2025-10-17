@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 
 class UserListItem extends StatelessWidget {
@@ -17,7 +18,7 @@ class UserListItem extends StatelessWidget {
       ),
       title: Text(user.username),
       subtitle: Text(user.bio ?? ''),
-      onTap: () => context.push('/profile/${user.id}'),
+      onTap: () => context.push('${Constants.profileRoute}/${user.id}'),
     );
   }
 }

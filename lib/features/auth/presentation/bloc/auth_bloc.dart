@@ -7,6 +7,7 @@ import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_us
 import 'package:vlone_blog_app/features/auth/domain/usecases/login_usecase.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/logout_usecase.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/signup_usecase.dart';
+import 'package:vlone_blog_app/features/auth/domain/repositories/auth_repository.dart';
 
 part 'auth_event.dart';
 part 'auth_state.dart';
@@ -16,12 +17,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final LoginUseCase loginUseCase;
   final LogoutUseCase logoutUseCase;
   final GetCurrentUserUseCase getCurrentUserUseCase;
+  final AuthRepository authRepository;
 
   AuthBloc({
     required this.signupUseCase,
     required this.loginUseCase,
     required this.logoutUseCase,
     required this.getCurrentUserUseCase,
+    required this.authRepository,
   }) : super(AuthInitial()) {
     on<SignupEvent>((event, emit) async {
       AppLogger.info('SignupEvent triggered for email: ${event.email}');
@@ -82,15 +85,30 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<CheckAuthStatusEvent>((event, emit) async {
       AppLogger.info('CheckAuthStatusEvent triggered');
       emit(AuthLoading());
-      final result = await getCurrentUserUseCase(NoParams());
-      result.fold(
-        (failure) {
-          AppLogger.info('No current user or error: ${failure.message}');
+      final sessionResult = await authRepository.restoreSession();
+      await sessionResult.fold(
+        (failure) async {
+          AppLogger.info('Session restoration failed: ${failure.message}');
           emit(AuthUnauthenticated());
         },
-        (user) {
-          AppLogger.info('Current user found: ${user.id}');
-          emit(AuthAuthenticated(user));
+        (restored) async {
+          if (restored) {
+            AppLogger.info('Session restored, checking current user');
+            final userResult = await getCurrentUserUseCase(NoParams());
+            userResult.fold(
+              (failure) {
+                AppLogger.info('No current user or error: ${failure.message}');
+                emit(AuthUnauthenticated());
+              },
+              (user) {
+                AppLogger.info('Current user found: ${user.id}');
+                emit(AuthAuthenticated(user));
+              },
+            );
+          } else {
+            AppLogger.info('No session to restore');
+            emit(AuthUnauthenticated());
+          }
         },
       );
     });

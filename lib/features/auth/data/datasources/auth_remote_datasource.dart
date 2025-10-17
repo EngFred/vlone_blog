@@ -2,11 +2,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vlone_blog_app/core/error/exceptions.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/data/models/user_model.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuthRemoteDataSource {
   final SupabaseClient client;
+  final FlutterSecureStorage _secureStorage;
 
-  AuthRemoteDataSource(this.client);
+  AuthRemoteDataSource(this.client, [FlutterSecureStorage? secureStorage])
+    : _secureStorage = secureStorage ?? const FlutterSecureStorage();
 
   Future<UserModel> signUp({
     required String email,
@@ -20,11 +23,8 @@ class AuthRemoteDataSource {
         password: password,
       );
 
-      // No need to check session == null anymore, as confirmation is disabled
-      if (authResponse.session == null) {
-        AppLogger.warning(
-          'Signup response has no session (unexpected after disabling confirmation)',
-        );
+      if (authResponse.session == null || authResponse.user == null) {
+        AppLogger.warning('Signup response has no session or user');
         throw const ServerException(
           'Signup failed unexpectedly. Please try again.',
         );
@@ -39,13 +39,20 @@ class AuthRemoteDataSource {
       });
 
       AppLogger.info('Signup successful for user ID: $userId');
-      // For signup, we don't have full profile yet, so return partial model
       return UserModel(id: userId, email: email, username: username);
-    } on AuthException catch (e) {
-      AppLogger.error('AuthException during signup: ${e.message}', error: e);
+    } on AuthException catch (e, stackTrace) {
+      AppLogger.error(
+        'AuthException during signup: ${e.message}',
+        error: e,
+        stackTrace: stackTrace,
+      );
       throw ServerException(e.message);
-    } catch (e) {
-      AppLogger.error('Unexpected error during signup: $e', error: e);
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Unexpected error during signup: $e',
+        error: e,
+        stackTrace: stackTrace,
+      );
       throw ServerException(e.toString());
     }
   }
@@ -60,8 +67,8 @@ class AuthRemoteDataSource {
         email: email,
         password: password,
       );
-      if (authResponse.session == null) {
-        AppLogger.warning('Login response has no session');
+      if (authResponse.session == null || authResponse.user == null) {
+        AppLogger.warning('Login response has no session or user');
         throw const ServerException('Login failed. Invalid credentials.');
       }
 
@@ -75,11 +82,19 @@ class AuthRemoteDataSource {
 
       AppLogger.info('Login successful for user ID: $userId');
       return UserModel.fromMap(profileData);
-    } on AuthException catch (e) {
-      AppLogger.error('AuthException during login: ${e.message}', error: e);
+    } on AuthException catch (e, stackTrace) {
+      AppLogger.error(
+        'AuthException during login: ${e.message}',
+        error: e,
+        stackTrace: stackTrace,
+      );
       throw ServerException(e.message);
-    } catch (e) {
-      AppLogger.error('Unexpected error during login: $e', error: e);
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Unexpected error during login: $e',
+        error: e,
+        stackTrace: stackTrace,
+      );
       throw ServerException(e.toString());
     }
   }
@@ -89,8 +104,14 @@ class AuthRemoteDataSource {
       AppLogger.info('Attempting logout');
       await client.auth.signOut();
       AppLogger.info('Logout successful');
-    } catch (e) {
-      AppLogger.error('Error during logout: $e', error: e);
+      // remove persisted session from secure storage if you stored it manually
+      await _secureStorage.delete(key: 'supabase_persisted_session');
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Error during logout: $e',
+        error: e,
+        stackTrace: stackTrace,
+      );
       throw ServerException(e.toString());
     }
   }
@@ -112,9 +133,54 @@ class AuthRemoteDataSource {
 
       AppLogger.info('Current user fetched successfully for ID: $userId');
       return UserModel.fromMap(profileData);
-    } catch (e) {
-      AppLogger.error('Error fetching current user: $e', error: e);
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Error fetching current user: $e',
+        error: e,
+        stackTrace: stackTrace,
+      );
       throw ServerException(e.toString());
+    }
+  }
+
+  /// Attempts to restore an existing persisted session.
+  /// Returns true if a session was successfully restored.
+  Future<bool> restoreSession() async {
+    try {
+      AppLogger.info(
+        'Attempting to restore session - checking currentSession first',
+      );
+      // If supabase client already has a session, nothing to do
+      if (client.auth.currentSession != null &&
+          client.auth.currentUser != null) {
+        AppLogger.info('Session already present in Supabase client');
+        return true;
+      }
+
+      // Read persisted session JSON from secure storage (your LocalStorage implementation)
+      final persisted = await _secureStorage.read(
+        key: 'supabase_persisted_session',
+      );
+
+      if (persisted == null || persisted.trim().isEmpty) {
+        AppLogger.info('No persisted session found in secure storage');
+        return false;
+      }
+
+      AppLogger.info('Found persisted session, attempting recoverSession');
+      final session = await client.auth.recoverSession(persisted);
+      final hasSession = session != null && client.auth.currentUser != null;
+      AppLogger.info(
+        'Session restoration ${hasSession ? 'successful' : 'failed'}',
+      );
+      return hasSession;
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Error restoring session: $e',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return false;
     }
   }
 }

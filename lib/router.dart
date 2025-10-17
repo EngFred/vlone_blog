@@ -1,17 +1,21 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
+import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
+import 'package:vlone_blog_app/core/pages/main_page.dart';
 import 'package:vlone_blog_app/features/auth/presentation/pages/login_page.dart';
 import 'package:vlone_blog_app/features/auth/presentation/pages/signup_page.dart';
 import 'package:vlone_blog_app/features/comments/presentation/pages/comments_page.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/pages/favorites_page.dart';
+import 'package:vlone_blog_app/features/followers/presentation/pages/followers_page.dart';
+import 'package:vlone_blog_app/features/followers/presentation/pages/following_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/create_post_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
-import 'package:vlone_blog_app/features/followers/presentation/pages/followers_page.dart';
-import 'package:vlone_blog_app/features/followers/presentation/pages/following_page.dart';
-import 'package:flutter/material.dart';
+import 'package:vlone_blog_app/core/usecases/usecase.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: Constants.loginRoute,
@@ -24,45 +28,62 @@ final GoRouter appRouter = GoRouter(
       path: Constants.signupRoute,
       builder: (context, state) => const SignupPage(),
     ),
-    GoRoute(
-      path: Constants.feedRoute,
-      builder: (context, state) => const FeedPage(),
-    ),
-    GoRoute(
-      path: '${Constants.profileRoute}/:userId',
-      builder: (context, state) =>
-          ProfilePage(userId: state.pathParameters['userId']!),
-    ),
-    GoRoute(
-      path: '/create-post',
-      builder: (context, state) => const CreatePostPage(),
-    ),
-    GoRoute(
-      path: '${Constants.commentsRoute}/:postId',
-      builder: (context, state) =>
-          CommentsPage(postId: state.pathParameters['postId']!),
-    ),
-    GoRoute(
-      path: Constants.favoritesRoute,
-      builder: (context, state) => const FavoritesPage(),
-    ),
-    GoRoute(
-      path: '${Constants.followersRoute}/:userId',
-      builder: (context, state) =>
-          FollowersPage(userId: state.pathParameters['userId']!),
-    ),
-    GoRoute(
-      path: '${Constants.followingRoute}/:userId',
-      builder: (context, state) =>
-          FollowingPage(userId: state.pathParameters['userId']!),
+
+    // ShellRoute provides a persistent shell (MainPage) that wraps all child
+    // routes. This guarantees the BottomNavigationBar is always visible while
+    // navigating between the child routes (e.g. /feed, /profile/:userId).
+    ShellRoute(
+      builder: (context, state, child) {
+        return MainPage(child: child);
+      },
+      routes: [
+        GoRoute(
+          path: Constants.feedRoute,
+          builder: (context, state) => const FeedPage(),
+        ),
+        GoRoute(
+          path: Constants.profileRoute + '/:userId',
+          builder: (context, state) =>
+              ProfilePage(userId: state.pathParameters['userId']!),
+        ),
+        GoRoute(
+          path: 'create-post',
+          builder: (context, state) => const CreatePostPage(),
+        ),
+        GoRoute(
+          path: Constants.commentsRoute + '/:postId',
+          builder: (context, state) =>
+              CommentsPage(postId: state.pathParameters['postId']!),
+        ),
+        GoRoute(
+          path: Constants.favoritesRoute,
+          builder: (context, state) => const FavoritesPage(),
+        ),
+        GoRoute(
+          path: Constants.followersRoute + '/:userId',
+          builder: (context, state) =>
+              FollowersPage(userId: state.pathParameters['userId']!),
+        ),
+        GoRoute(
+          path: Constants.followingRoute + '/:userId',
+          builder: (context, state) =>
+              FollowingPage(userId: state.pathParameters['userId']!),
+        ),
+      ],
     ),
   ],
-  errorBuilder: (context, state) => Scaffold(
-    body: Center(
-      child: Text('Error: ${state.error?.message ?? "Page not found"}'),
-    ),
-  ),
+  errorBuilder: (context, state) {
+    AppLogger.error(
+      'Router error: ${state.error?.message ?? "Page not found"}',
+    );
+    return Scaffold(
+      body: Center(
+        child: Text('Error: ${state.error?.message ?? "Page not found"}'),
+      ),
+    );
+  },
   redirect: (context, state) async {
+    AppLogger.info('Router redirect check for path: ${state.uri.path}');
     final supabase = sl<SupabaseClient>();
     final session = supabase.auth.currentSession;
     final isLoggedIn = session != null;
@@ -71,11 +92,37 @@ final GoRouter appRouter = GoRouter(
         state.uri.path == Constants.signupRoute;
 
     if (!isLoggedIn && !isAuthRoute) {
+      AppLogger.warning('User not logged in, redirecting to login');
       return Constants.loginRoute;
     }
+
     if (isLoggedIn && isAuthRoute) {
-      return Constants.feedRoute;
+      AppLogger.info('User logged in, redirecting to feed');
+      try {
+        final result = await sl<GetCurrentUserUseCase>()(NoParams());
+        return result.fold(
+          (failure) {
+            AppLogger.error(
+              'Failed to load current user for redirect: ${failure.message}',
+            );
+            return Constants.loginRoute;
+          },
+          (user) {
+            AppLogger.info('Redirecting authenticated user ${user.id} to feed');
+            return Constants.feedRoute;
+          },
+        );
+      } catch (e, stackTrace) {
+        AppLogger.error(
+          'Unexpected error during redirect: $e',
+          error: e,
+          stackTrace: stackTrace,
+        );
+        return Constants.loginRoute;
+      }
     }
+
+    AppLogger.info('No redirect needed for path: ${state.uri.path}');
     return null;
   },
 );
