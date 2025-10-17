@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
-import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/auth/presentation/widgets/auth_form.dart';
 
@@ -31,14 +30,7 @@ class SignupPage extends StatelessWidget {
               );
             }
           },
-          child: BlocBuilder<AuthBloc, AuthState>(
-            builder: (context, state) {
-              if (state is AuthLoading) {
-                return const LoadingIndicator();
-              }
-              return AuthForm(isLogin: false);
-            },
-          ),
+          child: AuthForm(isLogin: false),
         ),
       ),
     );

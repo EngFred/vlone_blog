@@ -80,6 +80,7 @@ Future<void> init() async {
       signupUseCase: sl<SignupUseCase>(),
       loginUseCase: sl<LoginUseCase>(),
       logoutUseCase: sl<LogoutUseCase>(),
+      getCurrentUserUseCase: sl<GetCurrentUserUseCase>(),
     ),
   );
 

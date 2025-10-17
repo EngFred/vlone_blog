@@ -11,6 +11,7 @@ import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart'
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:vlone_blog_app/features/followers/presentation/pages/followers_page.dart';
 import 'package:vlone_blog_app/features/followers/presentation/pages/following_page.dart';
+import 'package:flutter/material.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: Constants.loginRoute,
@@ -56,9 +57,15 @@ final GoRouter appRouter = GoRouter(
           FollowingPage(userId: state.pathParameters['userId']!),
     ),
   ],
-  redirect: (context, state) {
+  errorBuilder: (context, state) => Scaffold(
+    body: Center(
+      child: Text('Error: ${state.error?.message ?? "Page not found"}'),
+    ),
+  ),
+  redirect: (context, state) async {
     final supabase = sl<SupabaseClient>();
-    final isLoggedIn = supabase.auth.currentSession != null;
+    final session = supabase.auth.currentSession;
+    final isLoggedIn = session != null;
     final isAuthRoute =
         state.uri.path == Constants.loginRoute ||
         state.uri.path == Constants.signupRoute;
