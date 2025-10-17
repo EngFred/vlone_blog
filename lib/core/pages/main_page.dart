@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
@@ -32,13 +33,17 @@ class _MainPageState extends State<MainPage> {
       result.fold(
         (failure) {
           AppLogger.error('Failed to load current user: ${failure.message}');
+          // 2. Remove splash on failure before navigating
+          FlutterNativeSplash.remove();
           if (context.mounted) context.go(Constants.loginRoute);
         },
         (user) {
           AppLogger.info('Current user loaded: ${user.id}');
-          setState(() => _userId = user.id);
-          // Do not force navigation here. The ShellRoute ensures the child route
-          // is shown while the BottomNavigationBar remains persistent.
+          if (mounted) {
+            setState(() => _userId = user.id);
+            // 3. Remove splash on success, once the UI is ready to be shown
+            FlutterNativeSplash.remove();
+          }
         },
       );
     } catch (e, stackTrace) {
@@ -47,6 +52,8 @@ class _MainPageState extends State<MainPage> {
         error: e,
         stackTrace: stackTrace,
       );
+      // 4. Also remove splash on any unexpected error
+      FlutterNativeSplash.remove();
       if (context.mounted) context.go(Constants.loginRoute);
     }
   }
@@ -74,6 +81,8 @@ class _MainPageState extends State<MainPage> {
 
   @override
   Widget build(BuildContext context) {
+    // The native splash screen will cover this widget, so the user
+    // won't see this loading indicator on initial app start.
     if (_userId == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }

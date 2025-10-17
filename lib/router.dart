@@ -33,9 +33,6 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const CreatePostPage(),
     ),
 
-    // ShellRoute provides a persistent shell (MainPage) that wraps all child
-    // routes. This guarantees the BottomNavigationBar is always visible while
-    // navigating between the child routes (e.g. /feed, /profile/:userId).
     ShellRoute(
       builder: (context, state, child) {
         return MainPage(child: child);

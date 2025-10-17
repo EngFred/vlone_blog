@@ -27,38 +27,21 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    AppLogger.info('Loading profile for user: ${widget.userId}');
-    context.read<ProfileBloc>().add(GetProfileEvent(widget.userId));
-    context.read<ProfileBloc>().add(GetUserPostsEvent(userId: widget.userId));
+    context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
     _checkIfOwnProfile();
   }
 
   Future<void> _checkIfOwnProfile() async {
-    try {
-      AppLogger.info(
-        'Checking if profile belongs to current user: ${widget.userId}',
-      );
-      final result = await sl<GetCurrentUserUseCase>()(NoParams());
-      result.fold(
-        (failure) {
-          AppLogger.error('Failed to check current user: ${failure.message}');
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(failure.message)));
-        },
-        (user) {
-          AppLogger.info(
-            'Current user checked: ${user.id}, isOwnProfile: ${user.id == widget.userId}',
-          );
+    final result = await sl<GetCurrentUserUseCase>()(NoParams());
+    result.fold(
+      (failure) =>
+          AppLogger.error('Failed to check current user: ${failure.message}'),
+      (user) {
+        if (mounted) {
           setState(() => _isOwnProfile = user.id == widget.userId);
-        },
-      );
-    } catch (e) {
-      AppLogger.error('Unexpected error checking user: $e', error: e);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error checking user: $e')));
-    }
+        }
+      },
+    );
   }
 
   @override
@@ -70,54 +53,65 @@ class _ProfilePageState extends State<ProfilePage> {
           if (_isOwnProfile)
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () {
-                AppLogger.info(
-                  'Opening edit profile dialog for user: ${widget.userId}',
-                );
-                _showEditDialog(context);
-              },
+              onPressed: () => _showEditDialog(context),
             ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            BlocBuilder<ProfileBloc, ProfileState>(
-              buildWhen: (prev, curr) =>
-                  curr is ProfileLoaded ||
-                  curr is ProfileLoading ||
-                  curr is ProfileError,
-              builder: (context, state) {
-                if (state is ProfileLoading) {
-                  return const LoadingIndicator();
-                } else if (state is ProfileLoaded) {
-                  return ProfileHeader(
-                    profile: state.profile,
-                    isOwnProfile: _isOwnProfile,
+      body: BlocBuilder<ProfileBloc, ProfileState>(
+        builder: (context, state) {
+          if (state is ProfileLoading || state is ProfileInitial) {
+            return const Center(child: LoadingIndicator());
+          }
+          if (state is ProfileError) {
+            return Center(
+              child: CustomErrorWidget(
+                message: state.message,
+                onRetry: () {
+                  context.read<ProfileBloc>().add(
+                    GetProfileDataEvent(widget.userId),
                   );
-                } else if (state is ProfileError) {
-                  return CustomErrorWidget(
-                    message: state.message,
-                    onRetry: () {
-                      AppLogger.info(
-                        'Retrying profile load for user: ${widget.userId}',
-                      );
-                      context.read<ProfileBloc>().add(
-                        GetProfileEvent(widget.userId),
-                      );
-                    },
-                  );
-                }
-                return const SizedBox.shrink();
+                },
+              ),
+            );
+          }
+          if (state is ProfileDataLoaded) {
+            return RefreshIndicator(
+              onRefresh: () async {
+                context.read<ProfileBloc>().add(
+                  GetProfileDataEvent(widget.userId),
+                );
               },
-            ),
-            ProfilePostsList(userId: widget.userId),
-          ],
-        ),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
+                  children: [
+                    ProfileHeader(
+                      profile: state.profile,
+                      isOwnProfile: _isOwnProfile,
+                    ),
+                    // Pass all the post-related data to the list widget
+                    ProfilePostsList(
+                      posts: state.posts,
+                      isLoading: state.arePostsLoading,
+                      error: state.postsError,
+                      onRetry: () {
+                        context.read<ProfileBloc>().add(
+                          GetProfileDataEvent(widget.userId),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          return const SizedBox.shrink();
+        },
       ),
     );
   }
 
+  // _showEditDialog method remains unchanged...
   void _showEditDialog(BuildContext context) {
     final bioController = TextEditingController();
     XFile? selectedImage;
@@ -133,11 +127,9 @@ class _ProfilePageState extends State<ProfilePage> {
               controller: bioController,
               decoration: const InputDecoration(labelText: 'Bio'),
             ),
+            const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () async {
-                AppLogger.info(
-                  'Picking profile image for user: ${widget.userId}',
-                );
                 final picker = ImagePicker();
                 selectedImage = await picker.pickImage(
                   source: ImageSource.gallery,
@@ -151,9 +143,6 @@ class _ProfilePageState extends State<ProfilePage> {
           TextButton(onPressed: () => ctx.pop(), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
-              AppLogger.info(
-                'Saving profile changes for user: ${widget.userId}',
-              );
               ctx.pop();
               context.read<ProfileBloc>().add(
                 UpdateProfileEvent(
@@ -168,11 +157,5 @@ class _ProfilePageState extends State<ProfilePage> {
         ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    AppLogger.info('Disposing ProfilePage');
-    super.dispose();
   }
 }

@@ -15,6 +15,7 @@ import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.d
 import 'router.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 @pragma('vm:entry-point')
 void backgroundCallbackDispatcher() {
@@ -25,7 +26,10 @@ void backgroundCallbackDispatcher() {
 }
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // Preserve the splash screen until we are ready to remove it.
+  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+
   AppLogger.info('Initializing app dependencies');
 
   // Initialize Supabase with flutter_secure_storage
@@ -41,6 +45,9 @@ void main() async {
     backgroundCallbackDispatcher,
     isInDebugMode: false,
   );
+
+  // The line to remove the splash screen is no longer here.
+
   AppLogger.info('Starting app');
   runApp(const MyApp());
 }

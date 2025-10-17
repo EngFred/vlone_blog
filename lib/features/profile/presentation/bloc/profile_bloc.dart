@@ -1,5 +1,5 @@
-import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
@@ -20,45 +20,47 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     required this.updateProfileUseCase,
     required this.getUserPostsUseCase,
   }) : super(ProfileInitial()) {
-    on<GetProfileEvent>((event, emit) async {
+    on<GetProfileDataEvent>((event, emit) async {
+      // 1. Show a full-page loader only for the profile header.
       emit(ProfileLoading());
-      final result = await getProfileUseCase(event.userId);
-      result.fold(
-        (failure) => emit(ProfileError(failure.message)),
-        (profile) => emit(ProfileLoaded(profile)),
+
+      // 2. Fetch the profile data first.
+      final profileResult = await getProfileUseCase(event.userId);
+
+      await profileResult.fold(
+        (failure) async => emit(ProfileError(failure.message)),
+        (profile) async {
+          // 3. SUCCESS! Emit a state with the loaded profile and set posts to loading.
+          // The UI will now show the header and a loader for the posts.
+          emit(ProfileDataLoaded(profile: profile, arePostsLoading: true));
+
+          // 4. Now, fetch the user's posts.
+          final postsResult = await getUserPostsUseCase(
+            GetUserPostsParams(userId: event.userId, page: 1),
+          );
+
+          // 5. Get the current state to update it with post data.
+          if (state is ProfileDataLoaded) {
+            final currentState = state as ProfileDataLoaded;
+            postsResult.fold(
+              (failure) => emit(
+                currentState.copyWith(
+                  arePostsLoading: false,
+                  postsError: failure.message,
+                ),
+              ),
+              (posts) => emit(
+                currentState.copyWith(arePostsLoading: false, posts: posts),
+              ),
+            );
+          }
+        },
       );
     });
 
     on<UpdateProfileEvent>((event, emit) async {
-      emit(ProfileLoading());
-      final result = await updateProfileUseCase(
-        UpdateProfileParams(
-          userId: event.userId,
-          bio: event.bio,
-          profileImage: event.profileImage,
-        ),
-      );
-      result.fold(
-        (failure) => emit(ProfileError(failure.message)),
-        (profile) => emit(ProfileLoaded(profile)),
-      );
-    });
-
-    on<GetUserPostsEvent>((event, emit) async {
-      emit(
-        ProfileLoading(),
-      ); // Could use a separate PostsLoading state if needed
-      final result = await getUserPostsUseCase(
-        GetUserPostsParams(
-          userId: event.userId,
-          page: event.page,
-          limit: event.limit,
-        ),
-      );
-      result.fold(
-        (failure) => emit(ProfileError(failure.message)),
-        (posts) => emit(UserPostsLoaded(posts)),
-      );
+      // While updating, we can just reload everything.
+      add(GetProfileDataEvent(event.userId));
     });
   }
 }
