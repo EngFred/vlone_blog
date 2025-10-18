@@ -14,7 +14,6 @@ import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_pos
 
 class ProfilePage extends StatefulWidget {
   final String userId;
-
   const ProfilePage({super.key, required this.userId});
 
   @override
@@ -27,8 +26,13 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
     _checkIfOwnProfile();
+    final bloc = context.read<ProfileBloc>();
+    final currentState = bloc.state;
+    if (!(currentState is ProfileDataLoaded &&
+        currentState.profile.id == widget.userId)) {
+      bloc.add(GetProfileDataEvent(widget.userId));
+    }
   }
 
   Future<void> _checkIfOwnProfile() async {
@@ -111,11 +115,9 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // _showEditDialog method remains unchanged...
   void _showEditDialog(BuildContext context) {
     final bioController = TextEditingController();
     XFile? selectedImage;
-
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(

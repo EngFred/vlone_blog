@@ -15,7 +15,6 @@ import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart'
 class _VideoPlaybackManager {
   static VideoPlayerController? _controller;
   static VoidCallback? _onPauseCallback;
-
   static void play(
     VideoPlayerController controller,
     VoidCallback onPauseCallback,
@@ -47,7 +46,6 @@ class _VideoPlaybackManager {
 
 class PostCard extends StatefulWidget {
   final PostEntity post;
-
   const PostCard({super.key, required this.post});
 
   @override
@@ -56,6 +54,7 @@ class PostCard extends StatefulWidget {
 
 class _PostCardState extends State<PostCard> {
   VideoPlayerController? _videoController;
+  bool _initialized = false;
   late bool _isLiked;
   late int _likesCount;
   late bool _isFavorited;
@@ -65,28 +64,25 @@ class _PostCardState extends State<PostCard> {
   @override
   void initState() {
     super.initState();
+    _syncFromPost();
+    _loadCurrentUser();
+  }
+
+  void _syncFromPost() {
     _isLiked = widget.post.isLiked;
     _likesCount = widget.post.likesCount;
     _isFavorited = widget.post.isFavorited;
     _favoritesCount = widget.post.favoritesCount;
-    _loadCurrentUser();
+  }
 
-    if (widget.post.mediaType == 'video' && widget.post.mediaUrl != null) {
-      _videoController = VideoPlayerController.networkUrl(
-        Uri.parse(widget.post.mediaUrl!),
-      )..initialize().then((_) => setState(() {}));
-
-      _videoController!.addListener(() {
-        // When video finishes, ensure UI updates to show play icon again.
-        if (_videoController!.value.isPlaying == false &&
-            _videoController!.value.position >=
-                _videoController!.value.duration) {
-          if (mounted) {
-            setState(() {});
-          }
-          _videoController!.seekTo(Duration.zero);
-        }
-      });
+  @override
+  void didUpdateWidget(covariant PostCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.post.isLiked != widget.post.isLiked ||
+        oldWidget.post.likesCount != widget.post.likesCount ||
+        oldWidget.post.isFavorited != widget.post.isFavorited ||
+        oldWidget.post.favoritesCount != widget.post.favoritesCount) {
+      _syncFromPost();
     }
   }
 
@@ -96,17 +92,14 @@ class _PostCardState extends State<PostCard> {
   }
 
   void _togglePlayPause() {
-    if (_videoController == null) return;
-
+    if (_videoController == null || !_initialized) return;
     final isCurrentlyPlaying = _VideoPlaybackManager.isPlaying(
       _videoController!,
     );
-
     if (isCurrentlyPlaying) {
       _VideoPlaybackManager.pause();
     } else {
       _VideoPlaybackManager.play(_videoController!, () {
-        // This callback is triggered on the video card that needs to be paused.
         if (mounted) {
           setState(() {}); // Rebuild to show the play icon.
         }
@@ -118,15 +111,12 @@ class _PostCardState extends State<PostCard> {
   @override
   Widget build(BuildContext context) {
     if (_userId == null) return const SizedBox.shrink();
-
     return MultiBlocProvider(
       providers: [
         BlocProvider.value(value: context.read<PostsBloc>()),
         BlocProvider.value(value: context.read<FavoritesBloc>()),
       ],
       child: MultiBlocListener(
-        // FIX: The listeners list was empty, causing the crash.
-        // We need these listeners to roll back the optimistic UI state on an error.
         listeners: [
           BlocListener<PostsBloc, PostsState>(
             listener: (context, state) {
@@ -171,7 +161,7 @@ class _PostCardState extends State<PostCard> {
               ),
               if (widget.post.content != null)
                 Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Text(widget.post.content!),
                 ),
               if (widget.post.mediaUrl != null)
@@ -182,41 +172,76 @@ class _PostCardState extends State<PostCard> {
                     width: double.infinity,
                     height: 300,
                   )
-                else if (widget.post.mediaType == 'video' &&
-                    _videoController != null &&
-                    _videoController!.value.isInitialized)
-                  VisibilityDetector(
-                    key: Key(widget.post.id),
-                    onVisibilityChanged: (visibilityInfo) {
-                      if (_videoController == null) return;
-                      final visiblePercentage =
-                          visibilityInfo.visibleFraction * 100;
-                      if (visiblePercentage < 70 &&
-                          _VideoPlaybackManager.isPlaying(_videoController!)) {
-                        _VideoPlaybackManager.pause();
-                      }
-                    },
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        GestureDetector(
-                          onTap: _togglePlayPause,
-                          child: AspectRatio(
-                            aspectRatio: _videoController!.value.aspectRatio,
-                            child: VideoPlayer(_videoController!),
-                          ),
-                        ),
-                        if (!_VideoPlaybackManager.isPlaying(_videoController!))
-                          IconButton(
-                            icon: const Icon(
-                              Icons.play_circle_fill,
-                              color: Colors.white,
-                              size: 64.0,
+                else if (widget.post.mediaType == 'video')
+                  Builder(
+                    builder: (context) {
+                      _videoController ??= VideoPlayerController.networkUrl(
+                        Uri.parse(widget.post.mediaUrl!),
+                      );
+                      _videoController!.addListener(() {
+                        // When video finishes, ensure UI updates to show play icon again.
+                        if (!_videoController!.value.isPlaying &&
+                            _videoController!.value.position >=
+                                _videoController!.value.duration) {
+                          if (mounted) {
+                            setState(() {});
+                          }
+                          _videoController!.seekTo(Duration.zero);
+                        }
+                      });
+                      return VisibilityDetector(
+                        key: Key(widget.post.id),
+                        onVisibilityChanged: (visibilityInfo) {
+                          final visiblePercentage =
+                              visibilityInfo.visibleFraction * 100;
+                          if (visiblePercentage > 0 && !_initialized) {
+                            _videoController!.initialize().then((_) {
+                              if (mounted) {
+                                setState(() {
+                                  _initialized = true;
+                                });
+                              }
+                            });
+                          }
+                          if (visiblePercentage < 70 &&
+                              _VideoPlaybackManager.isPlaying(
+                                _videoController!,
+                              )) {
+                            _VideoPlaybackManager.pause();
+                          }
+                        },
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            GestureDetector(
+                              onTap: _initialized ? _togglePlayPause : null,
+                              child: AspectRatio(
+                                aspectRatio: _initialized
+                                    ? _videoController!.value.aspectRatio
+                                    : 16 / 9,
+                                child: _initialized
+                                    ? VideoPlayer(_videoController!)
+                                    : const Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
+                              ),
                             ),
-                            onPressed: _togglePlayPause,
-                          ),
-                      ],
-                    ),
+                            if (_initialized &&
+                                !_VideoPlaybackManager.isPlaying(
+                                  _videoController!,
+                                ))
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.play_circle_fill,
+                                  color: Colors.white,
+                                  size: 64.0,
+                                ),
+                                onPressed: _togglePlayPause,
+                              ),
+                          ],
+                        ),
+                      );
+                    },
                   )
                 else
                   const SizedBox(

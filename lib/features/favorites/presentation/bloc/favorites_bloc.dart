@@ -26,7 +26,7 @@ class FavoritesBloc extends Bloc<FavoritesEvent, FavoritesState> {
       );
       result.fold(
         (failure) => emit(FavoritesError(failure.message)),
-        (favorite) => emit(FavoriteAdded(favorite.postId, !event.isFavorited)),
+        (favorite) => emit(FavoriteAdded(favorite.postId, event.isFavorited)),
       );
     });
 

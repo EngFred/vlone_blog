@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
@@ -45,8 +44,6 @@ void main() async {
     backgroundCallbackDispatcher,
     isInDebugMode: false,
   );
-
-  // The line to remove the splash screen is no longer here.
 
   AppLogger.info('Starting app');
   runApp(const MyApp());
@@ -113,12 +110,16 @@ class MyApp extends StatelessWidget {
             AppLogger.info(
               'AuthBloc: User authenticated, navigating to main page',
             );
-            context.go('/');
+            appRouter.go(Constants.feedRoute);
+            //DO NOT remove splash here. Let MainPage handle it.
           } else if (state is AuthUnauthenticated) {
             AppLogger.info(
               'AuthBloc: User unauthenticated, navigating to login',
             );
-            context.go(Constants.loginRoute);
+            appRouter.go(Constants.loginRoute);
+            // ONLY remove splash here for the unauthenticated case.
+            // This fixes the "stuck splash" on fresh install.
+            FlutterNativeSplash.remove();
           }
         },
         child: MaterialApp.router(

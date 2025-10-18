@@ -33,7 +33,6 @@ class _MainPageState extends State<MainPage> {
       result.fold(
         (failure) {
           AppLogger.error('Failed to load current user: ${failure.message}');
-          // 2. Remove splash on failure before navigating
           FlutterNativeSplash.remove();
           if (context.mounted) context.go(Constants.loginRoute);
         },
@@ -41,7 +40,6 @@ class _MainPageState extends State<MainPage> {
           AppLogger.info('Current user loaded: ${user.id}');
           if (mounted) {
             setState(() => _userId = user.id);
-            // 3. Remove splash on success, once the UI is ready to be shown
             FlutterNativeSplash.remove();
           }
         },
@@ -52,7 +50,7 @@ class _MainPageState extends State<MainPage> {
         error: e,
         stackTrace: stackTrace,
       );
-      // 4. Also remove splash on any unexpected error
+
       FlutterNativeSplash.remove();
       if (context.mounted) context.go(Constants.loginRoute);
     }
