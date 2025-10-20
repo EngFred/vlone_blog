@@ -21,6 +21,11 @@ class _PostActionsState extends State<PostActions> {
   late int _favoritesCount;
   late int _sharesCount;
 
+  bool _likePending = false;
+  bool _favoritePending = false;
+  bool? _expectedIsLiked;
+  bool? _expectedIsFavorited;
+
   @override
   void initState() {
     super.initState();
@@ -40,11 +45,22 @@ class _PostActionsState extends State<PostActions> {
       _isFavorited = widget.post.isFavorited;
       _favoritesCount = widget.post.favoritesCount;
       _sharesCount = widget.post.sharesCount;
+
+      // Check if the update confirms the pending action
+      if (_likePending && _expectedIsLiked == widget.post.isLiked) {
+        _likePending = false;
+      }
+      if (_favoritePending && _expectedIsFavorited == widget.post.isFavorited) {
+        _favoritePending = false;
+      }
     }
   }
 
   void _toggleLike() {
+    if (_likePending) return;
+    _likePending = true;
     final newLiked = !_isLiked;
+    _expectedIsLiked = newLiked;
     setState(() {
       _isLiked = newLiked;
       _likesCount += newLiked ? 1 : -1;
@@ -59,7 +75,10 @@ class _PostActionsState extends State<PostActions> {
   }
 
   void _toggleFavorite() {
+    if (_favoritePending) return;
+    _favoritePending = true;
     final newFav = !_isFavorited;
+    _expectedIsFavorited = newFav;
     setState(() {
       _isFavorited = newFav;
       _favoritesCount += newFav ? 1 : -1;
@@ -80,32 +99,64 @@ class _PostActionsState extends State<PostActions> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _actionButton(
-            icon: _isLiked ? Icons.favorite : Icons.favorite_border,
-            label: _likesCount.toString(),
-            onTap: _toggleLike,
-          ),
-          _actionButton(
-            icon: Icons.comment,
-            label: widget.post.commentsCount.toString(),
-            onTap: () => context.push('/comments/${widget.post.id}'),
-          ),
-          _actionButton(
-            icon: Icons.share,
-            label: _sharesCount.toString(),
-            onTap: _share,
-          ),
-          _actionButton(
-            icon: _isFavorited ? Icons.bookmark : Icons.bookmark_border,
-            label: _favoritesCount.toString(),
-            onTap: _toggleFavorite,
-          ),
-        ],
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<PostsBloc, PostsState>(
+          listener: (context, state) {
+            if (state is PostsError && _likePending) {
+              setState(() {
+                _isLiked = !_isLiked;
+                _likesCount += _isLiked ? 1 : -1;
+                _likePending = false;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Failed to update like')),
+              );
+            }
+          },
+        ),
+        BlocListener<FavoritesBloc, FavoritesState>(
+          listener: (context, state) {
+            if (state is FavoritesError && _favoritePending) {
+              setState(() {
+                _isFavorited = !_isFavorited;
+                _favoritesCount += _isFavorited ? 1 : -1;
+                _favoritePending = false;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Failed to update favorite')),
+              );
+            }
+          },
+        ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _actionButton(
+              icon: _isLiked ? Icons.favorite : Icons.favorite_border,
+              label: _likesCount.toString(),
+              onTap: _toggleLike,
+            ),
+            _actionButton(
+              icon: Icons.comment,
+              label: widget.post.commentsCount.toString(),
+              onTap: () => context.push('/comments/${widget.post.id}'),
+            ),
+            _actionButton(
+              icon: Icons.share,
+              label: _sharesCount.toString(),
+              onTap: _share,
+            ),
+            _actionButton(
+              icon: _isFavorited ? Icons.bookmark : Icons.bookmark_border,
+              label: _favoritesCount.toString(),
+              onTap: _toggleFavorite,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -19,20 +19,29 @@ class _PostMediaState extends State<PostMedia>
   bool _initialized = false;
   final VideoControllerManager _videoManager = VideoControllerManager();
 
+  // Flag to prevent race conditions during/after disposal
+  bool _isDisposed = false;
+
   @override
   bool get wantKeepAlive => true; // keep state while scrolling
 
   Future<void> _ensureControllerInitialized() async {
+    // Check flags *before* doing anything
+    if (_isDisposed || !mounted) return;
     if (_videoController != null && _initialized) return;
+
     try {
       final controller = await _videoManager.getController(
         widget.post.id,
         widget.post.mediaUrl!,
       );
-      if (!mounted) {
+
+      // Check flags *after* await, in case widget was disposed
+      if (_isDisposed || !mounted) {
         _videoManager.releaseController(widget.post.id);
         return;
       }
+
       setState(() {
         _videoController = controller;
         _initialized = true;
@@ -43,16 +52,20 @@ class _PostMediaState extends State<PostMedia>
   }
 
   void _togglePlayPause() {
+    // Check flags
+    if (_isDisposed || !mounted) return;
     if (_videoController == null || !_initialized) return;
+
     final isPlaying = VideoPlaybackManager.isPlaying(_videoController!);
     if (isPlaying) {
       VideoPlaybackManager.pause();
-      setState(() {});
+      if (mounted) setState(() {});
     } else {
       VideoPlaybackManager.play(_videoController!, () {
-        if (mounted) setState(() {});
+        // Check flags in the playback callback
+        if (mounted && !_isDisposed) setState(() {});
       });
-      setState(() {});
+      if (mounted) setState(() {});
     }
   }
 
@@ -90,13 +103,23 @@ class _PostMediaState extends State<PostMedia>
     return VisibilityDetector(
       key: Key('post_media_${widget.post.id}'),
       onVisibilityChanged: (info) {
+        // Check dispose flag *first*
+        if (_isDisposed || !mounted) return;
+
         final visiblePct = info.visibleFraction * 100;
+
+        // Get a local reference to the controller
+        final controller = _videoController;
+
         if (visiblePct > 40 && !_initialized) {
           _ensureControllerInitialized();
         }
-        if (visiblePct < 20 &&
-            _videoController != null &&
-            VideoPlaybackManager.isPlaying(_videoController!)) {
+
+        // Check controller is not null AND dispose flag again
+        if (controller != null &&
+            !_isDisposed &&
+            visiblePct < 20 &&
+            VideoPlaybackManager.isPlaying(controller)) {
           VideoPlaybackManager.pause();
         }
       },
@@ -154,14 +177,24 @@ class _PostMediaState extends State<PostMedia>
 
   @override
   void dispose() {
+    // Set dispose flag *immediately*
+    _isDisposed = true;
+
     if (widget.post.mediaType == 'video') {
-      // First pause if playing (safely handles global state)
-      if (_videoController != null &&
-          VideoPlaybackManager.isPlaying(_videoController!)) {
-        VideoPlaybackManager.pause();
+      // Get local reference
+      final controller = _videoController;
+
+      // Null out the class member to stop other methods from using it
+      _videoController = null;
+
+      if (controller != null) {
+        // Check if it was playing and pause it
+        if (VideoPlaybackManager.isPlaying(controller)) {
+          VideoPlaybackManager.pause();
+        }
+        // Release it from the manager (which *must* call dispose())
+        _videoManager.releaseController(widget.post.id);
       }
-      // Then release the controller
-      _videoManager.releaseController(widget.post.id);
     }
     super.dispose();
   }

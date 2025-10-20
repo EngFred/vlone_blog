@@ -1,12 +1,14 @@
 import 'dart:io';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/create_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_feed_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_interactions_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_user_posts_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/like_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
@@ -57,32 +59,90 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
       AppLogger.info('GetFeedEvent triggered');
       emit(PostsLoading());
       final result = await getFeedUseCase(NoParams());
-      result.fold(
-        (failure) {
+      await result.fold(
+        (failure) async {
           AppLogger.error('Get feed failed: ${failure.message}');
           emit(PostsError(failure.message));
         },
-        (posts) {
-          AppLogger.info('Feed loaded with ${posts.length} posts');
-          emit(FeedLoaded(posts));
+        (posts) async {
+          List<PostEntity> updatedPosts = posts;
+          if (event.userId != null) {
+            final postIds = posts.map((p) => p.id).toList();
+            final interResult = await sl<GetPostInteractionsUseCase>()(
+              GetPostInteractionsParams(
+                userId: event.userId!,
+                postIds: postIds,
+              ),
+            );
+            interResult.fold(
+              (failure) {
+                AppLogger.error(
+                  'Failed to fetch interactions for feed: ${failure.message}',
+                );
+                // Continue with defaults
+              },
+              (states) {
+                updatedPosts = posts
+                    .map(
+                      (p) => p.copyWith(
+                        isLiked: states.isLiked(p.id),
+                        isFavorited: states.isFavorited(p.id),
+                      ),
+                    )
+                    .toList();
+              },
+            );
+          }
+          AppLogger.info('Feed loaded with ${updatedPosts.length} posts');
+          emit(FeedLoaded(updatedPosts));
         },
       );
     });
 
     on<GetUserPostsEvent>((event, emit) async {
-      AppLogger.info('GetUserPostsEvent triggered for user: ${event.userId}');
+      AppLogger.info(
+        'GetUserPostsEvent triggered for user: ${event.profileUserId}',
+      );
       emit(UserPostsLoading());
       final result = await getUserPostsUseCase(
-        GetUserPostsParams(userId: event.userId),
+        GetUserPostsParams(userId: event.profileUserId),
       );
-      result.fold(
-        (failure) {
+      await result.fold(
+        (failure) async {
           AppLogger.error('Get user posts failed: ${failure.message}');
           emit(UserPostsError(failure.message));
         },
-        (posts) {
-          AppLogger.info('User posts loaded with ${posts.length} posts');
-          emit(UserPostsLoaded(posts));
+        (posts) async {
+          List<PostEntity> updatedPosts = posts;
+          if (event.viewerUserId != null) {
+            final postIds = posts.map((p) => p.id).toList();
+            final interResult = await sl<GetPostInteractionsUseCase>()(
+              GetPostInteractionsParams(
+                userId: event.viewerUserId!,
+                postIds: postIds,
+              ),
+            );
+            interResult.fold(
+              (failure) {
+                AppLogger.error(
+                  'Failed to fetch interactions for user posts: ${failure.message}',
+                );
+                // Continue with defaults
+              },
+              (states) {
+                updatedPosts = posts
+                    .map(
+                      (p) => p.copyWith(
+                        isLiked: states.isLiked(p.id),
+                        isFavorited: states.isFavorited(p.id),
+                      ),
+                    )
+                    .toList();
+              },
+            );
+          }
+          AppLogger.info('User posts loaded with ${updatedPosts.length} posts');
+          emit(UserPostsLoaded(updatedPosts));
         },
       );
     });

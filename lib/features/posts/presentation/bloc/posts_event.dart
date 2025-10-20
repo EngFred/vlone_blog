@@ -21,16 +21,18 @@ class CreatePostEvent extends PostsEvent {
 }
 
 class GetFeedEvent extends PostsEvent {
-  GetFeedEvent();
+  final String? userId;
+  GetFeedEvent({this.userId});
   @override
-  List<Object?> get props => [];
+  List<Object?> get props => [userId];
 }
 
 class GetUserPostsEvent extends PostsEvent {
-  final String userId;
-  GetUserPostsEvent({required this.userId});
+  final String profileUserId;
+  final String? viewerUserId;
+  GetUserPostsEvent({required this.profileUserId, this.viewerUserId});
   @override
-  List<Object?> get props => [userId];
+  List<Object?> get props => [profileUserId, viewerUserId];
 }
 
 class LikePostEvent extends PostsEvent {

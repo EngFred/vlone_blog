@@ -1,24 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
-
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_interactions_usecase.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/feed_list.dart';
 
 class FeedPage extends StatefulWidget {
   const FeedPage({super.key});
-
   @override
   State<FeedPage> createState() => _FeedPageState();
 }
@@ -26,7 +22,6 @@ class FeedPage extends StatefulWidget {
 class _FeedPageState extends State<FeedPage> {
   final List<PostEntity> _posts = [];
   String? _userId;
-
   @override
   void initState() {
     super.initState();
@@ -51,17 +46,14 @@ class _FeedPageState extends State<FeedPage> {
         (user) {
           AppLogger.info('Current user loaded: ${user.id}');
           if (mounted) setState(() => _userId = user.id);
-
           // Only fetch feed if PostsBloc doesn't already have feed data
           final postsState = context.read<PostsBloc>().state;
           if (postsState is FeedLoaded && postsState.posts.isNotEmpty) {
             AppLogger.info('Using cached posts from PostsBloc');
             if (mounted) _updatePosts(postsState.posts);
-            // fetch interaction states once we have user and posts
-            _fetchInteractionStates();
           } else {
             AppLogger.info('Fetching initial feed for user: $_userId');
-            context.read<PostsBloc>().add(GetFeedEvent());
+            context.read<PostsBloc>().add(GetFeedEvent(userId: _userId));
           }
         },
       );
@@ -76,42 +68,10 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
-  Future<void> _fetchInteractionStates() async {
-    if (_userId == null || _posts.isEmpty) return;
-    final postIds = _posts.map((p) => p.id).toList();
-
-    try {
-      final result = await sl<GetPostInteractionsUseCase>()(
-        GetPostInteractionsParams(userId: _userId!, postIds: postIds),
-      );
-
-      result.fold(
-        (failure) {
-          AppLogger.error('Failed to fetch interactions: ${failure.message}');
-        },
-        (interactionStates) {
-          if (!mounted) return;
-          setState(() {
-            for (int i = 0; i < _posts.length; i++) {
-              final post = _posts[i];
-              _posts[i] = post.copyWith(
-                isLiked: interactionStates.isLiked(post.id),
-                isFavorited: interactionStates.isFavorited(post.id),
-              );
-            }
-          });
-        },
-      );
-    } catch (e) {
-      AppLogger.error('Unexpected error fetching interactions: $e', error: e);
-    }
-  }
-
   // Update posts with a minimal change so widgets keep identity where possible.
   void _updatePosts(List<PostEntity> newPosts) {
     final oldIds = _posts.map((p) => p.id).toList();
     final newIds = newPosts.map((p) => p.id).toList();
-
     // If lists have same length and same ids, update in-place (keeps keys/widget state)
     if (oldIds.length == newIds.length &&
         oldIds.every((id) => newIds.contains(id))) {
@@ -136,7 +96,6 @@ class _FeedPageState extends State<FeedPage> {
     if (_userId == null) {
       return const LoadingIndicator();
     }
-
     return Scaffold(
       appBar: AppBar(title: const Text('Feed')),
       body: MultiBlocListener(
@@ -149,7 +108,6 @@ class _FeedPageState extends State<FeedPage> {
                 );
                 if (mounted) {
                   _updatePosts(state.posts);
-                  _fetchInteractionStates();
                 }
               } else if (state is PostCreated) {
                 AppLogger.info('New post created: ${state.post.id}');
@@ -193,8 +151,19 @@ class _FeedPageState extends State<FeedPage> {
         child: RefreshIndicator(
           onRefresh: () async {
             AppLogger.info('Refreshing feed for user: $_userId');
-            if (mounted) setState(() => _posts.clear());
-            context.read<PostsBloc>().add(GetFeedEvent());
+
+            // Not clearing posts here. Letting the BLoC state handle
+            // updates. The indicator will spin automatically.
+            // if (mounted) setState(() => _posts.clear()); // <-- REMOVED
+
+            final bloc = context.read<PostsBloc>();
+            bloc.add(GetFeedEvent(userId: _userId));
+
+            // Await the BLoC to finish loading or erroring
+            // This ensures the RefreshIndicator spins correctly.
+            await bloc.stream.firstWhere(
+              (state) => state is FeedLoaded || state is PostsError,
+            );
           },
           child: Builder(
             builder: (context) {
@@ -205,7 +174,9 @@ class _FeedPageState extends State<FeedPage> {
                 return EmptyStateWidget(
                   message: postsState.message,
                   icon: Icons.error_outline,
-                  onRetry: () => context.read<PostsBloc>().add(GetFeedEvent()),
+                  onRetry: () => context.read<PostsBloc>().add(
+                    GetFeedEvent(userId: _userId),
+                  ),
                   actionText: 'Retry',
                 );
               } else if (_posts.isEmpty) {
@@ -214,8 +185,6 @@ class _FeedPageState extends State<FeedPage> {
                   icon: Icons.post_add,
                 );
               }
-
-              // USE the modular FeedList widget here
               return FeedList(posts: _posts, userId: _userId!);
             },
           ),

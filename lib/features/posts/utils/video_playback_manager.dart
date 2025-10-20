@@ -13,20 +13,26 @@ class VideoPlaybackManager {
     if (_controller != null && _controller != controller) {
       try {
         _controller?.pause();
-      } catch (_) {}
+      } catch (e) {
+        // Safely ignore if disposed
+      }
       _onPauseCallback?.call();
     }
     _controller = controller;
     _onPauseCallback = onPauseCallback;
     try {
       _controller?.play();
-    } catch (_) {}
+    } catch (e) {
+      // Safely ignore if disposed
+    }
   }
 
   static void pause() {
     try {
       _controller?.pause();
-    } catch (_) {}
+    } catch (e) {
+      // Safely ignore if disposed
+    }
     _onPauseCallback?.call();
     _controller = null;
     _onPauseCallback = null;
@@ -35,7 +41,7 @@ class VideoPlaybackManager {
   static bool isPlaying(VideoPlayerController controller) {
     try {
       return _controller == controller && controller.value.isPlaying;
-    } catch (_) {
+    } catch (e) {
       return false; // Safely handle if controller is disposed or error occurs
     }
   }
