@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:vlone_blog_app/core/constants/constants.dart';
-import 'package:vlone_blog_app/core/di/injection_container.dart';
+import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
 import 'package:vlone_blog_app/core/pages/main_page.dart';
@@ -35,7 +35,8 @@ final GoRouter appRouter = GoRouter(
 
     ShellRoute(
       builder: (context, state, child) {
-        return MainPage(child: child);
+        // MainPage now manages its own children via IndexedStack
+        return const MainPage();
       },
       routes: [
         GoRoute(
@@ -81,7 +82,7 @@ final GoRouter appRouter = GoRouter(
   },
   redirect: (context, state) async {
     AppLogger.info('Router redirect check for path: ${state.uri.path}');
-    final supabase = sl<SupabaseClient>();
+    final supabase = di.sl<SupabaseClient>();
     final session = supabase.auth.currentSession;
     final isLoggedIn = session != null;
     final isAuthRoute =
@@ -96,7 +97,7 @@ final GoRouter appRouter = GoRouter(
     if (isLoggedIn && isAuthRoute) {
       AppLogger.info('User logged in, redirecting to feed');
       try {
-        final result = await sl<GetCurrentUserUseCase>()(NoParams());
+        final result = await di.sl<GetCurrentUserUseCase>()(NoParams());
         return result.fold(
           (failure) {
             AppLogger.error(

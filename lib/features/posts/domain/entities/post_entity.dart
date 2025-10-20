@@ -7,6 +7,7 @@ class PostEntity extends Equatable {
   final String? content;
   final String? mediaUrl;
   final String? mediaType;
+  final String? thumbnailUrl;
   final int likesCount;
   final int commentsCount;
   final int favoritesCount;
@@ -26,6 +27,7 @@ class PostEntity extends Equatable {
     this.content,
     this.mediaUrl,
     this.mediaType,
+    this.thumbnailUrl,
     this.likesCount = 0,
     this.commentsCount = 0,
     this.favoritesCount = 0,
@@ -46,6 +48,7 @@ class PostEntity extends Equatable {
     String? content,
     String? mediaUrl,
     String? mediaType,
+    String? thumbnailUrl,
     int? likesCount,
     int? commentsCount,
     int? favoritesCount,
@@ -65,6 +68,7 @@ class PostEntity extends Equatable {
       content: content ?? this.content,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaType: mediaType ?? this.mediaType,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       likesCount: likesCount ?? this.likesCount,
       commentsCount: commentsCount ?? this.commentsCount,
       favoritesCount: favoritesCount ?? this.favoritesCount,
@@ -91,6 +95,7 @@ class PostEntity extends Equatable {
     content,
     mediaUrl,
     mediaType,
+    thumbnailUrl,
     likesCount,
     commentsCount,
     favoritesCount,

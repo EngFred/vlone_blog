@@ -6,11 +6,11 @@ import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
+import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart';
+import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
 
 class MainPage extends StatefulWidget {
-  final Widget child;
-
-  const MainPage({super.key, required this.child});
+  const MainPage({super.key});
 
   @override
   State<MainPage> createState() => _MainPageState();
@@ -18,6 +18,9 @@ class MainPage extends StatefulWidget {
 
 class _MainPageState extends State<MainPage> {
   String? _userId;
+  int _selectedIndex = 0;
+  late final List<Widget> _pages;
+  bool _initializedPages = false;
 
   @override
   void initState() {
@@ -41,6 +44,8 @@ class _MainPageState extends State<MainPage> {
           if (mounted) {
             setState(() => _userId = user.id);
             FlutterNativeSplash.remove();
+            _initPagesIfNeeded();
+            _syncSelectedIndexWithLocation();
           }
         },
       );
@@ -50,16 +55,32 @@ class _MainPageState extends State<MainPage> {
         error: e,
         stackTrace: stackTrace,
       );
-
       FlutterNativeSplash.remove();
       if (context.mounted) context.go(Constants.loginRoute);
     }
   }
 
-  int _calculateSelectedIndex() {
-    final location = GoRouterState.of(context).matchedLocation;
+  void _initPagesIfNeeded() {
+    if (_initializedPages || _userId == null) return;
+    _pages = [
+      const FeedPage(key: PageStorageKey('feed_page')),
+      ProfilePage(key: const PageStorageKey('profile_page'), userId: _userId!),
+      // Add more shell pages here if needed
+    ];
+    _initializedPages = true;
+  }
+
+  int _calculateSelectedIndexFromLocation(String location) {
     if (location.startsWith(Constants.profileRoute)) return 1;
-    return 0; // default to feed
+    return 0;
+  }
+
+  void _syncSelectedIndexWithLocation() {
+    final location = GoRouterState.of(context).uri.path;
+    final idx = _calculateSelectedIndexFromLocation(location);
+    if (mounted && idx != _selectedIndex) {
+      setState(() => _selectedIndex = idx);
+    }
   }
 
   void _onItemTapped(int index) {
@@ -68,6 +89,8 @@ class _MainPageState extends State<MainPage> {
       return;
     }
 
+    if (!_initializedPages) _initPagesIfNeeded();
+
     if (index == 0) {
       AppLogger.info('Navigating to Feed');
       context.go(Constants.feedRoute);
@@ -75,26 +98,33 @@ class _MainPageState extends State<MainPage> {
       AppLogger.info('Navigating to Profile for user: $_userId');
       context.go('${Constants.profileRoute}/$_userId');
     }
+
+    if (mounted) setState(() => _selectedIndex = index);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Keep selected index in sync if user navigates with deep links / back button
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncSelectedIndexWithLocation();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // The native splash screen will cover this widget, so the user
-    // won't see this loading indicator on initial app start.
-    if (_userId == null) {
+    if (_userId == null || !_initializedPages) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final selectedIndex = _calculateSelectedIndex();
-
     return Scaffold(
-      body: widget.child,
+      body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(icon: Icon(Icons.feed), label: 'Feed'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
-        currentIndex: selectedIndex,
+        currentIndex: _selectedIndex,
         selectedItemColor: Constants.primaryColor,
         unselectedItemColor: Theme.of(
           context,

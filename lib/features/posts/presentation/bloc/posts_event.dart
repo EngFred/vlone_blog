@@ -10,48 +10,45 @@ class CreatePostEvent extends PostsEvent {
   final String? content;
   final File? mediaFile;
   final String? mediaType;
-
   CreatePostEvent({
     required this.userId,
     this.content,
     this.mediaFile,
     this.mediaType,
   });
-
   @override
   List<Object?> get props => [userId, content, mediaFile, mediaType];
 }
 
 class GetFeedEvent extends PostsEvent {
-  final int page;
-  final int limit;
-
-  GetFeedEvent({this.page = 1, this.limit = 20});
-
+  GetFeedEvent();
   @override
-  List<Object?> get props => [page, limit];
+  List<Object?> get props => [];
+}
+
+class GetUserPostsEvent extends PostsEvent {
+  final String userId;
+  GetUserPostsEvent({required this.userId});
+  @override
+  List<Object?> get props => [userId];
 }
 
 class LikePostEvent extends PostsEvent {
   final String postId;
   final String userId;
   final bool isLiked;
-
   LikePostEvent({
     required this.postId,
     required this.userId,
     required this.isLiked,
   });
-
   @override
   List<Object?> get props => [postId, userId, isLiked];
 }
 
 class SharePostEvent extends PostsEvent {
   final String postId;
-
   SharePostEvent({required this.postId});
-
   @override
   List<Object?> get props => [postId];
 }

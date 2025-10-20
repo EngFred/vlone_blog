@@ -21,7 +21,7 @@ import 'package:vlone_blog_app/features/profile/data/datasources/profile_remote_
 import 'package:vlone_blog_app/features/profile/data/repositories/profile_repository_impl.dart';
 import 'package:vlone_blog_app/features/profile/domain/repositories/profile_repository.dart';
 import 'package:vlone_blog_app/features/profile/domain/usecases/get_profile_usecase.dart';
-import 'package:vlone_blog_app/features/profile/domain/usecases/get_user_posts_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_user_posts_usecase.dart';
 import 'package:vlone_blog_app/features/profile/domain/usecases/update_profile_usecase.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/comments/data/datasources/comments_remote_datasource.dart';
@@ -102,7 +102,6 @@ Future<void> init() async {
     () => ProfileBloc(
       getProfileUseCase: sl<GetProfileUseCase>(),
       updateProfileUseCase: sl<UpdateProfileUseCase>(),
-      getUserPostsUseCase: sl<GetUserPostsUseCase>(),
     ),
   );
 
@@ -120,7 +119,7 @@ Future<void> init() async {
     () => GetFeedUseCase(sl<PostsRepository>()),
   );
   sl.registerLazySingleton<GetUserPostsUseCase>(
-    () => GetUserPostsUseCase(sl<ProfileRepository>()),
+    () => GetUserPostsUseCase(sl<PostsRepository>()),
   );
   sl.registerLazySingleton<LikePostUseCase>(
     () => LikePostUseCase(sl<PostsRepository>()),
@@ -135,6 +134,7 @@ Future<void> init() async {
       likePostUseCase: sl<LikePostUseCase>(),
       sharePostUseCase: sl<SharePostUseCase>(),
       repository: sl<PostsRepository>(),
+      getUserPostsUseCase: sl<GetUserPostsUseCase>(),
     ),
   );
 

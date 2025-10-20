@@ -1,12 +1,13 @@
 import 'dart:io';
-
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/create_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_feed_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_user_posts_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/like_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
 
@@ -16,6 +17,7 @@ part 'posts_state.dart';
 class PostsBloc extends Bloc<PostsEvent, PostsState> {
   final CreatePostUseCase createPostUseCase;
   final GetFeedUseCase getFeedUseCase;
+  final GetUserPostsUseCase getUserPostsUseCase;
   final LikePostUseCase likePostUseCase;
   final SharePostUseCase sharePostUseCase;
   final PostsRepository repository;
@@ -23,6 +25,7 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   PostsBloc({
     required this.createPostUseCase,
     required this.getFeedUseCase,
+    required this.getUserPostsUseCase,
     required this.likePostUseCase,
     required this.sharePostUseCase,
     required this.repository,
@@ -51,11 +54,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     });
 
     on<GetFeedEvent>((event, emit) async {
-      AppLogger.info('GetFeedEvent triggered for page: ${event.page}');
+      AppLogger.info('GetFeedEvent triggered');
       emit(PostsLoading());
-      final result = await getFeedUseCase(
-        GetFeedParams(page: event.page, limit: event.limit),
-      );
+      final result = await getFeedUseCase(NoParams());
       result.fold(
         (failure) {
           AppLogger.error('Get feed failed: ${failure.message}');
@@ -64,6 +65,24 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
         (posts) {
           AppLogger.info('Feed loaded with ${posts.length} posts');
           emit(FeedLoaded(posts));
+        },
+      );
+    });
+
+    on<GetUserPostsEvent>((event, emit) async {
+      AppLogger.info('GetUserPostsEvent triggered for user: ${event.userId}');
+      emit(UserPostsLoading());
+      final result = await getUserPostsUseCase(
+        GetUserPostsParams(userId: event.userId),
+      );
+      result.fold(
+        (failure) {
+          AppLogger.error('Get user posts failed: ${failure.message}');
+          emit(UserPostsError(failure.message));
+        },
+        (posts) {
+          AppLogger.info('User posts loaded with ${posts.length} posts');
+          emit(UserPostsLoaded(posts));
         },
       );
     });

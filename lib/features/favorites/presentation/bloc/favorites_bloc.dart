@@ -24,20 +24,21 @@ class FavoritesBloc extends Bloc<FavoritesEvent, FavoritesState> {
           isFavorited: event.isFavorited,
         ),
       );
-      result.fold(
-        (failure) => emit(FavoritesError(failure.message)),
-        (favorite) => emit(FavoriteAdded(favorite.postId, event.isFavorited)),
-      );
+      result.fold((failure) => emit(FavoritesError(failure.message)), (
+        favorite,
+      ) {
+        if (event.isFavorited) {
+          emit(FavoriteAdded(favorite.postId, event.isFavorited));
+        } else {
+          emit(FavoriteRemoved(favorite.postId));
+        }
+      });
     });
 
     on<GetFavoritesEvent>((event, emit) async {
       emit(FavoritesLoading());
       final result = await getFavoritesUseCase(
-        GetFavoritesParams(
-          userId: event.userId,
-          page: event.page,
-          limit: event.limit,
-        ),
+        GetFavoritesParams(userId: event.userId),
       );
       result.fold(
         (failure) => emit(FavoritesError(failure.message)),

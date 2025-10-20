@@ -6,6 +6,7 @@ class PostModel {
   final String? content;
   final String? mediaUrl;
   final String? mediaType;
+  final String? thumbnailUrl;
   final int likesCount;
   final int commentsCount;
   final int favoritesCount;
@@ -23,6 +24,7 @@ class PostModel {
     this.content,
     this.mediaUrl,
     this.mediaType,
+    this.thumbnailUrl,
     this.likesCount = 0,
     this.commentsCount = 0,
     this.favoritesCount = 0,
@@ -42,6 +44,7 @@ class PostModel {
       content: map['content'] as String?,
       mediaUrl: map['media_url'] as String?,
       mediaType: map['media_type'] as String?,
+      thumbnailUrl: map['thumbnail_url'] as String?,
       likesCount: map['likes_count'] as int? ?? 0,
       commentsCount: map['comments_count'] as int? ?? 0,
       favoritesCount: map['favorites_count'] as int? ?? 0,
@@ -64,6 +67,7 @@ class PostModel {
       content: content,
       mediaUrl: mediaUrl,
       mediaType: mediaType,
+      thumbnailUrl: thumbnailUrl,
       likesCount: likesCount,
       commentsCount: commentsCount,
       favoritesCount: favoritesCount,

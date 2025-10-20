@@ -4,11 +4,12 @@ import 'package:vlone_blog_app/features/posts/presentation/widgets/post_card.dar
 
 class FavoriteItem extends StatelessWidget {
   final PostEntity post;
+  final String userId;
 
-  const FavoriteItem({super.key, required this.post});
+  const FavoriteItem({super.key, required this.post, required this.userId});
 
   @override
   Widget build(BuildContext context) {
-    return PostCard(post: post);
+    return PostCard(post: post, userId: userId);
   }
 }

@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -10,10 +9,10 @@ import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/helpers.dart';
 import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
 import 'package:workmanager/workmanager.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 class PostsRemoteDataSource {
   final SupabaseClient client;
-
   PostsRemoteDataSource(this.client);
 
   Future<PostModel> createPost({
@@ -25,6 +24,8 @@ class PostsRemoteDataSource {
     try {
       AppLogger.info('Attempting to create post for user: $userId');
       String? mediaUrl;
+      String? thumbnailUrl;
+
       if (mediaFile != null) {
         if (mediaType == 'video') {
           final duration = await getVideoDuration(mediaFile);
@@ -32,10 +33,36 @@ class PostsRemoteDataSource {
             AppLogger.warning(
               'Video duration exceeds limit: $duration seconds',
             );
-            throw const ServerException('Video exceeds 10 minutes');
+            throw const ServerException('Video exceeds allowed duration');
           }
         }
-        mediaUrl = await _uploadMedia(mediaFile, userId, mediaType!);
+
+        // Upload media file (video/image)
+        mediaUrl = await _uploadFileToStorage(
+          file: mediaFile,
+          userId: userId,
+          folder: 'posts/media',
+        );
+
+        // If it's a video, generate thumbnail locally and upload it
+        if (mediaType == 'video') {
+          final thumbPath = await _generateThumbnailFile(mediaFile);
+          if (thumbPath != null) {
+            final thumbFile = File(thumbPath);
+            final thumbUrl = await _uploadFileToStorage(
+              file: thumbFile,
+              userId: userId,
+              folder: 'posts/thumbnails',
+            );
+            thumbnailUrl = thumbUrl;
+            try {
+              // optional: delete local thumbnail after upload
+              if (await thumbFile.exists()) {
+                await thumbFile.delete();
+              }
+            } catch (_) {}
+          }
+        }
       }
 
       final postData = {
@@ -43,6 +70,7 @@ class PostsRemoteDataSource {
         'content': content,
         'media_url': mediaUrl,
         'media_type': mediaType ?? 'none',
+        'thumbnail_url': thumbnailUrl,
       };
 
       final response = await client
@@ -50,39 +78,42 @@ class PostsRemoteDataSource {
           .insert(postData)
           .select()
           .single();
-
       AppLogger.info('Post created successfully with ID: ${response['id']}');
       return PostModel.fromMap(response);
     } catch (e) {
       AppLogger.error('Error creating post: $e', error: e);
+      // If upload failed but we already copied file for background upload fallback, schedule background
+      // (keep your existing Workmanager fallback logic if needed)
       throw ServerException(e.toString());
     }
   }
 
-  Future<String> _uploadMedia(
-    File file,
-    String userId,
-    String mediaType,
-  ) async {
+  // Helper to upload a file and return public url.
+  Future<String> _uploadFileToStorage({
+    required File file,
+    required String userId,
+    required String folder, // e.g., 'posts/media' or 'posts/thumbnails'
+  }) async {
     final fileExt = file.path.split('.').last;
     final fileName = '${const Uuid().v4()}.$fileExt';
-    final uploadPath = 'posts/$userId/$fileName';
+    final uploadPath = '$folder/$userId/$fileName';
 
     try {
-      AppLogger.info('Uploading media to path: $uploadPath');
+      AppLogger.info('Uploading file to path: $uploadPath');
+      // Supabase SDK: upload file
       await client.storage.from('posts').upload(uploadPath, file);
       final url = client.storage.from('posts').getPublicUrl(uploadPath);
-      AppLogger.info('Media uploaded successfully: $url');
+      AppLogger.info('File uploaded successfully, url: $url');
       return url;
     } catch (e) {
       AppLogger.error(
-        'Media upload failed, starting background upload: $e',
+        'Upload failed, scheduling background upload: $e',
         error: e,
       );
+      // On failure, fallback to copying locally and scheduling Workmanager task.
       final tempDir = await getTemporaryDirectory();
       final tempPath = '${tempDir.path}/$fileName';
       await file.copy(tempPath);
-
       Workmanager().registerOneOffTask(
         'upload_post_media_$fileName',
         'upload_media',
@@ -96,22 +127,51 @@ class PostsRemoteDataSource {
     }
   }
 
-  Future<List<PostModel>> getFeed({int page = 1, int limit = 20}) async {
+  // Generate a thumbnail image file path from a local video file.
+  Future<String?> _generateThumbnailFile(File videoFile) async {
     try {
-      AppLogger.info('Fetching feed for page: $page, limit: $limit');
-      final from = (page - 1) * limit;
-      final to = from + limit - 1;
+      final tempDir = await getTemporaryDirectory();
+      final thumbPath = await VideoThumbnail.thumbnailFile(
+        video: videoFile.path,
+        thumbnailPath: tempDir.path,
+        imageFormat: ImageFormat.JPEG,
+        quality: 75,
+        maxHeight: 720, // keep reasonable size for preview
+      );
+      return thumbPath; // may be null if thumbnail couldn't be generated
+    } catch (e) {
+      AppLogger.error('Thumbnail generation failed: $e', error: e);
+      return null;
+    }
+  }
 
+  Future<List<PostModel>> getFeed() async {
+    try {
+      AppLogger.info('Fetching feed');
       final response = await client
           .from('posts')
           .select('*, profiles ( username, profile_image_url )')
-          .order('created_at', ascending: false)
-          .range(from, to);
-
+          .order('created_at', ascending: false);
       AppLogger.info('Feed fetched with ${response.length} posts');
       return response.map((map) => PostModel.fromMap(map)).toList();
     } catch (e) {
       AppLogger.error('Error fetching feed: $e', error: e);
+      throw ServerException(e.toString());
+    }
+  }
+
+  Future<List<PostModel>> getUserPosts({required String userId}) async {
+    try {
+      AppLogger.info('Fetching user posts for $userId');
+      final response = await client
+          .from('posts')
+          .select('*, profiles ( username, profile_image_url )')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+      AppLogger.info('User posts fetched with ${response.length} posts');
+      return response.map((map) => PostModel.fromMap(map)).toList();
+    } catch (e) {
+      AppLogger.error('Error fetching user posts: $e', error: e);
       throw ServerException(e.toString());
     }
   }
@@ -148,7 +208,6 @@ class PostsRemoteDataSource {
       AppLogger.info('Attempting to share post: $postId');
       final shareUrl = 'Check this post: https://yourapp.com/post/$postId';
       await Share.share(shareUrl);
-
       final readResponse = await client
           .from('posts')
           .select('shares_count')

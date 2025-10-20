@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:dartz/dartz.dart';
 import 'package:vlone_blog_app/core/error/exceptions.dart';
 import 'package:vlone_blog_app/core/error/failures.dart';
@@ -10,7 +9,6 @@ import 'package:vlone_blog_app/features/posts/domain/repositories/posts_reposito
 
 class PostsRepositoryImpl implements PostsRepository {
   final PostsRemoteDataSource remoteDataSource;
-
   PostsRepositoryImpl(this.remoteDataSource);
 
   @override
@@ -38,19 +36,27 @@ class PostsRepositoryImpl implements PostsRepository {
   }
 
   @override
-  Future<Either<Failure, List<PostEntity>>> getFeed({
-    int page = 1,
-    int limit = 20,
-  }) async {
+  Future<Either<Failure, List<PostEntity>>> getFeed() async {
     try {
-      final postModels = await remoteDataSource.getFeed(
-        page: page,
-        limit: limit,
-      );
+      final postModels = await remoteDataSource.getFeed();
       return Right(postModels.map((model) => model.toEntity()).toList());
     } on ServerException catch (e) {
       AppLogger.error(
         'ServerException in getFeed repo: ${e.message}',
+        error: e,
+      );
+      return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
+  Future<Either<Failure, List<PostEntity>>> getUserPosts(String userId) async {
+    try {
+      final postModels = await remoteDataSource.getUserPosts(userId: userId);
+      return Right(postModels.map((model) => model.toEntity()).toList());
+    } on ServerException catch (e) {
+      AppLogger.error(
+        'ServerException in getUserPosts repo: ${e.message}',
         error: e,
       );
       return Left(ServerFailure(e.message));

@@ -22,10 +22,7 @@ class FeedPage extends StatefulWidget {
 }
 
 class _FeedPageState extends State<FeedPage> {
-  final _scrollController = ScrollController();
-  int _currentPage = 1;
   final List<PostEntity> _posts = [];
-  bool _isLoadingMore = false;
   String? _userId;
   final _client = sl<SupabaseClient>();
 
@@ -33,7 +30,6 @@ class _FeedPageState extends State<FeedPage> {
   void initState() {
     super.initState();
     AppLogger.info('Initializing FeedPage');
-    _scrollController.addListener(_onScroll);
     _loadCurrentUser();
   }
 
@@ -44,87 +40,99 @@ class _FeedPageState extends State<FeedPage> {
       result.fold(
         (failure) {
           AppLogger.error('Failed to load current user: ${failure.message}');
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(failure.message)));
-          context.go(Constants.loginRoute);
+          if (mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(failure.message)));
+            context.go(Constants.loginRoute);
+          }
         },
         (user) {
           AppLogger.info('Current user loaded: ${user.id}');
-          setState(() => _userId = user.id);
-          if (_userId != null) {
-            AppLogger.info(
-              'Fetching initial feed for user: $_userId, page: $_currentPage',
-            );
-            context.read<PostsBloc>().add(GetFeedEvent(page: _currentPage));
+          if (mounted) setState(() => _userId = user.id);
+
+          // Only fetch feed if PostsBloc doesn't already have feed data
+          final postsState = context.read<PostsBloc>().state;
+          if (postsState is FeedLoaded && postsState.posts.isNotEmpty) {
+            AppLogger.info('Using cached posts from PostsBloc');
+            if (mounted) _updatePosts(postsState.posts);
+            // fetch interaction states once we have user and posts
+            _fetchInteractionStates();
+          } else {
+            AppLogger.info('Fetching initial feed for user: $_userId');
+            context.read<PostsBloc>().add(GetFeedEvent());
           }
         },
       );
     } catch (e) {
       AppLogger.error('Unexpected error loading user: $e', error: e);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error loading user: $e')));
-      context.go(Constants.loginRoute);
-    }
-  }
-
-  void _onScroll() {
-    if (_scrollController.position.extentAfter < 500 &&
-        !_isLoadingMore &&
-        _userId != null) {
-      _isLoadingMore = true;
-      _currentPage++;
-      AppLogger.info(
-        'Fetching more posts for user: $_userId, page: $_currentPage',
-      );
-      context.read<PostsBloc>().add(GetFeedEvent(page: _currentPage));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading user: $e')));
+        context.go(Constants.loginRoute);
+      }
     }
   }
 
   Future<void> _fetchInteractionStates() async {
     if (_userId == null || _posts.isEmpty) return;
-
     final postIds = _posts.map((p) => p.id).toList();
-
     try {
       final likesResponse = await _client
           .from('likes')
           .select('post_id')
           .inFilter('post_id', postIds)
           .eq('user_id', _userId!);
-
       final likedIds = <String>{};
-      for (final like in likesResponse) {
-        likedIds.add(like['post_id'] as String);
-      }
+      for (final like in likesResponse) likedIds.add(like['post_id'] as String);
 
       final favoritesResponse = await _client
           .from('favorites')
           .select('post_id')
           .inFilter('post_id', postIds)
           .eq('user_id', _userId!);
-
       final favoritedIds = <String>{};
-      for (final favorite in favoritesResponse) {
-        favoritedIds.add(favorite['post_id'] as String);
-      }
-
-      final updatedPosts = _posts.map((post) {
-        return post.copyWith(
-          isLiked: likedIds.contains(post.id),
-          isFavorited: favoritedIds.contains(post.id),
-        );
-      }).toList();
+      for (final fav in favoritesResponse)
+        favoritedIds.add(fav['post_id'] as String);
 
       if (mounted) {
         setState(() {
-          _posts.clear();
-          _posts.addAll(updatedPosts);
+          for (int i = 0; i < _posts.length; i++) {
+            final post = _posts[i];
+            _posts[i] = post.copyWith(
+              isLiked: likedIds.contains(post.id),
+              isFavorited: favoritedIds.contains(post.id),
+            );
+          }
         });
       }
     } catch (e) {
       AppLogger.error('Error fetching interaction states: $e', error: e);
+    }
+  }
+
+  // Update posts with a minimal change so widgets keep identity where possible.
+  void _updatePosts(List<PostEntity> newPosts) {
+    final oldIds = _posts.map((p) => p.id).toList();
+    final newIds = newPosts.map((p) => p.id).toList();
+
+    // If lists have same length and same ids, update in-place (keeps keys/widget state)
+    if (oldIds.length == newIds.length &&
+        oldIds.every((id) => newIds.contains(id))) {
+      if (!mounted) return;
+      setState(() {
+        for (int i = 0; i < newPosts.length; i++) {
+          _posts[i] = newPosts[i];
+        }
+      });
+    } else {
+      if (!mounted) return;
+      setState(() {
+        _posts
+          ..clear()
+          ..addAll(newPosts);
+      });
     }
   }
 
@@ -133,7 +141,6 @@ class _FeedPageState extends State<FeedPage> {
     if (_userId == null) {
       return const LoadingIndicator();
     }
-
     return Scaffold(
       appBar: AppBar(title: const Text('Feed')),
       body: MultiBlocListener(
@@ -144,22 +151,27 @@ class _FeedPageState extends State<FeedPage> {
                 AppLogger.info(
                   'Feed loaded with ${state.posts.length} posts for user: $_userId',
                 );
-                if (_currentPage == 1) _posts.clear();
-                _posts.addAll(state.posts);
-                _fetchInteractionStates();
-                _isLoadingMore = false;
+                if (mounted) {
+                  _updatePosts(state.posts);
+                  _fetchInteractionStates();
+                }
               } else if (state is PostCreated) {
                 AppLogger.info('New post created: ${state.post.id}');
-                _posts.insert(0, state.post);
+                if (mounted) setState(() => _posts.insert(0, state.post));
               } else if (state is PostLiked) {
                 final index = _posts.indexWhere((p) => p.id == state.postId);
-                if (index != -1) {
+                if (index != -1 && mounted) {
                   final updatedPost = _posts[index].copyWith(
                     likesCount:
                         _posts[index].likesCount + (state.isLiked ? 1 : -1),
+                    isLiked: state.isLiked,
                   );
                   setState(() => _posts[index] = updatedPost);
                 }
+              } else if (state is PostShared) {
+                // no-op for now (optimistic updates handled in card)
+              } else if (state is PostsError) {
+                AppLogger.error('PostsError in FeedPage: ${state.message}');
               }
             },
           ),
@@ -167,16 +179,17 @@ class _FeedPageState extends State<FeedPage> {
             listener: (context, state) {
               if (state is FavoriteAdded) {
                 final index = _posts.indexWhere((p) => p.id == state.postId);
-                if (index != -1) {
+                if (index != -1 && mounted) {
                   final updatedPost = _posts[index].copyWith(
                     favoritesCount:
                         _posts[index].favoritesCount +
                         (state.isFavorited ? 1 : -1),
+                    isFavorited: state.isFavorited,
                   );
                   setState(() => _posts[index] = updatedPost);
                 }
               } else if (state is FavoritesError) {
-                // Handle error if needed
+                // optionally show error
               }
             },
           ),
@@ -184,26 +197,21 @@ class _FeedPageState extends State<FeedPage> {
         child: RefreshIndicator(
           onRefresh: () async {
             AppLogger.info('Refreshing feed for user: $_userId');
-            _posts.clear();
-            _currentPage = 1;
-            context.read<PostsBloc>().add(GetFeedEvent(page: _currentPage));
+            if (mounted) {
+              setState(() => _posts.clear());
+            }
+            context.read<PostsBloc>().add(GetFeedEvent());
           },
-          child: BlocBuilder<PostsBloc, PostsState>(
-            builder: (context, state) {
-              if (state is PostsLoading && _posts.isEmpty) {
+          child: Builder(
+            builder: (context) {
+              final postsState = context.watch<PostsBloc>().state;
+              if (postsState is PostsLoading && _posts.isEmpty) {
                 return const LoadingIndicator();
-              } else if (state is PostsError) {
+              } else if (postsState is PostsError && _posts.isEmpty) {
                 return EmptyStateWidget(
-                  message: state.message,
+                  message: postsState.message,
                   icon: Icons.error_outline,
-                  onRetry: () {
-                    AppLogger.info(
-                      'Retrying feed fetch for user: $_userId, page: $_currentPage',
-                    );
-                    context.read<PostsBloc>().add(
-                      GetFeedEvent(page: _currentPage),
-                    );
-                  },
+                  onRetry: () => context.read<PostsBloc>().add(GetFeedEvent()),
                   actionText: 'Retry',
                 );
               } else if (_posts.isEmpty) {
@@ -212,15 +220,18 @@ class _FeedPageState extends State<FeedPage> {
                   icon: Icons.post_add,
                 );
               }
+
               return ListView.builder(
-                controller: _scrollController,
-                itemCount: _posts.length + (_isLoadingMore ? 1 : 0),
+                key: const PageStorageKey('feed_list'),
+                cacheExtent: 1500.0,
+                itemCount: _posts.length,
                 itemBuilder: (context, index) {
-                  if (index < _posts.length) {
-                    return PostCard(post: _posts[index]);
-                  } else {
-                    return const LoadingIndicator();
-                  }
+                  final post = _posts[index];
+                  return PostCard(
+                    key: ValueKey(post.id),
+                    post: post,
+                    userId: _userId!,
+                  );
                 },
               );
             },
@@ -236,8 +247,7 @@ class _FeedPageState extends State<FeedPage> {
 
   @override
   void dispose() {
-    AppLogger.info('Disposing FeedPage, cleaning up scroll controller');
-    _scrollController.dispose();
+    AppLogger.info('Disposing FeedPage');
     super.dispose();
   }
 }

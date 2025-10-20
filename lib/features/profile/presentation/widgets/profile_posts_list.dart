@@ -7,13 +7,14 @@ import 'package:vlone_blog_app/features/posts/presentation/widgets/post_card.dar
 
 class ProfilePostsList extends StatelessWidget {
   final List<PostEntity> posts;
+  final String userId;
   final bool isLoading;
   final String? error;
   final VoidCallback onRetry;
-
   const ProfilePostsList({
     super.key,
     required this.posts,
+    required this.userId,
     required this.isLoading,
     required this.onRetry,
     this.error,
@@ -21,23 +22,18 @@ class ProfilePostsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Case 1: Posts are loading.
     if (isLoading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 48.0),
         child: LoadingIndicator(),
       );
     }
-
-    // Case 2: There was an error loading posts.
     if (error != null) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 48.0),
         child: CustomErrorWidget(message: error!, onRetry: onRetry),
       );
     }
-
-    // Case 3: Posts are loaded, but the list is empty.
     if (posts.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 48.0),
@@ -47,14 +43,14 @@ class ProfilePostsList extends StatelessWidget {
         ),
       );
     }
-
-    // Case 4: Success! Display the list of posts.
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      cacheExtent: 1500.0,
       itemCount: posts.length,
       itemBuilder: (context, index) {
-        return PostCard(post: posts[index]);
+        final post = posts[index];
+        return PostCard(key: ValueKey(post.id), post: post, userId: userId);
       },
     );
   }

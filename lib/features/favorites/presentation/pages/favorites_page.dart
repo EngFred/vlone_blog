@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
@@ -21,16 +22,13 @@ class FavoritesPage extends StatefulWidget {
 
 class _FavoritesPageState extends State<FavoritesPage> {
   String? _userId;
-  final _scrollController = ScrollController();
-  int _currentPage = 1;
-  bool _isLoadingMore = false;
   final List<PostEntity> _favorites = [];
+  final _client = sl<SupabaseClient>();
 
   @override
   void initState() {
     super.initState();
     AppLogger.info('Initializing FavoritesPage');
-    _scrollController.addListener(_onScroll);
     _loadCurrentUser();
   }
 
@@ -41,45 +39,75 @@ class _FavoritesPageState extends State<FavoritesPage> {
       result.fold(
         (failure) {
           AppLogger.error('Failed to load current user: ${failure.message}');
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(failure.message)));
-          context.go(Constants.loginRoute);
+          if (mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(failure.message)));
+            context.go(Constants.loginRoute);
+          }
         },
         (user) {
           AppLogger.info('Current user loaded: ${user.id}');
-          setState(() => _userId = user.id);
+          if (mounted) {
+            setState(() => _userId = user.id);
+          }
           if (_userId != null) {
-            AppLogger.info(
-              'Fetching initial favorites for user: ${_userId}, page: $_currentPage',
-            );
+            AppLogger.info('Fetching initial favorites for user: $_userId');
             context.read<FavoritesBloc>().add(
-              GetFavoritesEvent(userId: _userId!, page: _currentPage),
+              GetFavoritesEvent(userId: _userId!),
             );
           }
         },
       );
     } catch (e) {
       AppLogger.error('Unexpected error loading user: $e', error: e);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error loading user: $e')));
-      context.go(Constants.loginRoute);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading user: $e')));
+        context.go(Constants.loginRoute);
+      }
     }
   }
 
-  void _onScroll() {
-    if (_scrollController.position.extentAfter < 500 &&
-        !_isLoadingMore &&
-        _userId != null) {
-      _isLoadingMore = true;
-      _currentPage++;
-      AppLogger.info(
-        'Fetching more favorites for user: $_userId, page: $_currentPage',
-      );
-      context.read<FavoritesBloc>().add(
-        GetFavoritesEvent(userId: _userId!, page: _currentPage),
-      );
+  Future<void> _fetchInteractionStates() async {
+    if (_userId == null || _favorites.isEmpty) return;
+    final postIds = _favorites.map((p) => p.id).toList();
+    try {
+      final likesResponse = await _client
+          .from('likes')
+          .select('post_id')
+          .inFilter('post_id', postIds)
+          .eq('user_id', _userId!);
+      final likedIds = <String>{};
+      for (final like in likesResponse) {
+        likedIds.add(like['post_id'] as String);
+      }
+      // For favorites page, since these are already favorited, set isFavorited=true for all
+      // But fetch to confirm any changes
+      final favoritesResponse = await _client
+          .from('favorites')
+          .select('post_id')
+          .inFilter('post_id', postIds)
+          .eq('user_id', _userId!);
+      final favoritedIds = <String>{};
+      for (final favorite in favoritesResponse) {
+        favoritedIds.add(favorite['post_id'] as String);
+      }
+      if (mounted) {
+        setState(() {
+          // Update in place for minimal rebuilds
+          for (int i = 0; i < _favorites.length; i++) {
+            final post = _favorites[i];
+            _favorites[i] = post.copyWith(
+              isLiked: likedIds.contains(post.id),
+              isFavorited: favoritedIds.contains(post.id),
+            );
+          }
+        });
+      }
+    } catch (e) {
+      AppLogger.error('Error fetching interaction states: $e', error: e);
     }
   }
 
@@ -97,18 +125,35 @@ class _FavoritesPageState extends State<FavoritesPage> {
             AppLogger.info(
               'Favorites loaded with ${state.posts.length} posts for user: $_userId',
             );
-            if (_currentPage == 1) _favorites.clear();
-            _favorites.addAll(state.posts);
-            _isLoadingMore = false;
+            if (mounted) {
+              setState(() {
+                _favorites.clear();
+                _favorites.addAll(state.posts);
+              });
+              _fetchInteractionStates();
+            }
           } else if (state is FavoritesError) {
             AppLogger.error('Favorites load failed: ${state.message}');
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(state.message)));
+            if (mounted) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(state.message)));
+            }
           } else if (state is FavoriteAdded) {
             AppLogger.info(
               'Favorite added for post: ${state.postId} by user: $_userId',
             );
+            // Optionally refresh list if needed
+          } else if (state is FavoriteRemoved) {
+            AppLogger.info(
+              'Favorite removed for post: ${state.postId} by user: $_userId',
+            );
+            // Remove from local list
+            if (mounted) {
+              setState(() {
+                _favorites.removeWhere((p) => p.id == state.postId);
+              });
+            }
           }
         },
         builder: (context, state) {
@@ -119,11 +164,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
               message: state.message,
               icon: Icons.error_outline,
               onRetry: () {
-                AppLogger.info(
-                  'Retrying favorites load for user: $_userId, page: $_currentPage',
-                );
+                AppLogger.info('Retrying favorites load for user: $_userId');
                 context.read<FavoritesBloc>().add(
-                  GetFavoritesEvent(userId: _userId!, page: _currentPage),
+                  GetFavoritesEvent(userId: _userId!),
                 );
               },
               actionText: 'Retry',
@@ -134,16 +177,26 @@ class _FavoritesPageState extends State<FavoritesPage> {
               icon: Icons.favorite_border,
             );
           }
-          return ListView.builder(
-            controller: _scrollController,
-            itemCount: _favorites.length + (_isLoadingMore ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index < _favorites.length) {
-                return PostCard(post: _favorites[index]);
-              } else {
-                return const LoadingIndicator();
+          return RefreshIndicator(
+            onRefresh: () async {
+              AppLogger.info('Refreshing favorites for user: $_userId');
+              if (mounted) {
+                setState(() => _favorites.clear());
               }
+              context.read<FavoritesBloc>().add(
+                GetFavoritesEvent(userId: _userId!),
+              );
             },
+            child: ListView.builder(
+              cacheExtent: 1000.0, // For smoothness
+              itemCount: _favorites.length,
+              itemBuilder: (context, index) {
+                return PostCard(
+                  post: _favorites[index],
+                  userId: _userId!, // Pass from page
+                );
+              },
+            ),
           );
         },
       ),
@@ -152,8 +205,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
   @override
   void dispose() {
-    AppLogger.info('Disposing FavoritesPage, cleaning up scroll controller');
-    _scrollController.dispose();
+    AppLogger.info('Disposing FavoritesPage');
     super.dispose();
   }
 }
