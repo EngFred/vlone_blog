@@ -25,5 +25,4 @@ class Constants {
 
   // Other
   static const int maxVideoDurationSeconds = 600; // 10 minutes
-  static const int pageSize = 20; // For pagination in feeds
 }

@@ -9,7 +9,6 @@ import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart'
 class PostMedia extends StatefulWidget {
   final PostEntity post;
   const PostMedia({super.key, required this.post});
-
   @override
   State<PostMedia> createState() => _PostMediaState();
 }
@@ -156,11 +155,13 @@ class _PostMediaState extends State<PostMedia>
   @override
   void dispose() {
     if (widget.post.mediaType == 'video') {
-      _videoManager.releaseController(widget.post.id);
+      // First pause if playing (safely handles global state)
       if (_videoController != null &&
           VideoPlaybackManager.isPlaying(_videoController!)) {
         VideoPlaybackManager.pause();
       }
+      // Then release the controller
+      _videoManager.releaseController(widget.post.id);
     }
     super.dispose();
   }

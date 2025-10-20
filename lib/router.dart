@@ -15,6 +15,7 @@ import 'package:vlone_blog_app/features/followers/presentation/pages/following_p
 import 'package:vlone_blog_app/features/posts/presentation/pages/create_post_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
+import 'package:vlone_blog_app/features/profile/presentation/pages/edit_profile_page.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 
 final GoRouter appRouter = GoRouter(
@@ -28,6 +29,15 @@ final GoRouter appRouter = GoRouter(
       path: Constants.signupRoute,
       builder: (context, state) => const SignupPage(),
     ),
+
+    GoRoute(
+      path: '${Constants.profileRoute}/:userId/edit',
+      builder: (context, state) {
+        final userId = state.pathParameters['userId']!;
+        return EditProfilePage(userId: userId);
+      },
+    ),
+
     GoRoute(
       path: Constants.createPostRoute,
       builder: (context, state) => const CreatePostPage(),
@@ -35,7 +45,6 @@ final GoRouter appRouter = GoRouter(
 
     ShellRoute(
       builder: (context, state, child) {
-        // MainPage now manages its own children via IndexedStack
         return const MainPage();
       },
       routes: [

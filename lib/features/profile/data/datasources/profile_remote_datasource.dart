@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -30,13 +31,15 @@ class ProfileRemoteDataSource {
     }
   }
 
+  /// Updates bio, username and/or profile image. Any parameter that is null is skipped.
   Future<ProfileModel> updateProfile({
     required String userId,
+    String? username,
     String? bio,
     XFile? profileImage,
   }) async {
     AppLogger.info(
-      'Updating profile for user: $userId, bio: $bio, hasImage: ${profileImage != null}',
+      'Updating profile for user: $userId, username: $username, bio: $bio, hasImage: ${profileImage != null}',
     );
     try {
       String? profileImageUrl;
@@ -54,19 +57,22 @@ class ProfileRemoteDataSource {
           'Profile image uploaded successfully, url: $profileImageUrl',
         );
       }
+
       final updates = <String, dynamic>{};
+      if (username != null) updates['username'] = username;
       if (bio != null) updates['bio'] = bio;
       if (profileImageUrl != null)
         updates['profile_image_url'] = profileImageUrl;
+
       if (updates.isNotEmpty) {
-        AppLogger.info(
-          'Updating profile data for user: $userId with updates: $updates',
-        );
+        AppLogger.info('Applying profile updates for $userId: $updates');
         await client.from('profiles').update(updates).eq('id', userId);
         AppLogger.info('Profile data updated successfully for user: $userId');
       } else {
         AppLogger.warning('No profile updates provided for user: $userId');
       }
+
+      // Return the fresh profile
       AppLogger.info('Fetching updated profile for user: $userId');
       return await getProfile(userId);
     } catch (e, stackTrace) {

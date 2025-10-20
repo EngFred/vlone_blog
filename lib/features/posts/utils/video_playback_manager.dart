@@ -33,6 +33,10 @@ class VideoPlaybackManager {
   }
 
   static bool isPlaying(VideoPlayerController controller) {
-    return _controller == controller && _controller?.value.isPlaying == true;
+    try {
+      return _controller == controller && controller.value.isPlaying;
+    } catch (_) {
+      return false; // Safely handle if controller is disposed or error occurs
+    }
   }
 }

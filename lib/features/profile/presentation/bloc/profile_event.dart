@@ -18,11 +18,17 @@ class GetProfileDataEvent extends ProfileEvent {
 
 class UpdateProfileEvent extends ProfileEvent {
   final String userId;
+  final String? username;
   final String? bio;
   final XFile? profileImage;
 
-  const UpdateProfileEvent({required this.userId, this.bio, this.profileImage});
+  const UpdateProfileEvent({
+    required this.userId,
+    this.username,
+    this.bio,
+    this.profileImage,
+  });
 
   @override
-  List<Object?> get props => [userId, bio, profileImage];
+  List<Object?> get props => [userId, username, bio, profileImage];
 }

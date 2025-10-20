@@ -24,17 +24,13 @@ class FavoritesBloc extends Bloc<FavoritesEvent, FavoritesState> {
           isFavorited: event.isFavorited,
         ),
       );
-      result.fold((failure) => emit(FavoritesError(failure.message)), (
-        favorite,
-      ) {
-        if (event.isFavorited) {
-          emit(FavoriteAdded(favorite.postId, event.isFavorited));
-        } else {
-          emit(FavoriteRemoved(favorite.postId));
-        }
-      });
+      result.fold(
+        (failure) => emit(FavoritesError(failure.message)),
+        (favorite) => emit(
+          FavoriteAdded(favorite.postId, event.isFavorited),
+        ), // Always emit FavoriteAdded with the flag (for both add/remove)
+      );
     });
-
     on<GetFavoritesEvent>((event, emit) async {
       emit(FavoritesLoading());
       final result = await getFavoritesUseCase(

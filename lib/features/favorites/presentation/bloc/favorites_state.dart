@@ -28,15 +28,6 @@ class FavoriteAdded extends FavoritesState {
   List<Object?> get props => [postId, isFavorited];
 }
 
-class FavoriteRemoved extends FavoritesState {
-  final String postId;
-
-  FavoriteRemoved(this.postId);
-
-  @override
-  List<Object?> get props => [postId];
-}
-
 class FavoritesError extends FavoritesState {
   final String message;
 

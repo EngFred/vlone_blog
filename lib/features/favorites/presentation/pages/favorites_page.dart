@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
@@ -11,6 +10,7 @@ import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_interactions_usecase.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_card.dart';
 
 class FavoritesPage extends StatefulWidget {
@@ -23,7 +23,6 @@ class FavoritesPage extends StatefulWidget {
 class _FavoritesPageState extends State<FavoritesPage> {
   String? _userId;
   final List<PostEntity> _favorites = [];
-  final _client = sl<SupabaseClient>();
 
   @override
   void initState() {
@@ -74,40 +73,30 @@ class _FavoritesPageState extends State<FavoritesPage> {
     if (_userId == null || _favorites.isEmpty) return;
     final postIds = _favorites.map((p) => p.id).toList();
     try {
-      final likesResponse = await _client
-          .from('likes')
-          .select('post_id')
-          .inFilter('post_id', postIds)
-          .eq('user_id', _userId!);
-      final likedIds = <String>{};
-      for (final like in likesResponse) {
-        likedIds.add(like['post_id'] as String);
-      }
-      // For favorites page, since these are already favorited, set isFavorited=true for all
-      // But fetch to confirm any changes
-      final favoritesResponse = await _client
-          .from('favorites')
-          .select('post_id')
-          .inFilter('post_id', postIds)
-          .eq('user_id', _userId!);
-      final favoritedIds = <String>{};
-      for (final favorite in favoritesResponse) {
-        favoritedIds.add(favorite['post_id'] as String);
-      }
-      if (mounted) {
-        setState(() {
-          // Update in place for minimal rebuilds
-          for (int i = 0; i < _favorites.length; i++) {
-            final post = _favorites[i];
-            _favorites[i] = post.copyWith(
-              isLiked: likedIds.contains(post.id),
-              isFavorited: favoritedIds.contains(post.id),
-            );
-          }
-        });
-      }
+      final result = await sl<GetPostInteractionsUseCase>()(
+        GetPostInteractionsParams(userId: _userId!, postIds: postIds),
+      );
+      result.fold(
+        (failure) {
+          AppLogger.error('Failed to fetch interactions: ${failure.message}');
+        },
+        (interactionStates) {
+          if (!mounted) return;
+          setState(() {
+            for (int i = 0; i < _favorites.length; i++) {
+              final post = _favorites[i];
+              _favorites[i] = post.copyWith(
+                isLiked: interactionStates.isLiked(post.id),
+                isFavorited: interactionStates.isFavorited(
+                  post.id,
+                ), // Confirm despite pre-set
+              );
+            }
+          });
+        },
+      );
     } catch (e) {
-      AppLogger.error('Error fetching interaction states: $e', error: e);
+      AppLogger.error('Unexpected error fetching interactions: $e', error: e);
     }
   }
 
@@ -128,7 +117,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
             if (mounted) {
               setState(() {
                 _favorites.clear();
-                _favorites.addAll(state.posts);
+                _favorites.addAll(
+                  state.posts.map((p) => p.copyWith(isFavorited: true)),
+                ); // Pre-set as favorites
               });
               _fetchInteractionStates();
             }
@@ -141,19 +132,15 @@ class _FavoritesPageState extends State<FavoritesPage> {
             }
           } else if (state is FavoriteAdded) {
             AppLogger.info(
-              'Favorite added for post: ${state.postId} by user: $_userId',
+              'Favorite toggled for post: ${state.postId} (favorited: ${state.isFavorited}) by user: $_userId',
             );
-            // Optionally refresh list if needed
-          } else if (state is FavoriteRemoved) {
-            AppLogger.info(
-              'Favorite removed for post: ${state.postId} by user: $_userId',
-            );
-            // Remove from local list
-            if (mounted) {
+            if (!state.isFavorited && mounted) {
+              // Remove if unfavorited (e.g., from PostActions on this page or elsewhere)
               setState(() {
                 _favorites.removeWhere((p) => p.id == state.postId);
               });
             }
+            // For add: Optionally refresh list if needed, but skip for now
           }
         },
         builder: (context, state) {
@@ -188,12 +175,16 @@ class _FavoritesPageState extends State<FavoritesPage> {
               );
             },
             child: ListView.builder(
-              cacheExtent: 1000.0, // For smoothness
+              cacheExtent: 1500.0, // For smoothness with media
               itemCount: _favorites.length,
               itemBuilder: (context, index) {
+                final post = _favorites[index];
                 return PostCard(
-                  post: _favorites[index],
-                  userId: _userId!, // Pass from page
+                  key: ValueKey(
+                    post.id,
+                  ), // Preserve widget state during updates
+                  post: post,
+                  userId: _userId!,
                 );
               },
             ),

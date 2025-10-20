@@ -1,7 +1,8 @@
+// lib/features/profile/presentation/pages/profile_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
@@ -101,7 +102,10 @@ class _ProfilePageState extends State<ProfilePage> {
           if (_isOwnProfile)
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => _showEditDialog(context),
+              // Replace dialog: navigate to the standalone EditProfilePage route
+              onPressed: () => context.push(
+                '${Constants.profileRoute}/${widget.userId}/edit',
+              ),
             ),
         ],
       ),
@@ -109,7 +113,7 @@ class _ProfilePageState extends State<ProfilePage> {
         listeners: [
           BlocListener<ProfileBloc, ProfileState>(
             listener: (context, state) {
-              // No-op; profile reload handled in events
+              // no-op; profile reload handled in events and edit page will re-trigger
             },
           ),
           BlocListener<PostsBloc, PostsState>(
@@ -213,7 +217,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       ProfilePostsList(
                         posts: _userPosts,
-                        userId: _userId ?? '', // Pass to list
+                        userId: _userId ?? '',
                         isLoading: _isUserPostsLoading,
                         error: _userPostsError,
                         onRetry: () {
@@ -230,52 +234,6 @@ class _ProfilePageState extends State<ProfilePage> {
             return const SizedBox.shrink();
           },
         ),
-      ),
-    );
-  }
-
-  void _showEditDialog(BuildContext context) {
-    final bioController = TextEditingController();
-    XFile? selectedImage;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit Profile'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: bioController,
-              decoration: const InputDecoration(labelText: 'Bio'),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () async {
-                final picker = ImagePicker();
-                selectedImage = await picker.pickImage(
-                  source: ImageSource.gallery,
-                );
-              },
-              child: const Text('Pick Profile Image'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => ctx.pop(), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              ctx.pop();
-              context.read<ProfileBloc>().add(
-                UpdateProfileEvent(
-                  userId: widget.userId,
-                  bio: bioController.text.isEmpty ? null : bioController.text,
-                  profileImage: selectedImage,
-                ),
-              );
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }

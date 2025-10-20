@@ -26,6 +26,7 @@ class _PostCardState extends State<PostCard> {
       ],
       child: Card(
         margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
         elevation: 2,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

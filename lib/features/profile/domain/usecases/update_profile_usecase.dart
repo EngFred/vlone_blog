@@ -8,13 +8,13 @@ import 'package:vlone_blog_app/features/profile/domain/repositories/profile_repo
 class UpdateProfileUseCase
     implements UseCase<ProfileEntity, UpdateProfileParams> {
   final ProfileRepository repository;
-
   UpdateProfileUseCase(this.repository);
 
   @override
   Future<Either<Failure, ProfileEntity>> call(UpdateProfileParams params) {
     return repository.updateProfile(
       userId: params.userId,
+      username: params.username,
       bio: params.bio,
       profileImage: params.profileImage,
     );
@@ -23,8 +23,14 @@ class UpdateProfileUseCase
 
 class UpdateProfileParams {
   final String userId;
+  final String? username;
   final String? bio;
-  final XFile? profileImage; // Changed to XFile for upload
+  final XFile? profileImage;
 
-  UpdateProfileParams({required this.userId, this.bio, this.profileImage});
+  UpdateProfileParams({
+    required this.userId,
+    this.username,
+    this.bio,
+    this.profileImage,
+  });
 }

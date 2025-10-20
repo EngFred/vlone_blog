@@ -5,8 +5,11 @@ import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.d
 
 abstract class ProfileRepository {
   Future<Either<Failure, ProfileEntity>> getProfile(String userId);
+
+  /// Update profile fields. All params optional; only provided fields will be updated.
   Future<Either<Failure, ProfileEntity>> updateProfile({
     required String userId,
+    String? username,
     String? bio,
     XFile? profileImage,
   });

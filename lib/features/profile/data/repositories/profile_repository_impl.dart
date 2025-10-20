@@ -23,12 +23,14 @@ class ProfileRepositoryImpl implements ProfileRepository {
   @override
   Future<Either<Failure, ProfileEntity>> updateProfile({
     required String userId,
+    String? username,
     String? bio,
     XFile? profileImage,
   }) async {
     try {
       final profileModel = await remoteDataSource.updateProfile(
         userId: userId,
+        username: username,
         bio: bio,
         profileImage: profileImage,
       );
