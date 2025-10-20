@@ -5,7 +5,7 @@ import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.d
 
 class ProfileHeader extends StatelessWidget {
   final ProfileEntity profile;
-  final bool isOwnProfile; // Pass from page to show navigable counts
+  final bool isOwnProfile;
 
   const ProfileHeader({
     super.key,
@@ -52,7 +52,6 @@ class ProfileHeader extends StatelessWidget {
                 profile.followingCount,
                 '/following/${profile.id}',
               ),
-              // _buildCountColumn(context, 'Favorites', profile.favoritesCount, '/favorites'), // Assume own favorites
             ],
           ),
         ],

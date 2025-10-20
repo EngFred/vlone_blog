@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
@@ -11,6 +10,7 @@ import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_interactions_usecase.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_header.dart';
@@ -30,7 +30,6 @@ class _ProfilePageState extends State<ProfilePage> {
   final List<PostEntity> _userPosts = [];
   bool _isUserPostsLoading = false;
   String? _userPostsError;
-  final _client = sl<SupabaseClient>();
 
   @override
   void initState() {
@@ -65,39 +64,31 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _fetchInteractionStates() async {
     if (_userId == null || _userPosts.isEmpty) return;
     final postIds = _userPosts.map((p) => p.id).toList();
+
     try {
-      final likesResponse = await _client
-          .from('likes')
-          .select('post_id')
-          .inFilter('post_id', postIds)
-          .eq('user_id', _userId!);
-      final likedIds = <String>{};
-      for (final like in likesResponse) {
-        likedIds.add(like['post_id'] as String);
-      }
-      final favoritesResponse = await _client
-          .from('favorites')
-          .select('post_id')
-          .inFilter('post_id', postIds)
-          .eq('user_id', _userId!);
-      final favoritedIds = <String>{};
-      for (final favorite in favoritesResponse) {
-        favoritedIds.add(favorite['post_id'] as String);
-      }
-      if (mounted) {
-        setState(() {
-          // Update in place without clear/addAll
-          for (int i = 0; i < _userPosts.length; i++) {
-            final post = _userPosts[i];
-            _userPosts[i] = post.copyWith(
-              isLiked: likedIds.contains(post.id),
-              isFavorited: favoritedIds.contains(post.id),
-            );
-          }
-        });
-      }
+      final result = await sl<GetPostInteractionsUseCase>()(
+        GetPostInteractionsParams(userId: _userId!, postIds: postIds),
+      );
+
+      result.fold(
+        (failure) {
+          AppLogger.error('Failed to fetch interactions: ${failure.message}');
+        },
+        (interactionStates) {
+          if (!mounted) return;
+          setState(() {
+            for (int i = 0; i < _userPosts.length; i++) {
+              final post = _userPosts[i];
+              _userPosts[i] = post.copyWith(
+                isLiked: interactionStates.isLiked(post.id),
+                isFavorited: interactionStates.isFavorited(post.id),
+              );
+            }
+          });
+        },
+      );
     } catch (e) {
-      AppLogger.error('Error fetching interaction states: $e', error: e);
+      AppLogger.error('Unexpected error fetching interactions: $e', error: e);
     }
   }
 

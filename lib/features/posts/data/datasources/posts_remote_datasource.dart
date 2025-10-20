@@ -224,4 +224,41 @@ class PostsRemoteDataSource {
       throw ServerException(e.toString());
     }
   }
+
+  Future<Map<String, List<String>>> getInteractions({
+    required String userId,
+    required List<String> postIds,
+  }) async {
+    try {
+      final likesResponse = await client
+          .from('likes')
+          .select('post_id')
+          .inFilter('post_id', postIds)
+          .eq('user_id', userId);
+
+      final favoritesResponse = await client
+          .from('favorites')
+          .select('post_id')
+          .inFilter('post_id', postIds)
+          .eq('user_id', userId);
+
+      final likedIds = <String>[];
+      for (final like in likesResponse) {
+        likedIds.add(like['post_id'] as String);
+      }
+
+      final favoritedIds = <String>[];
+      for (final fav in favoritesResponse) {
+        favoritedIds.add(fav['post_id'] as String);
+      }
+
+      return {'liked': likedIds, 'favorited': favoritedIds};
+    } catch (e) {
+      AppLogger.error(
+        'Error in PostsRemoteDataSource.getInteractions: $e',
+        error: e,
+      );
+      rethrow;
+    }
+  }
 }

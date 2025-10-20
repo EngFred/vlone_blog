@@ -4,6 +4,7 @@ import 'package:vlone_blog_app/core/error/exceptions.dart';
 import 'package:vlone_blog_app/core/error/failures.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/data/datasources/posts_remote_datasource.dart';
+import 'package:vlone_blog_app/features/posts/domain/entities/interaction_states.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
 
@@ -96,6 +97,35 @@ class PostsRepositoryImpl implements PostsRepository {
         error: e,
       );
       return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
+  Future<Either<Failure, InteractionStates>> getPostInteractions({
+    required String userId,
+    required List<String> postIds,
+  }) async {
+    try {
+      final map = await remoteDataSource.getInteractions(
+        userId: userId,
+        postIds: postIds,
+      );
+      final liked = (map['liked'] ?? <String>[])
+          .map((e) => e.toString())
+          .toSet();
+      final favorited = (map['favorited'] ?? <String>[])
+          .map((e) => e.toString())
+          .toSet();
+      final states = InteractionStates(
+        likedPostIds: liked,
+        favoritedPostIds: favorited,
+      );
+      return right(states);
+    } on ServerException catch (e) {
+      return left(ServerFailure(e.message));
+    } catch (e) {
+      AppLogger.error('PostsRepositoryImpl.getPostInteractions error: $e');
+      return left(ServerFailure(e.toString()));
     }
   }
 }

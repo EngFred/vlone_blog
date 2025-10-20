@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
+
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_interactions_usecase.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/post_card.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/feed_list.dart';
 
 class FeedPage extends StatefulWidget {
   const FeedPage({super.key});
@@ -24,7 +26,6 @@ class FeedPage extends StatefulWidget {
 class _FeedPageState extends State<FeedPage> {
   final List<PostEntity> _posts = [];
   String? _userId;
-  final _client = sl<SupabaseClient>();
 
   @override
   void initState() {
@@ -78,37 +79,31 @@ class _FeedPageState extends State<FeedPage> {
   Future<void> _fetchInteractionStates() async {
     if (_userId == null || _posts.isEmpty) return;
     final postIds = _posts.map((p) => p.id).toList();
+
     try {
-      final likesResponse = await _client
-          .from('likes')
-          .select('post_id')
-          .inFilter('post_id', postIds)
-          .eq('user_id', _userId!);
-      final likedIds = <String>{};
-      for (final like in likesResponse) likedIds.add(like['post_id'] as String);
+      final result = await sl<GetPostInteractionsUseCase>()(
+        GetPostInteractionsParams(userId: _userId!, postIds: postIds),
+      );
 
-      final favoritesResponse = await _client
-          .from('favorites')
-          .select('post_id')
-          .inFilter('post_id', postIds)
-          .eq('user_id', _userId!);
-      final favoritedIds = <String>{};
-      for (final fav in favoritesResponse)
-        favoritedIds.add(fav['post_id'] as String);
-
-      if (mounted) {
-        setState(() {
-          for (int i = 0; i < _posts.length; i++) {
-            final post = _posts[i];
-            _posts[i] = post.copyWith(
-              isLiked: likedIds.contains(post.id),
-              isFavorited: favoritedIds.contains(post.id),
-            );
-          }
-        });
-      }
+      result.fold(
+        (failure) {
+          AppLogger.error('Failed to fetch interactions: ${failure.message}');
+        },
+        (interactionStates) {
+          if (!mounted) return;
+          setState(() {
+            for (int i = 0; i < _posts.length; i++) {
+              final post = _posts[i];
+              _posts[i] = post.copyWith(
+                isLiked: interactionStates.isLiked(post.id),
+                isFavorited: interactionStates.isFavorited(post.id),
+              );
+            }
+          });
+        },
+      );
     } catch (e) {
-      AppLogger.error('Error fetching interaction states: $e', error: e);
+      AppLogger.error('Unexpected error fetching interactions: $e', error: e);
     }
   }
 
@@ -141,6 +136,7 @@ class _FeedPageState extends State<FeedPage> {
     if (_userId == null) {
       return const LoadingIndicator();
     }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Feed')),
       body: MultiBlocListener(
@@ -197,9 +193,7 @@ class _FeedPageState extends State<FeedPage> {
         child: RefreshIndicator(
           onRefresh: () async {
             AppLogger.info('Refreshing feed for user: $_userId');
-            if (mounted) {
-              setState(() => _posts.clear());
-            }
+            if (mounted) setState(() => _posts.clear());
             context.read<PostsBloc>().add(GetFeedEvent());
           },
           child: Builder(
@@ -221,19 +215,8 @@ class _FeedPageState extends State<FeedPage> {
                 );
               }
 
-              return ListView.builder(
-                key: const PageStorageKey('feed_list'),
-                cacheExtent: 1500.0,
-                itemCount: _posts.length,
-                itemBuilder: (context, index) {
-                  final post = _posts[index];
-                  return PostCard(
-                    key: ValueKey(post.id),
-                    post: post,
-                    userId: _userId!,
-                  );
-                },
-              );
+              // USE the modular FeedList widget here
+              return FeedList(posts: _posts, userId: _userId!);
             },
           ),
         ),
