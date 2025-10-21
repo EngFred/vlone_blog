@@ -25,7 +25,6 @@ class PostsRemoteDataSource {
       AppLogger.info('Attempting to create post for user: $userId');
       String? mediaUrl;
       String? thumbnailUrl;
-
       if (mediaFile != null) {
         if (mediaType == 'video') {
           final duration = await getVideoDuration(mediaFile);
@@ -36,15 +35,11 @@ class PostsRemoteDataSource {
             throw const ServerException('Video exceeds allowed duration');
           }
         }
-
-        // Upload media file (video/image)
         mediaUrl = await _uploadFileToStorage(
           file: mediaFile,
           userId: userId,
           folder: 'posts/media',
         );
-
-        // If it's a video, generate thumbnail locally and upload it
         if (mediaType == 'video') {
           final thumbPath = await _generateThumbnailFile(mediaFile);
           if (thumbPath != null) {
@@ -56,7 +51,6 @@ class PostsRemoteDataSource {
             );
             thumbnailUrl = thumbUrl;
             try {
-              // optional: delete local thumbnail after upload
               if (await thumbFile.exists()) {
                 await thumbFile.delete();
               }
@@ -64,7 +58,6 @@ class PostsRemoteDataSource {
           }
         }
       }
-
       final postData = {
         'user_id': userId,
         'content': content,
@@ -72,7 +65,6 @@ class PostsRemoteDataSource {
         'media_type': mediaType ?? 'none',
         'thumbnail_url': thumbnailUrl,
       };
-
       final response = await client
           .from('posts')
           .insert(postData)
@@ -82,25 +74,20 @@ class PostsRemoteDataSource {
       return PostModel.fromMap(response);
     } catch (e) {
       AppLogger.error('Error creating post: $e', error: e);
-      // If upload failed but we already copied file for background upload fallback, schedule background
-      // (keep your existing Workmanager fallback logic if needed)
       throw ServerException(e.toString());
     }
   }
 
-  // Helper to upload a file and return public url.
   Future<String> _uploadFileToStorage({
     required File file,
     required String userId,
-    required String folder, // e.g., 'posts/media' or 'posts/thumbnails'
+    required String folder,
   }) async {
     final fileExt = file.path.split('.').last;
     final fileName = '${const Uuid().v4()}.$fileExt';
     final uploadPath = '$folder/$userId/$fileName';
-
     try {
       AppLogger.info('Uploading file to path: $uploadPath');
-      // Supabase SDK: upload file
       await client.storage.from('posts').upload(uploadPath, file);
       final url = client.storage.from('posts').getPublicUrl(uploadPath);
       AppLogger.info('File uploaded successfully, url: $url');
@@ -110,7 +97,6 @@ class PostsRemoteDataSource {
         'Upload failed, scheduling background upload: $e',
         error: e,
       );
-      // On failure, fallback to copying locally and scheduling Workmanager task.
       final tempDir = await getTemporaryDirectory();
       final tempPath = '${tempDir.path}/$fileName';
       await file.copy(tempPath);
@@ -127,7 +113,6 @@ class PostsRemoteDataSource {
     }
   }
 
-  // Generate a thumbnail image file path from a local video file.
   Future<String?> _generateThumbnailFile(File videoFile) async {
     try {
       final tempDir = await getTemporaryDirectory();
@@ -136,9 +121,9 @@ class PostsRemoteDataSource {
         thumbnailPath: tempDir.path,
         imageFormat: ImageFormat.JPEG,
         quality: 75,
-        maxHeight: 720, // keep reasonable size for preview
+        maxHeight: 720,
       );
-      return thumbPath; // may be null if thumbnail couldn't be generated
+      return thumbPath;
     } catch (e) {
       AppLogger.error('Thumbnail generation failed: $e', error: e);
       return null;
@@ -160,6 +145,22 @@ class PostsRemoteDataSource {
     }
   }
 
+  Future<List<PostModel>> getReels() async {
+    try {
+      AppLogger.info('Fetching reels');
+      final response = await client
+          .from('posts')
+          .select('*, profiles ( username, profile_image_url )')
+          .eq('media_type', 'video')
+          .order('created_at', ascending: false);
+      AppLogger.info('Reels fetched with ${response.length} posts');
+      return response.map((map) => PostModel.fromMap(map)).toList();
+    } catch (e) {
+      AppLogger.error('Error fetching reels: $e', error: e);
+      throw ServerException(e.toString());
+    }
+  }
+
   Future<List<PostModel>> getUserPosts({required String userId}) async {
     try {
       AppLogger.info('Fetching user posts for $userId');
@@ -172,6 +173,23 @@ class PostsRemoteDataSource {
       return response.map((map) => PostModel.fromMap(map)).toList();
     } catch (e) {
       AppLogger.error('Error fetching user posts: $e', error: e);
+      throw ServerException(e.toString());
+    }
+  }
+
+  //Single post fetch with join
+  Future<PostModel> getPost(String postId) async {
+    try {
+      AppLogger.info('Fetching post: $postId');
+      final response = await client
+          .from('posts')
+          .select('*, profiles ( username, profile_image_url )')
+          .eq('id', postId)
+          .single();
+      AppLogger.info('Post fetched: ${response['id']}');
+      return PostModel.fromMap(response);
+    } catch (e) {
+      AppLogger.error('Error fetching post $postId: $e', error: e);
       throw ServerException(e.toString());
     }
   }
@@ -235,23 +253,19 @@ class PostsRemoteDataSource {
           .select('post_id')
           .inFilter('post_id', postIds)
           .eq('user_id', userId);
-
       final favoritesResponse = await client
           .from('favorites')
           .select('post_id')
           .inFilter('post_id', postIds)
           .eq('user_id', userId);
-
       final likedIds = <String>[];
       for (final like in likesResponse) {
         likedIds.add(like['post_id'] as String);
       }
-
       final favoritedIds = <String>[];
       for (final fav in favoritesResponse) {
         favoritedIds.add(fav['post_id'] as String);
       }
-
       return {'liked': likedIds, 'favorited': favoritedIds};
     } catch (e) {
       AppLogger.error(

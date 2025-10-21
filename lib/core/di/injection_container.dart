@@ -15,6 +15,8 @@ import 'package:vlone_blog_app/features/posts/domain/repositories/posts_reposito
 import 'package:vlone_blog_app/features/posts/domain/usecases/create_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_feed_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_interactions_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_reels_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/like_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
@@ -122,6 +124,9 @@ Future<void> init() async {
   sl.registerLazySingleton<GetUserPostsUseCase>(
     () => GetUserPostsUseCase(sl<PostsRepository>()),
   );
+  sl.registerLazySingleton<GetPostUseCase>(
+    () => GetPostUseCase(sl<PostsRepository>()),
+  );
   sl.registerLazySingleton<LikePostUseCase>(
     () => LikePostUseCase(sl<PostsRepository>()),
   );
@@ -131,13 +136,18 @@ Future<void> init() async {
   sl.registerLazySingleton<GetPostInteractionsUseCase>(
     () => GetPostInteractionsUseCase(sl<PostsRepository>()),
   );
+  sl.registerLazySingleton<GetReelsUseCase>(
+    () => GetReelsUseCase(sl<PostsRepository>()),
+  );
   sl.registerFactory<PostsBloc>(
     () => PostsBloc(
       createPostUseCase: sl<CreatePostUseCase>(),
       getFeedUseCase: sl<GetFeedUseCase>(),
       likePostUseCase: sl<LikePostUseCase>(),
+      getReelsUseCase: sl<GetReelsUseCase>(),
       sharePostUseCase: sl<SharePostUseCase>(),
       repository: sl<PostsRepository>(),
+      getPostUseCase: sl<GetPostUseCase>(),
       getUserPostsUseCase: sl<GetUserPostsUseCase>(),
     ),
   );

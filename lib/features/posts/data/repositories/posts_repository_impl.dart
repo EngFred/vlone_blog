@@ -51,6 +51,20 @@ class PostsRepositoryImpl implements PostsRepository {
   }
 
   @override
+  Future<Either<Failure, List<PostEntity>>> getReels() async {
+    try {
+      final postModels = await remoteDataSource.getReels();
+      return Right(postModels.map((model) => model.toEntity()).toList());
+    } on ServerException catch (e) {
+      AppLogger.error(
+        'ServerException in getReels repo: ${e.message}',
+        error: e,
+      );
+      return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
   Future<Either<Failure, List<PostEntity>>> getUserPosts(String userId) async {
     try {
       final postModels = await remoteDataSource.getUserPosts(userId: userId);
@@ -126,6 +140,16 @@ class PostsRepositoryImpl implements PostsRepository {
     } catch (e) {
       AppLogger.error('PostsRepositoryImpl.getPostInteractions error: $e');
       return left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, PostEntity>> getPost(String postId) async {
+    try {
+      final postModel = await remoteDataSource.getPost(postId);
+      return Right(postModel.toEntity());
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
     }
   }
 }

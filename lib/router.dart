@@ -8,15 +8,17 @@ import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_us
 import 'package:vlone_blog_app/core/pages/main_page.dart';
 import 'package:vlone_blog_app/features/auth/presentation/pages/login_page.dart';
 import 'package:vlone_blog_app/features/auth/presentation/pages/signup_page.dart';
-import 'package:vlone_blog_app/features/comments/presentation/pages/comments_page.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/pages/favorites_page.dart';
 import 'package:vlone_blog_app/features/followers/presentation/pages/followers_page.dart';
 import 'package:vlone_blog_app/features/followers/presentation/pages/following_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/create_post_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart';
+import 'package:vlone_blog_app/features/posts/presentation/pages/post_details_page.dart';
+import 'package:vlone_blog_app/features/posts/presentation/pages/reels_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/edit_profile_page.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: Constants.loginRoute,
@@ -29,7 +31,6 @@ final GoRouter appRouter = GoRouter(
       path: Constants.signupRoute,
       builder: (context, state) => const SignupPage(),
     ),
-
     GoRoute(
       path: '${Constants.profileRoute}/:userId/edit',
       builder: (context, state) {
@@ -37,12 +38,20 @@ final GoRouter appRouter = GoRouter(
         return EditProfilePage(userId: userId);
       },
     ),
-
     GoRoute(
       path: Constants.createPostRoute,
       builder: (context, state) => const CreatePostPage(),
     ),
-
+    GoRoute(
+      path: '${Constants.postDetailsRoute}/:postId',
+      builder: (context, state) {
+        final postId = state.pathParameters['postId']!;
+        final PostEntity? extraPost = state.extra is PostEntity
+            ? state.extra as PostEntity
+            : null;
+        return PostDetailsPage(postId: postId, post: extraPost);
+      },
+    ),
     ShellRoute(
       builder: (context, state, child) {
         return const MainPage();
@@ -53,14 +62,13 @@ final GoRouter appRouter = GoRouter(
           builder: (context, state) => const FeedPage(),
         ),
         GoRoute(
+          path: Constants.reelsRoute,
+          builder: (context, state) => const ReelsPage(),
+        ),
+        GoRoute(
           path: Constants.profileRoute + '/:userId',
           builder: (context, state) =>
               ProfilePage(userId: state.pathParameters['userId']!),
-        ),
-        GoRoute(
-          path: Constants.commentsRoute + '/:postId',
-          builder: (context, state) =>
-              CommentsPage(postId: state.pathParameters['postId']!),
         ),
         GoRoute(
           path: Constants.favoritesRoute,
@@ -97,12 +105,10 @@ final GoRouter appRouter = GoRouter(
     final isAuthRoute =
         state.uri.path == Constants.loginRoute ||
         state.uri.path == Constants.signupRoute;
-
     if (!isLoggedIn && !isAuthRoute) {
       AppLogger.warning('User not logged in, redirecting to login');
       return Constants.loginRoute;
     }
-
     if (isLoggedIn && isAuthRoute) {
       AppLogger.info('User logged in, redirecting to feed');
       try {
@@ -128,7 +134,6 @@ final GoRouter appRouter = GoRouter(
         return Constants.loginRoute;
       }
     }
-
     AppLogger.info('No redirect needed for path: ${state.uri.path}');
     return null;
   },

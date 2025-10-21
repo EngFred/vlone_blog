@@ -16,12 +16,13 @@ class Constants {
   static const String loginRoute = '/login';
   static const String signupRoute = '/signup';
   static const String feedRoute = '/feed';
+  static const String reelsRoute = '/reels';
   static const String profileRoute = '/profile';
-  static const String commentsRoute = '/comments';
   static const String favoritesRoute = '/favorites';
   static const String followersRoute = '/followers';
   static const String followingRoute = '/following';
   static const String createPostRoute = '/create-post';
+  static const String postDetailsRoute = '/post';
 
   // Other
   static const int maxVideoDurationSeconds = 600; // 10 minutes

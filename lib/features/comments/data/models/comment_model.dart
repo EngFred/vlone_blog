@@ -7,6 +7,8 @@ class CommentModel {
   final String text;
   final DateTime createdAt;
   final String? parentCommentId;
+  final String? username;
+  final String? avatarUrl;
 
   CommentModel({
     required this.id,
@@ -15,6 +17,8 @@ class CommentModel {
     required this.text,
     required this.createdAt,
     this.parentCommentId,
+    this.username,
+    this.avatarUrl,
   });
 
   factory CommentModel.fromMap(Map<String, dynamic> map) {
@@ -25,6 +29,8 @@ class CommentModel {
       text: map['text'] as String,
       createdAt: DateTime.parse(map['created_at'] as String),
       parentCommentId: map['parent_comment_id'] as String?,
+      username: map['username'] as String?,
+      avatarUrl: map['avatar_url'] as String?,
     );
   }
 
@@ -36,6 +42,8 @@ class CommentModel {
       text: text,
       createdAt: createdAt,
       parentCommentId: parentCommentId,
+      username: username,
+      avatarUrl: avatarUrl,
     );
   }
 }

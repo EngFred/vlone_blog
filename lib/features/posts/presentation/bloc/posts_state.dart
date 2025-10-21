@@ -18,6 +18,13 @@ class FeedLoaded extends PostsState {
   List<Object?> get props => [posts];
 }
 
+class ReelsLoaded extends PostsState {
+  final List<PostEntity> posts;
+  ReelsLoaded(this.posts);
+  @override
+  List<Object?> get props => [posts];
+}
+
 class UserPostsLoaded extends PostsState {
   final List<PostEntity> posts;
   UserPostsLoaded(this.posts);
@@ -28,6 +35,14 @@ class UserPostsLoaded extends PostsState {
 class PostCreated extends PostsState {
   final PostEntity post;
   PostCreated(this.post);
+  @override
+  List<Object?> get props => [post];
+}
+
+// New
+class PostLoaded extends PostsState {
+  final PostEntity post;
+  PostLoaded(this.post);
   @override
   List<Object?> get props => [post];
 }

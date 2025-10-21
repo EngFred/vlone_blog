@@ -10,28 +10,24 @@ class CommentsInitial extends CommentsState {}
 class CommentsLoading extends CommentsState {}
 
 class CommentsLoaded extends CommentsState {
-  final List<CommentEntity> comments;
+  final List<CommentEntity> rootComments;
 
-  CommentsLoaded(this.comments);
+  CommentsLoaded(this.rootComments);
 
   @override
-  List<Object?> get props => [comments];
+  List<Object?> get props => [rootComments];
 }
 
 class CommentAdded extends CommentsState {
   final CommentEntity comment;
-
   CommentAdded(this.comment);
-
   @override
   List<Object?> get props => [comment];
 }
 
 class CommentsError extends CommentsState {
   final String message;
-
   CommentsError(this.message);
-
   @override
   List<Object?> get props => [message];
 }

@@ -9,6 +9,8 @@ import 'package:vlone_blog_app/features/posts/domain/repositories/posts_reposito
 import 'package:vlone_blog_app/features/posts/domain/usecases/create_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_feed_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_interactions_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_reels_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_user_posts_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/like_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
@@ -19,17 +21,21 @@ part 'posts_state.dart';
 class PostsBloc extends Bloc<PostsEvent, PostsState> {
   final CreatePostUseCase createPostUseCase;
   final GetFeedUseCase getFeedUseCase;
+  final GetReelsUseCase getReelsUseCase;
   final GetUserPostsUseCase getUserPostsUseCase;
   final LikePostUseCase likePostUseCase;
   final SharePostUseCase sharePostUseCase;
+  final GetPostUseCase getPostUseCase;
   final PostsRepository repository;
 
   PostsBloc({
     required this.createPostUseCase,
     required this.getFeedUseCase,
+    required this.getReelsUseCase,
     required this.getUserPostsUseCase,
     required this.likePostUseCase,
     required this.sharePostUseCase,
+    required this.getPostUseCase,
     required this.repository,
   }) : super(PostsInitial()) {
     on<CreatePostEvent>((event, emit) async {
@@ -54,7 +60,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
         },
       );
     });
-
     on<GetFeedEvent>((event, emit) async {
       AppLogger.info('GetFeedEvent triggered');
       emit(PostsLoading());
@@ -98,7 +103,49 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
         },
       );
     });
-
+    on<GetReelsEvent>((event, emit) async {
+      AppLogger.info('GetReelsEvent triggered');
+      emit(PostsLoading());
+      final result = await getReelsUseCase(NoParams());
+      await result.fold(
+        (failure) async {
+          AppLogger.error('Get reels failed: ${failure.message}');
+          emit(PostsError(failure.message));
+        },
+        (posts) async {
+          List<PostEntity> updatedPosts = posts;
+          if (event.userId != null) {
+            final postIds = posts.map((p) => p.id).toList();
+            final interResult = await sl<GetPostInteractionsUseCase>()(
+              GetPostInteractionsParams(
+                userId: event.userId!,
+                postIds: postIds,
+              ),
+            );
+            interResult.fold(
+              (failure) {
+                AppLogger.error(
+                  'Failed to fetch interactions for reels: ${failure.message}',
+                );
+                // Continue with defaults
+              },
+              (states) {
+                updatedPosts = posts
+                    .map(
+                      (p) => p.copyWith(
+                        isLiked: states.isLiked(p.id),
+                        isFavorited: states.isFavorited(p.id),
+                      ),
+                    )
+                    .toList();
+              },
+            );
+          }
+          AppLogger.info('Reels loaded with ${updatedPosts.length} posts');
+          emit(ReelsLoaded(updatedPosts));
+        },
+      );
+    });
     on<GetUserPostsEvent>((event, emit) async {
       AppLogger.info(
         'GetUserPostsEvent triggered for user: ${event.profileUserId}',
@@ -146,7 +193,40 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
         },
       );
     });
-
+    on<GetPostEvent>((event, emit) async {
+      AppLogger.info('GetPostEvent for post: ${event.postId}');
+      final result = await getPostUseCase(event.postId);
+      result.fold(
+        (failure) {
+          AppLogger.error('Get post failed: ${failure.message}');
+          emit(PostsError(failure.message));
+        },
+        (post) async {
+          PostEntity updatedPost = post;
+          if (event.viewerUserId != null) {
+            final interResult = await sl<GetPostInteractionsUseCase>()(
+              GetPostInteractionsParams(
+                userId: event.viewerUserId!,
+                postIds: [post.id],
+              ),
+            );
+            interResult.fold(
+              (failure) => AppLogger.error(
+                'Interactions fetch failed: ${failure.message}',
+              ),
+              (states) {
+                updatedPost = post.copyWith(
+                  isLiked: states.isLiked(post.id),
+                  isFavorited: states.isFavorited(post.id),
+                );
+              },
+            );
+          }
+          AppLogger.info('Post loaded: ${updatedPost.id}');
+          emit(PostLoaded(updatedPost));
+        },
+      );
+    });
     on<LikePostEvent>((event, emit) async {
       AppLogger.info(
         'LikePostEvent triggered for post: ${event.postId}, like: ${event.isLiked}',
@@ -169,7 +249,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
         },
       );
     });
-
     on<SharePostEvent>((event, emit) async {
       AppLogger.info('SharePostEvent triggered for post: ${event.postId}');
       final result = await sharePostUseCase(

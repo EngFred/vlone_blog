@@ -27,12 +27,27 @@ class GetFeedEvent extends PostsEvent {
   List<Object?> get props => [userId];
 }
 
+class GetReelsEvent extends PostsEvent {
+  final String? userId;
+  GetReelsEvent({this.userId});
+  @override
+  List<Object?> get props => [userId];
+}
+
 class GetUserPostsEvent extends PostsEvent {
   final String profileUserId;
   final String? viewerUserId;
   GetUserPostsEvent({required this.profileUserId, this.viewerUserId});
   @override
   List<Object?> get props => [profileUserId, viewerUserId];
+}
+
+class GetPostEvent extends PostsEvent {
+  final String postId;
+  final String? viewerUserId; // For interactions
+  GetPostEvent(this.postId, {this.viewerUserId});
+  @override
+  List<Object?> get props => [postId, viewerUserId];
 }
 
 class LikePostEvent extends PostsEvent {

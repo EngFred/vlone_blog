@@ -12,6 +12,7 @@ abstract class PostsRepository {
     String? mediaType,
   });
   Future<Either<Failure, List<PostEntity>>> getFeed();
+  Future<Either<Failure, List<PostEntity>>> getReels();
   Future<Either<Failure, List<PostEntity>>> getUserPosts(String userId);
   Future<Either<Failure, Unit>> likePost({
     required String postId,
@@ -19,9 +20,9 @@ abstract class PostsRepository {
     required bool isLiked,
   });
   Future<Either<Failure, Unit>> sharePost({required String postId});
-
   Future<Either<Failure, InteractionStates>> getPostInteractions({
     required String userId,
     required List<String> postIds,
   });
+  Future<Either<Failure, PostEntity>> getPost(String postId);
 }

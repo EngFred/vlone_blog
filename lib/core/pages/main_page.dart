@@ -7,6 +7,7 @@ import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart';
+import 'package:vlone_blog_app/features/posts/presentation/pages/reels_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
 
 class MainPage extends StatefulWidget {
@@ -41,6 +42,7 @@ class _MainPageState extends State<MainPage> {
         },
         (user) {
           AppLogger.info('Current user loaded: ${user.id}');
+
           if (mounted) {
             setState(() => _userId = user.id);
             FlutterNativeSplash.remove();
@@ -64,14 +66,15 @@ class _MainPageState extends State<MainPage> {
     if (_initializedPages || _userId == null) return;
     _pages = [
       const FeedPage(key: PageStorageKey('feed_page')),
+      const ReelsPage(key: PageStorageKey('reels_page')),
       ProfilePage(key: const PageStorageKey('profile_page'), userId: _userId!),
-      // Add more shell pages here if needed
     ];
     _initializedPages = true;
   }
 
   int _calculateSelectedIndexFromLocation(String location) {
-    if (location.startsWith(Constants.profileRoute)) return 1;
+    if (location.startsWith(Constants.profileRoute)) return 2;
+    if (location == Constants.reelsRoute) return 1;
     return 0;
   }
 
@@ -88,24 +91,23 @@ class _MainPageState extends State<MainPage> {
       AppLogger.warning('Cannot navigate, userId is null');
       return;
     }
-
     if (!_initializedPages) _initPagesIfNeeded();
-
     if (index == 0) {
       AppLogger.info('Navigating to Feed');
       context.go(Constants.feedRoute);
     } else if (index == 1) {
+      AppLogger.info('Navigating to Reels');
+      context.go(Constants.reelsRoute);
+    } else if (index == 2) {
       AppLogger.info('Navigating to Profile for user: $_userId');
       context.go('${Constants.profileRoute}/$_userId');
     }
-
     if (mounted) setState(() => _selectedIndex = index);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Keep selected index in sync if user navigates with deep links / back button
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncSelectedIndexWithLocation();
     });
@@ -116,12 +118,15 @@ class _MainPageState extends State<MainPage> {
     if (_userId == null || !_initializedPages) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-
     return Scaffold(
       body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(icon: Icon(Icons.feed), label: 'Feed'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.video_library),
+            label: 'Reels',
+          ),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
         currentIndex: _selectedIndex,
