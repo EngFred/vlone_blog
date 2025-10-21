@@ -52,6 +52,22 @@ final GoRouter appRouter = GoRouter(
         return PostDetailsPage(postId: postId, post: extraPost);
       },
     ),
+    // --- These routes are now top-level ---
+    GoRoute(
+      path: Constants.favoritesRoute,
+      builder: (context, state) => const FavoritesPage(),
+    ),
+    GoRoute(
+      path: Constants.followersRoute + '/:userId',
+      builder: (context, state) =>
+          FollowersPage(userId: state.pathParameters['userId']!),
+    ),
+    GoRoute(
+      path: Constants.followingRoute + '/:userId',
+      builder: (context, state) =>
+          FollowingPage(userId: state.pathParameters['userId']!),
+    ),
+    // --- End of moved routes ---
     ShellRoute(
       builder: (context, state, child) {
         return const MainPage();
@@ -70,20 +86,7 @@ final GoRouter appRouter = GoRouter(
           builder: (context, state) =>
               ProfilePage(userId: state.pathParameters['userId']!),
         ),
-        GoRoute(
-          path: Constants.favoritesRoute,
-          builder: (context, state) => const FavoritesPage(),
-        ),
-        GoRoute(
-          path: Constants.followersRoute + '/:userId',
-          builder: (context, state) =>
-              FollowersPage(userId: state.pathParameters['userId']!),
-        ),
-        GoRoute(
-          path: Constants.followingRoute + '/:userId',
-          builder: (context, state) =>
-              FollowingPage(userId: state.pathParameters['userId']!),
-        ),
+        // --- Favorites, Followers, and Following removed from here ---
       ],
     ),
   ],
@@ -105,10 +108,12 @@ final GoRouter appRouter = GoRouter(
     final isAuthRoute =
         state.uri.path == Constants.loginRoute ||
         state.uri.path == Constants.signupRoute;
+
     if (!isLoggedIn && !isAuthRoute) {
       AppLogger.warning('User not logged in, redirecting to login');
       return Constants.loginRoute;
     }
+
     if (isLoggedIn && isAuthRoute) {
       AppLogger.info('User logged in, redirecting to feed');
       try {
@@ -134,6 +139,7 @@ final GoRouter appRouter = GoRouter(
         return Constants.loginRoute;
       }
     }
+
     AppLogger.info('No redirect needed for path: ${state.uri.path}');
     return null;
   },

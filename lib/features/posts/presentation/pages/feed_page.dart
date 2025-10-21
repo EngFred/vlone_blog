@@ -22,6 +22,7 @@ class FeedPage extends StatefulWidget {
 class _FeedPageState extends State<FeedPage> {
   final List<PostEntity> _posts = [];
   String? _userId;
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +73,7 @@ class _FeedPageState extends State<FeedPage> {
   void _updatePosts(List<PostEntity> newPosts) {
     final oldIds = _posts.map((p) => p.id).toList();
     final newIds = newPosts.map((p) => p.id).toList();
+
     // If lists have same length and same ids, update in-place (keeps keys/widget state)
     if (oldIds.length == newIds.length &&
         oldIds.every((id) => newIds.contains(id))) {
@@ -96,6 +98,7 @@ class _FeedPageState extends State<FeedPage> {
     if (_userId == null) {
       return const LoadingIndicator();
     }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Feed')),
       body: MultiBlocListener(
@@ -151,14 +154,10 @@ class _FeedPageState extends State<FeedPage> {
         child: RefreshIndicator(
           onRefresh: () async {
             AppLogger.info('Refreshing feed for user: $_userId');
-
             // Not clearing posts here. Letting the BLoC state handle
             // updates. The indicator will spin automatically.
-            // if (mounted) setState(() => _posts.clear()); // <-- REMOVED
-
             final bloc = context.read<PostsBloc>();
             bloc.add(GetFeedEvent(userId: _userId));
-
             // Await the BLoC to finish loading or erroring
             // This ensures the RefreshIndicator spins correctly.
             await bloc.stream.firstWhere(
@@ -168,9 +167,22 @@ class _FeedPageState extends State<FeedPage> {
           child: Builder(
             builder: (context) {
               final postsState = context.watch<PostsBloc>().state;
-              if (postsState is PostsLoading && _posts.isEmpty) {
+
+              // If we have posts, show them. This handles pull-to-refresh
+              // gracefully, showing old data while new data loads.
+              if (_posts.isNotEmpty) {
+                return FeedList(posts: _posts, userId: _userId!);
+              }
+
+              // If _posts is empty, we decide what to show based on bloc state.
+
+              // 1. Loading State
+              if (postsState is PostsLoading || postsState is PostsInitial) {
                 return const LoadingIndicator();
-              } else if (postsState is PostsError && _posts.isEmpty) {
+              }
+
+              // 2. Error State
+              if (postsState is PostsError) {
                 return EmptyStateWidget(
                   message: postsState.message,
                   icon: Icons.error_outline,
@@ -179,13 +191,27 @@ class _FeedPageState extends State<FeedPage> {
                   ),
                   actionText: 'Retry',
                 );
-              } else if (_posts.isEmpty) {
-                return const EmptyStateWidget(
-                  message: 'No posts yet. Create one to get started!',
-                  icon: Icons.post_add,
-                );
               }
-              return FeedList(posts: _posts, userId: _userId!);
+
+              // 3. Loaded State
+              if (postsState is FeedLoaded) {
+                // The bloc loaded, and it loaded an empty list.
+                if (postsState.posts.isEmpty) {
+                  return const EmptyStateWidget(
+                    message: 'No posts yet. Create one to get started!',
+                    icon: Icons.post_add,
+                  );
+                } else {
+                  // This is the transient state!
+                  // The bloc has posts, but our local _posts list hasn't
+                  // updated yet. Show a loader for this frame.
+                  return const LoadingIndicator();
+                }
+              }
+
+              // Fallback for other states (e.g., PostCreated, etc.)
+              // if _posts is still empty.
+              return const LoadingIndicator();
             },
           ),
         ),

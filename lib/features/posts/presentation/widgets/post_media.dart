@@ -312,7 +312,8 @@ class _PostMediaState extends State<PostMedia>
     _videoController = null;
     if (controller != null) {
       if (VideoPlaybackManager.isPlaying(controller)) {
-        VideoPlaybackManager.pause();
+        // Pause without invoking other widget callbacks while we are disposing
+        VideoPlaybackManager.pause(invokeCallback: false);
       }
       _videoManager.releaseController(widget.post.id);
     }

@@ -35,6 +35,8 @@ dependencies:
   flutter_cache_manager: ^3.4.1
   video_thumbnail: ^0.5.6
   timeago: ^3.7.1
+  image_cropper: ^11.0.0
+  video_trimmer: ^5.0.0
 
 dev_dependencies:
   flutter_test:

@@ -39,7 +39,6 @@ class PostCreated extends PostsState {
   List<Object?> get props => [post];
 }
 
-// New
 class PostLoaded extends PostsState {
   final PostEntity post;
   PostLoaded(this.post);
