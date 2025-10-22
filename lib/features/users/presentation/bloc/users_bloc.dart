@@ -1,5 +1,6 @@
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/features/users/domain/usecases/get_all_users_usecase.dart';
 import 'package:vlone_blog_app/features/users/domain/entities/user_list_entity.dart';
 
@@ -20,7 +21,8 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     emit(UsersLoading());
     final result = await getAllUsersUseCase(event.currentUserId);
     result.fold(
-      (failure) => emit(UsersError(failure.message)),
+      (failure) =>
+          emit(UsersError(ErrorMessageMapper.getErrorMessage(failure))),
       (users) => emit(UsersLoaded(users)),
     );
   }

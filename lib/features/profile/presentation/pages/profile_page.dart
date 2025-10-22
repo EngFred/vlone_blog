@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
@@ -119,6 +120,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 if (mounted) {
                   setState(() {
                     _userPosts.clear();
+                    // Crucial: Clear the error when data is loaded successfully
+                    _userPostsError = null;
                     // FIX: Clamp counts when setting from loaded state
                     _userPosts.addAll(
                       state.posts.map(
@@ -211,9 +214,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       _isProcessingFollow = false;
                     });
                   }
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text(state.message)));
+                  SnackbarUtils.showError(context, state.message);
                 }
               }
             },
@@ -225,15 +226,13 @@ class _ProfilePageState extends State<ProfilePage> {
               return const Center(child: LoadingIndicator());
             }
             if (state is ProfileError) {
-              return Center(
-                child: CustomErrorWidget(
-                  message: state.message,
-                  onRetry: () {
-                    context.read<ProfileBloc>().add(
-                      GetProfileDataEvent(widget.userId),
-                    );
-                  },
-                ),
+              return CustomErrorWidget(
+                message: state.message,
+                onRetry: () {
+                  context.read<ProfileBloc>().add(
+                    GetProfileDataEvent(widget.userId),
+                  );
+                },
               );
             }
             if (state is ProfileDataLoaded) {
@@ -272,6 +271,15 @@ class _ProfilePageState extends State<ProfilePage> {
                         isLoading: _isUserPostsLoading,
                         error: _userPostsError,
                         onRetry: () {
+                          // FIX: Reset the error state immediately when retry is pressed
+                          if (mounted) {
+                            setState(() {
+                              _userPostsError = null;
+                              _isUserPostsLoading =
+                                  true; // Optional: set loading indicator immediately
+                            });
+                          }
+
                           context.read<PostsBloc>().add(
                             GetUserPostsEvent(
                               profileUserId: widget.userId,

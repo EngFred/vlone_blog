@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
+import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
@@ -98,8 +100,9 @@ class _FollowingPageState extends State<FollowingPage> {
                 setState(() {
                   _loadingUserIds.clear();
                 });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Follow error: ${state.message}')),
+                SnackbarUtils.showError(
+                  context,
+                  'Follow error: ${state.message}',
                 );
               }
             },
@@ -120,20 +123,16 @@ class _FollowingPageState extends State<FollowingPage> {
               setState(() {
                 _isInitialLoad = false;
               });
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text(state.message)));
+              SnackbarUtils.showError(context, state.message);
             }
           },
           builder: (context, state) {
             if (state is FollowersLoading && _isInitialLoad) {
               return const Center(child: LoadingIndicator());
             } else if (state is FollowersError && _users.isEmpty) {
-              return EmptyStateWidget(
+              return CustomErrorWidget(
                 message: state.message,
-                icon: Icons.error_outline,
                 onRetry: _retryFetch,
-                actionText: 'Retry',
               );
             } else if (_users.isEmpty && !_isInitialLoad) {
               return const EmptyStateWidget(
@@ -152,12 +151,9 @@ class _FollowingPageState extends State<FollowingPage> {
                   isLoading: _loadingUserIds.contains(user.id),
                   onFollowToggle: (followedId, isFollowing) {
                     if (_currentUserId == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'You must be signed in to follow users.',
-                          ),
-                        ),
+                      SnackbarUtils.showError(
+                        context,
+                        'You must be signed in to follow users.',
                       );
                       return;
                     }

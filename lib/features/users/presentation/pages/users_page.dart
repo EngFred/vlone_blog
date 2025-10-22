@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
+import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
@@ -61,8 +63,9 @@ class _UsersPageState extends State<UsersPage> {
         _currentUserId = authState.user.id;
         context.read<UsersBloc>().add(GetAllUsersEvent(_currentUserId!));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You must be signed in to load users.')),
+        SnackbarUtils.showError(
+          context,
+          'You must be signed in to load users.',
         );
       }
     }
@@ -105,8 +108,9 @@ class _UsersPageState extends State<UsersPage> {
                 setState(() {
                   _loadingUserIds.clear();
                 });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Follow error: ${state.message}')),
+                SnackbarUtils.showError(
+                  context,
+                  'Follow error: ${state.message}',
                 );
               }
             },
@@ -124,9 +128,7 @@ class _UsersPageState extends State<UsersPage> {
             } else if (state is UsersError) {
               AppLogger.error('UsersBloc -> UsersError: ${state.message}');
               // show snackbar
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text(state.message)));
+              SnackbarUtils.showError(context, state.message);
             } else if (state is UsersLoading) {
               AppLogger.info('UsersBloc -> UsersLoading');
             }
@@ -138,7 +140,7 @@ class _UsersPageState extends State<UsersPage> {
             }
 
             // If we have UsersLoaded but list is empty -> show empty state
-            if ((state is UsersLoaded && _users.isEmpty) || _users.isEmpty) {
+            if (state is UsersLoaded && _users.isEmpty) {
               return const EmptyStateWidget(
                 message: 'No users found.',
                 icon: Icons.people_outline,
@@ -147,21 +149,9 @@ class _UsersPageState extends State<UsersPage> {
 
             // If UsersError -> show error UI with retry
             if (state is UsersError) {
-              return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Failed to load users:\n${state.message}',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton(
-                      onPressed: _retryFetch,
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
+              return CustomErrorWidget(
+                message: 'Failed to load users:\n${state.message}',
+                onRetry: _retryFetch,
               );
             }
 
@@ -177,12 +167,9 @@ class _UsersPageState extends State<UsersPage> {
                   isLoading: _loadingUserIds.contains(user.id),
                   onFollowToggle: (followedId, isFollowing) {
                     if (_currentUserId == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'You must be signed in to follow users.',
-                          ),
-                        ),
+                      SnackbarUtils.showError(
+                        context,
+                        'You must be signed in to follow users.',
                       );
                       return;
                     }

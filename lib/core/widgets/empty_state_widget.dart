@@ -27,7 +27,7 @@ class EmptyStateWidget extends StatelessWidget {
               duration: const Duration(milliseconds: 500),
               child: Icon(
                 icon,
-                size: 64.0,
+                size: 54.0,
                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
               ),
             ),
@@ -36,7 +36,6 @@ class EmptyStateWidget extends StatelessWidget {
               message,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                fontSize: 18.0,
               ),
               textAlign: TextAlign.center,
             ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
+import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
@@ -173,18 +174,20 @@ class _ReelsPageState extends State<ReelsPage> {
                 if (postsState is PostsLoading || postsState is PostsInitial) {
                   return const LoadingIndicator();
                 } else if (postsState is PostsError) {
-                  return EmptyStateWidget(
+                  return CustomErrorWidget(
                     message: postsState.message,
-                    icon: Icons.error_outline,
                     onRetry: () => context.read<PostsBloc>().add(
                       GetReelsEvent(userId: _userId),
                     ),
-                    actionText: 'Retry',
                   );
                 } else {
-                  return const EmptyStateWidget(
+                  return EmptyStateWidget(
                     message: 'No reels yet. Create a video post!',
                     icon: Icons.video_library,
+                    actionText: 'Check Again',
+                    onRetry: () => context.read<PostsBloc>().add(
+                      GetReelsEvent(userId: _userId),
+                    ),
                   );
                 }
               }

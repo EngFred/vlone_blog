@@ -1,4 +1,5 @@
-// lib/features/posts/presentation/widgets/media_upload_widget.dart
+// features/posts/presentation/widgets/media_upload_widget.dart
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/utils/helpers.dart';
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart'; // Added for showing errors
+import 'package:flutter/painting.dart'; // Added for pre-flight checking images
+
 import 'media_picker_sheet.dart';
 import 'media_placeholder.dart';
 import 'media_preview.dart';
@@ -29,11 +33,25 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
 
   Future<void> _pickMedia(ImageSource source, bool isImage) async {
     final picker = ImagePicker();
-    final pickedFile = isImage
-        ? await picker.pickImage(source: source)
-        : await picker.pickVideo(source: source);
+    XFile? pickedFile;
 
-    if (pickedFile == null) return;
+    // FIX: Wrap the picking process in try...catch to handle system errors
+    try {
+      pickedFile = isImage
+          ? await picker.pickImage(source: source)
+          : await picker.pickVideo(source: source);
+    } catch (e) {
+      debugPrint('Error picking media: $e');
+      if (mounted) {
+        SnackbarUtils.showError(
+          context,
+          'Failed to pick media. Please try again.',
+        );
+      }
+      return;
+    }
+
+    if (pickedFile == null) return; // User cancelled
     final file = File(pickedFile.path);
     final mediaType = isImage ? 'image' : 'video';
 
@@ -42,33 +60,72 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
     setState(() => _isPreviewPlaying = false);
 
     if (mediaType == 'video') {
-      final duration = await getVideoDuration(file);
-      if (duration > Constants.maxVideoDurationSeconds) {
+      // FIX: Wrap video initialization in a try...catch for cloud files/unsupported formats
+      try {
+        final duration = await getVideoDuration(file);
+        if (duration > Constants.maxVideoDurationSeconds) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Video exceeds 10 minutes')),
+            );
+          }
+          return;
+        }
+
+        // Initialize controller
+        _videoController = VideoPlayerController.file(file);
+        // CRITICAL: Await initialization
+        await _videoController!.initialize();
+
+        // If initialization succeeds, setup listener and state
+        _videoController!.addListener(() {
+          if (!_videoController!.value.isPlaying &&
+              _videoController!.value.position >=
+                  _videoController!.value.duration) {
+            setState(() => _isPreviewPlaying = false);
+            _videoController!.seekTo(Duration.zero);
+          }
+        });
+
+        setState(() {
+          _mediaFile = file;
+          _mediaType = mediaType;
+        });
+        widget.onMediaSelected(_mediaFile, _mediaType);
+      } catch (e) {
+        debugPrint('Error initializing video player: $e');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Video exceeds 10 minutes')),
+          SnackbarUtils.showError(
+            context,
+            'Failed to load video. It may be in the cloud or in an unsupported format.',
           );
         }
-        return;
+        // Clean up
+        await _videoController?.dispose();
+        _videoController = null;
       }
-      _videoController = VideoPlayerController.file(file)
-        ..initialize().then((_) => setState(() {}));
+    } else {
+      // FIX: Also pre-flight the image to check if it's readable
+      try {
+        final imageBytes = await file.readAsBytes();
+        await decodeImageFromList(imageBytes);
 
-      _videoController!.addListener(() {
-        if (!_videoController!.value.isPlaying &&
-            _videoController!.value.position >=
-                _videoController!.value.duration) {
-          setState(() => _isPreviewPlaying = false);
-          _videoController!.seekTo(Duration.zero);
+        // If successful, set state
+        setState(() {
+          _mediaFile = file;
+          _mediaType = mediaType;
+        });
+        widget.onMediaSelected(_mediaFile, _mediaType);
+      } catch (e) {
+        debugPrint('Error loading image: $e');
+        if (mounted) {
+          SnackbarUtils.showError(
+            context,
+            'Failed to load image. It may be in the cloud or in an unsupported format.',
+          );
         }
-      });
+      }
     }
-
-    setState(() {
-      _mediaFile = file;
-      _mediaType = mediaType;
-    });
-    widget.onMediaSelected(_mediaFile, _mediaType);
   }
 
   void _showPickOptions() {
@@ -93,19 +150,32 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
     if (_mediaFile == null) return;
 
     if (_mediaType == 'image') {
+      // 1. Get the current app theme from the context.
+      final theme = Theme.of(context);
+
       try {
         final cropped = await ImageCropper().cropImage(
           sourcePath: _mediaFile!.path,
           uiSettings: [
             AndroidUiSettings(
               toolbarTitle: 'Crop Image',
-              toolbarColor: Colors.deepOrange,
-              toolbarWidgetColor: Colors.white,
+              // Set toolbar to your desired 'surface' color
+              toolbarColor: theme.colorScheme.surface,
+              // Set toolbar text/icons to 'onSurface' for contrast
+              toolbarWidgetColor: theme.colorScheme.onSurface,
+
+              // Keep interactive elements like handles as your 'primary' (accent) color
+              activeControlsWidgetColor: theme.colorScheme.primary,
+              // Set the cropper background to your app's background color
+              backgroundColor: theme.colorScheme.background,
               initAspectRatio: CropAspectRatioPreset.original,
               lockAspectRatio: false,
             ),
-            IOSUiSettings(title: 'Crop Image'),
-            WebUiSettings(context: context),
+            IOSUiSettings(
+              title: 'Crop Image',
+              doneButtonTitle: 'Done',
+              cancelButtonTitle: 'Cancel',
+            ),
           ],
         );
 
@@ -124,6 +194,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
         ).showSnackBar(const SnackBar(content: Text('Failed to crop image')));
       }
     } else if (_mediaType == 'video') {
+      // Video trimming logic remains the same
       final trimmedFilePath = await Navigator.of(context).push(
         MaterialPageRoute<String?>(
           builder: (context) => TrimmerView(_mediaFile!),

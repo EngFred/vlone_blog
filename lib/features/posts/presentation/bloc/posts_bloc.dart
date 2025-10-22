@@ -5,6 +5,7 @@ import 'package:equatable/equatable.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/create_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/favorite_post_usecase.dart';
@@ -99,8 +100,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     result.fold(
       (failure) {
-        AppLogger.error('Create post failed: ${failure.message}');
-        emit(PostsError(failure.message));
+        final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
+        AppLogger.error('Create post failed: $friendlyMessage');
+        emit(PostsError(friendlyMessage));
       },
       (post) {
         AppLogger.info('Post created successfully: ${post.id}');
@@ -117,8 +119,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     await result.fold(
       (failure) async {
-        AppLogger.error('Get feed failed: ${failure.message}');
-        emit(PostsError(failure.message));
+        final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
+        AppLogger.error('Get feed failed: $friendlyMessage');
+        emit(PostsError(friendlyMessage));
       },
       (posts) async {
         List<PostEntity> updatedPosts = posts;
@@ -165,8 +168,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     await result.fold(
       (failure) async {
-        AppLogger.error('Get reels failed: ${failure.message}');
-        emit(PostsError(failure.message));
+        final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
+        AppLogger.error('Get reels failed: $friendlyMessage');
+        emit(PostsError(friendlyMessage));
       },
       (posts) async {
         List<PostEntity> updatedPosts = posts;
@@ -217,8 +221,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     await result.fold(
       (failure) async {
-        AppLogger.error('Get user posts failed: ${failure.message}');
-        emit(UserPostsError(failure.message));
+        final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
+        AppLogger.error('Get user posts failed: $friendlyMessage');
+        emit(UserPostsError(friendlyMessage));
       },
       (posts) async {
         List<PostEntity> updatedPosts = posts;
@@ -264,8 +269,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     result.fold(
       (failure) {
-        AppLogger.error('Get post failed: ${failure.message}');
-        emit(PostsError(failure.message));
+        final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
+        AppLogger.error('Get post failed: $friendlyMessage');
+        emit(PostsError(friendlyMessage));
       },
       (post) async {
         PostEntity updatedPost = post;

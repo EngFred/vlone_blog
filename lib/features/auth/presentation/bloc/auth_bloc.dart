@@ -1,6 +1,7 @@
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:vlone_blog_app/core/error/failures.dart';
+import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/domain/entities/user_entity.dart';
@@ -39,8 +40,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       );
       result.fold(
         (failure) {
-          AppLogger.error('Signup failed: ${failure.message}');
-          emit(AuthError(failure.message));
+          final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
+          AppLogger.error('Signup failed: $friendlyMessage');
+          emit(AuthError(friendlyMessage));
         },
         (user) {
           AppLogger.info('Signup successful for user: ${user.id}');
@@ -57,8 +59,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       );
       result.fold(
         (failure) {
-          AppLogger.error('Login failed: ${failure.message}');
-          emit(AuthError(failure.message));
+          final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
+          AppLogger.error('Login failed: $friendlyMessage');
+          emit(AuthError(friendlyMessage));
         },
         (user) {
           AppLogger.info('Login successful for user: ${user.id}');
@@ -73,8 +76,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final result = await logoutUseCase(NoParams());
       result.fold(
         (failure) {
-          AppLogger.error('Logout failed: ${failure.message}');
-          emit(AuthError(failure.message));
+          final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
+          AppLogger.error('Logout failed: $friendlyMessage');
+          emit(AuthError(friendlyMessage));
         },
         (_) {
           AppLogger.info('Logout successful');
@@ -99,19 +103,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             final userResult = await getCurrentUserUseCase(NoParams());
             userResult.fold(
               (failure) {
-                // CRITICAL: Handle network failures differently
+                final friendlyMessage = ErrorMessageMapper.getErrorMessage(
+                  failure,
+                );
                 if (failure is NetworkFailure) {
                   AppLogger.warning(
-                    'Network error but session exists, treating as authenticated: ${failure.message}',
+                    'Network error but session exists: $friendlyMessage',
                   );
-                  // Create a minimal user entity from session
-                  // This allows offline access
-                  emit(
-                    AuthUnauthenticated(),
-                  ); // Will be handled by router redirect
+                  emit(AuthUnauthenticated());
                 } else {
                   AppLogger.info(
-                    'Auth error, user unauthenticated: ${failure.message}',
+                    'Auth error, user unauthenticated: $friendlyMessage',
                   );
                   emit(AuthUnauthenticated());
                 }

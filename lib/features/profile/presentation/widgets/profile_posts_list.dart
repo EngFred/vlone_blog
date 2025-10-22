@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
-import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_card.dart';
@@ -30,9 +29,11 @@ class ProfilePostsList extends StatelessWidget {
       );
     }
     if (error != null) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 48.0),
-        child: CustomErrorWidget(message: error!, onRetry: onRetry),
+      return EmptyStateWidget(
+        message: error!,
+        icon: Icons.error_outline,
+        onRetry: onRetry,
+        actionText: 'Retry',
       );
     }
     if (posts.isEmpty) {

@@ -20,6 +20,7 @@ import 'package:vlone_blog_app/features/auth/presentation/pages/signup_page.dart
 import 'package:vlone_blog_app/features/followers/presentation/pages/followers_page.dart';
 import 'package:vlone_blog_app/features/followers/presentation/pages/following_page.dart';
 import 'package:vlone_blog_app/features/users/presentation/pages/users_page.dart';
+import 'package:vlone_blog_app/features/notifications/presentation/pages/notifications_page.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: Constants.loginRoute,
@@ -31,6 +32,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: Constants.signupRoute,
       builder: (context, state) => const SignupPage(),
+    ),
+    GoRoute(
+      path: Constants.notificationsRoute,
+      builder: (context, state) => const NotificationsPage(),
     ),
     GoRoute(
       path: '${Constants.profileRoute}/:userId/edit',

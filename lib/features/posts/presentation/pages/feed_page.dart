@@ -3,7 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
+import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
@@ -86,6 +88,17 @@ class _FeedPageState extends State<FeedPage> {
       appBar: AppBar(
         title: const Text('Feed'),
         actions: [
+          // This is the new Notification Icon button
+          IconButton(
+            icon: const Icon(Icons.notifications_none),
+            onPressed: () {
+              // Navigate to the new NotificationsPage
+              context.push(Constants.notificationsRoute);
+            },
+          ),
+
+          // The old 'dot' logic is kept but moved to a trailing icon,
+          // which is a common pattern to show real-time status.
           if (_realtimeStarted)
             Padding(
               padding: const EdgeInsets.only(right: 16.0),
@@ -124,12 +137,7 @@ class _FeedPageState extends State<FeedPage> {
           } else if (state is PostCreated) {
             AppLogger.info('New post created: ${state.post.id}');
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Post created successfully!'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
+              SnackbarUtils.showSuccess(context, 'Post created successfully!');
             }
           } else if (state is PostLiked) {
             final index = _posts.indexWhere((p) => p.id == state.postId);
@@ -187,9 +195,7 @@ class _FeedPageState extends State<FeedPage> {
                 !state.message.contains('favorite') &&
                 !state.message.contains('share')) {
               if (mounted) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(state.message)));
+                SnackbarUtils.showError(context, state.message);
               }
             }
             AppLogger.error('PostsError in FeedPage: ${state.message}');
@@ -229,13 +235,11 @@ class _FeedPageState extends State<FeedPage> {
 
               // Error State
               if (postsState is PostsError) {
-                return EmptyStateWidget(
+                return CustomErrorWidget(
                   message: postsState.message,
-                  icon: Icons.error_outline,
                   onRetry: () => context.read<PostsBloc>().add(
                     GetFeedEvent(userId: _userId),
                   ),
-                  actionText: 'Retry',
                 );
               }
 

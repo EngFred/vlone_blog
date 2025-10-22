@@ -10,9 +10,12 @@ class CustomErrorWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(message, style: const TextStyle(color: Colors.red)),
+          Icon(Icons.error_outline, size: 54.0),
+          const SizedBox(height: 12),
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 12),
           if (onRetry != null)
             ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
         ],

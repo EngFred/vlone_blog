@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
@@ -22,11 +23,52 @@ class _CreatePostPageState extends State<CreatePostPage> {
   File? _mediaFile;
   String? _mediaType;
 
+  // State variable to control button enabled state
+  // Start by calculating the initial state, though usually both are null/empty
+  bool _isPostButtonEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Add listener to validate post on text change
+    _contentController.addListener(_validatePost);
+
+    // CRITICAL: Call validation once here to set the correct initial state
+    // in case the controller was somehow initialized with text (e.g., hot restart)
+    // and to set the flag based on the initial _mediaFile (which is null here).
+    _validatePost();
+  }
+
+  @override
+  void dispose() {
+    // Clean up listener and controller
+    _contentController.removeListener(_validatePost);
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  /// Validation logic: The button is enabled if the trimmed text is NOT empty
+  /// OR if a media file is present.
+  void _validatePost() {
+    // 💡 The logic is correct: (Text content) OR (Media content)
+    final isEnabled =
+        _contentController.text.trim().isNotEmpty || _mediaFile != null;
+
+    if (isEnabled != _isPostButtonEnabled) {
+      setState(() {
+        _isPostButtonEnabled = isEnabled;
+      });
+    }
+  }
+
   void _onMediaSelected(File? file, String? type) {
     setState(() {
       _mediaFile = file;
       _mediaType = type;
     });
+    // Validate after media is selected or removed
+    // This will now enable the button if media is selected
+    _validatePost();
   }
 
   @override
@@ -49,7 +91,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
           child: Scaffold(
             appBar: AppBar(
               title: const Text('Create Post'),
-              // UI/UX 1: Move the "Post" button to the AppBar
               actions: [
                 BlocBuilder<PostsBloc, PostsState>(
                   builder: (context, state) {
@@ -60,18 +101,22 @@ class _CreatePostPageState extends State<CreatePostPage> {
                       );
                     }
                     return TextButton(
-                      onPressed: () {
-                        context.read<PostsBloc>().add(
-                          CreatePostEvent(
-                            userId: userId,
-                            content: _contentController.text.trim().isEmpty
-                                ? null
-                                : _contentController.text.trim(),
-                            mediaFile: _mediaFile,
-                            mediaType: _mediaType,
-                          ),
-                        );
-                      },
+                      // Setting onPressed to null automatically disables the button
+                      onPressed: _isPostButtonEnabled
+                          ? () {
+                              context.read<PostsBloc>().add(
+                                CreatePostEvent(
+                                  userId: userId,
+                                  content:
+                                      _contentController.text.trim().isEmpty
+                                      ? null
+                                      : _contentController.text.trim(),
+                                  mediaFile: _mediaFile,
+                                  mediaType: _mediaType,
+                                ),
+                              );
+                            }
+                          : null,
                       child: const Text('Post'),
                     );
                   },
@@ -83,18 +128,14 @@ class _CreatePostPageState extends State<CreatePostPage> {
                 if (state is PostCreated) {
                   context.pop();
                 } else if (state is PostsError) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text(state.message)));
+                  SnackbarUtils.showError(context, state.message);
                 }
               },
-              // FIX 1: Wrap the body in a SingleChildScrollView
               child: SingleChildScrollView(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     children: [
-                      // UI/UX 5: Use hintText for a cleaner look
                       TextField(
                         controller: _contentController,
                         decoration: const InputDecoration(
@@ -105,10 +146,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
                         minLines: 3,
                       ),
                       const SizedBox(height: 20),
-                      MediaUploadWidget(
-                        onMediaSelected: _onMediaSelected,
-                        // The `key` property has been removed from here.
-                      ),
+                      MediaUploadWidget(onMediaSelected: _onMediaSelected),
                     ],
                   ),
                 ),

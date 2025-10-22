@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/features/profile/data/models/profile_model.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 import 'package:vlone_blog_app/features/profile/domain/usecases/get_profile_usecase.dart';
@@ -41,8 +42,9 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     final result = await getProfileUseCase(event.userId);
     result.fold(
       (failure) {
-        AppLogger.error('GetProfile failed: ${failure.message}');
-        emit(ProfileError(failure.message));
+        final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
+        AppLogger.error('GetProfile failed: $friendlyMessage');
+        emit(ProfileError(friendlyMessage));
       },
       (profile) {
         emit(ProfileDataLoaded(profile: profile));
@@ -69,8 +71,9 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
     result.fold(
       (failure) {
-        AppLogger.error('UpdateProfile failed: ${failure.message}');
-        emit(ProfileError(failure.message));
+        final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
+        AppLogger.error('UpdateProfile failed: $friendlyMessage');
+        emit(ProfileError(friendlyMessage));
       },
       (profile) {
         AppLogger.info('Profile updated successfully: ${profile.id}');
