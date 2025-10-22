@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:vlone_blog_app/core/di/injection_container.dart';
-import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
-import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
+import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
-import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/comment_input_field.dart';
@@ -39,41 +36,54 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     if (widget.post != null) {
       _post = widget.post!;
       _hasInitializedPost = true;
-      _loadCurrentUserAndSubscribe();
+      _loadCurrentUserFromAuthAndSubscribe();
     } else {
-      _loadCurrentUserAndFetchPost();
+      _loadCurrentUserFromAuthAndFetchPost();
     }
   }
 
-  Future<void> _loadCurrentUserAndSubscribe() async {
-    await _loadCurrentUser();
+  void _loadCurrentUserFromAuthAndSubscribe() {
+    _loadCurrentUserFromAuth();
     _subscribeToCommentsIfNeeded();
   }
 
-  Future<void> _loadCurrentUserAndFetchPost() async {
-    await _loadCurrentUser();
-    if (mounted) {
+  void _loadCurrentUserFromAuthAndFetchPost() {
+    _loadCurrentUserFromAuth();
+    if (mounted && _userId != null) {
       context.read<PostsBloc>().add(
         GetPostEvent(widget.postId, viewerUserId: _userId),
       );
     }
   }
 
-  Future<void> _loadCurrentUser() async {
-    final result = await sl<GetCurrentUserUseCase>()(NoParams());
-    result.fold(
-      (failure) =>
-          AppLogger.error('Failed to load current user: ${failure.message}'),
-      (user) {
-        if (mounted) setState(() => _userId = user.id);
-      },
-    );
+  void _loadCurrentUserFromAuth() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthAuthenticated) {
+      _userId = authState.user.id;
+      AppLogger.info('Current user from AuthBloc: $_userId');
+    } else {
+      AppLogger.error('No authenticated user in PostDetailsPage');
+      // Handle redirect or error
+    }
   }
 
   void _subscribeToCommentsIfNeeded() {
     if (!_subscribedToComments && mounted) {
       context.read<CommentsBloc>().add(SubscribeToCommentsEvent(widget.postId));
       _subscribedToComments = true;
+    }
+  }
+
+  void _handleRealtimePostUpdate(RealtimePostUpdate state) {
+    if (state.postId == widget.postId && _hasInitializedPost && mounted) {
+      setState(() {
+        _post = _post.copyWith(
+          likesCount: state.likesCount ?? _post.likesCount,
+          commentsCount: state.commentsCount ?? _post.commentsCount,
+          favoritesCount: state.favoritesCount ?? _post.favoritesCount,
+          sharesCount: state.sharesCount ?? _post.sharesCount,
+        );
+      });
     }
   }
 
@@ -105,44 +115,27 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Post')),
-      body: MultiBlocListener(
-        listeners: [
-          BlocListener<PostsBloc, PostsState>(
-            listener: (context, state) {
-              if (state is PostLoaded && state.post.id == widget.postId) {
-                setState(() {
-                  _post = state.post;
-                  _hasInitializedPost = true;
-                });
-                _subscribeToCommentsIfNeeded();
-              } else if (state is PostLiked &&
-                  state.postId == widget.postId &&
-                  _hasInitializedPost) {
-                setState(
-                  () => _post = _post.copyWith(
-                    likesCount: _post.likesCount + (state.isLiked ? 1 : -1),
-                    isLiked: state.isLiked,
-                  ),
-                );
-              }
-            },
-          ),
-          BlocListener<FavoritesBloc, FavoritesState>(
-            listener: (context, state) {
-              if (state is FavoriteAdded &&
-                  state.postId == widget.postId &&
-                  _hasInitializedPost) {
-                setState(
-                  () => _post = _post.copyWith(
-                    favoritesCount:
-                        _post.favoritesCount + (state.isFavorited ? 1 : -1),
-                    isFavorited: state.isFavorited,
-                  ),
-                );
-              }
-            },
-          ),
-        ],
+      body: BlocListener<PostsBloc, PostsState>(
+        listener: (context, state) {
+          if (state is PostLoaded && state.post.id == widget.postId) {
+            setState(() {
+              _post = state.post;
+              _hasInitializedPost = true;
+            });
+            _subscribeToCommentsIfNeeded();
+          } else if (state is PostLiked &&
+              state.postId == widget.postId &&
+              _hasInitializedPost) {
+            setState(
+              () => _post = _post.copyWith(
+                likesCount: _post.likesCount + (state.isLiked ? 1 : -1),
+                isLiked: state.isLiked,
+              ),
+            );
+          } else if (state is RealtimePostUpdate) {
+            _handleRealtimePostUpdate(state);
+          }
+        },
         child: _hasInitializedPost
             ? Column(
                 children: [

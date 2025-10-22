@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:image_picker/image_picker.dart';
@@ -83,5 +84,65 @@ class ProfileRemoteDataSource {
       );
       throw ServerException(e.toString());
     }
+  }
+
+  // ==================== REAL-TIME STREAMS ====================
+
+  /// Stream for profile updates (username, bio, profile_image_url, counts etc.)
+  /// Emits map with updated fields for the specific user
+  Stream<Map<String, dynamic>> streamProfileUpdates(String userId) {
+    AppLogger.info(
+      'Setting up real-time stream for profile updates for user: $userId',
+    );
+
+    // Clean up existing channel and controller if needed
+    // For simplicity, assuming one per datasource, but can make map if multiple
+    RealtimeChannel? _profileChannel;
+    StreamController<Map<String, dynamic>>? _profileController;
+
+    _profileController = StreamController<Map<String, dynamic>>.broadcast();
+
+    final channel = client.channel(
+      'profile_updates_${userId}_${DateTime.now().millisecondsSinceEpoch}',
+    );
+
+    _profileChannel = channel
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'profiles',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: userId,
+          ),
+          callback: (payload) {
+            AppLogger.info('Profile update received for user: $userId');
+
+            final data = payload.newRecord;
+
+            if (!(_profileController?.isClosed ?? true)) {
+              _profileController!.add(data);
+            }
+          },
+        )
+        .subscribe();
+
+    // Cleanup when stream is done
+    _profileController.stream.listen(
+      null,
+      onError: (error) {
+        AppLogger.error(
+          'Error in profile updates stream: $error',
+          error: error,
+        );
+      },
+      onDone: () {
+        _profileChannel?.unsubscribe();
+        _profileController?.close();
+      },
+    );
+
+    return _profileController.stream;
   }
 }

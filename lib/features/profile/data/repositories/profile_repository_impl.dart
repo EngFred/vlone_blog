@@ -39,4 +39,24 @@ class ProfileRepositoryImpl implements ProfileRepository {
       return Left(ServerFailure(e.message));
     }
   }
+
+  // ==================== REAL-TIME STREAMS ====================
+
+  @override
+  Stream<Either<Failure, Map<String, dynamic>>> streamProfileUpdates(
+    String userId,
+  ) {
+    try {
+      return remoteDataSource
+          .streamProfileUpdates(userId)
+          .map((update) => Right<Failure, Map<String, dynamic>>(update))
+          .handleError((error) {
+            return Left<Failure, Map<String, dynamic>>(
+              ServerFailure(error.toString()),
+            );
+          });
+    } catch (e) {
+      return Stream.value(Left(ServerFailure(e.toString())));
+    }
+  }
 }

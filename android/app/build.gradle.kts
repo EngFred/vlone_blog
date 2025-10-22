@@ -1,8 +1,17 @@
+import java.util.Properties 
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// 1. Load the key.properties file safely.
+val properties = Properties()
+val propertiesFile = rootProject.file("key.properties")
+if (propertiesFile.exists()) {
+    propertiesFile.inputStream().use { properties.load(it) }
 }
 
 android {
@@ -19,11 +28,18 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
+    // 2. Define the signing configurations
+    signingConfigs {
+        create("release") {
+            storeFile = file(properties.getProperty("storeFile") ?: "")
+            storePassword = properties.getProperty("storePassword")
+            keyAlias = properties.getProperty("keyAlias")
+            keyPassword = properties.getProperty("keyPassword")
+        }
+    }
+
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.vlone_blog_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -32,10 +48,16 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // ✅ Use debug signing config temporarily for testing
             signingConfig = signingConfigs.getByName("debug")
+
+            // Commented out release signing config
+            // signingConfig = signingConfigs.getByName("release")
+
+            // isMinifyEnabled = false
+            // isShrinkResources = false
         }
+        // Debug build type remains unchanged
     }
 }
 

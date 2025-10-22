@@ -7,7 +7,6 @@ import 'package:vlone_blog_app/core/theme/app_theme.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
-import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
@@ -101,7 +100,6 @@ class MyApp extends StatelessWidget {
         BlocProvider<PostsBloc>(create: (_) => di.sl<PostsBloc>()),
         BlocProvider<ProfileBloc>(create: (_) => di.sl<ProfileBloc>()),
         BlocProvider<CommentsBloc>(create: (_) => di.sl<CommentsBloc>()),
-        BlocProvider<FavoritesBloc>(create: (_) => di.sl<FavoritesBloc>()),
         BlocProvider<FollowersBloc>(create: (_) => di.sl<FollowersBloc>()),
       ],
       child: BlocListener<AuthBloc, AuthState>(

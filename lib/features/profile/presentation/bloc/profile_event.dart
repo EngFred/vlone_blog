@@ -32,3 +32,21 @@ class UpdateProfileEvent extends ProfileEvent {
   @override
   List<Object?> get props => [userId, username, bio, profileImage];
 }
+
+class StartProfileRealtimeEvent extends ProfileEvent {
+  final String userId;
+  const StartProfileRealtimeEvent(this.userId);
+
+  @override
+  List<Object?> get props => [userId];
+}
+
+class StopProfileRealtimeEvent extends ProfileEvent {}
+
+class _RealtimeProfileUpdatedEvent extends ProfileEvent {
+  final Map<String, dynamic> updateData;
+  const _RealtimeProfileUpdatedEvent(this.updateData);
+
+  @override
+  List<Object?> get props => [updateData];
+}

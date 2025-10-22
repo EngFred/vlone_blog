@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_actions.dart';
@@ -19,11 +18,8 @@ class PostCard extends StatefulWidget {
 class _PostCardState extends State<PostCard> {
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider.value(value: context.read<PostsBloc>()),
-        BlocProvider.value(value: context.read<FavoritesBloc>()),
-      ],
+    return BlocProvider.value(
+      value: context.read<PostsBloc>(),
       child: Card(
         margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),

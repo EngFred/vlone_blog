@@ -8,7 +8,6 @@ import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
-import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
@@ -40,6 +39,15 @@ class _ProfilePageState extends State<ProfilePage> {
       bloc.add(GetProfileDataEvent(widget.userId));
     }
     _checkIfOwnProfile();
+
+    // Start real-time updates
+    bloc.add(StartProfileRealtimeEvent(widget.userId));
+  }
+
+  @override
+  void dispose() {
+    context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
+    super.dispose();
   }
 
   Future<void> _checkIfOwnProfile() async {
@@ -47,7 +55,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final result = await sl<GetCurrentUserUseCase>()(NoParams());
     result.fold(
       (failure) {
-        AppLogger.error('Failed to check current user: ${failure.message}');
+        AppLogger.error('Failed to current user: ${failure.message}');
         if (mounted) {
           setState(() => _userPostsError = failure.message);
         }
@@ -60,7 +68,6 @@ class _ProfilePageState extends State<ProfilePage> {
         });
         AppLogger.info('User loaded, _userId: $_userId, isOwn: $_isOwnProfile');
 
-        // Check for cached posts
         final postsState = context.read<PostsBloc>().state;
         if (postsState is UserPostsLoaded &&
             postsState.posts.any((p) => p.userId == widget.userId)) {
@@ -82,6 +89,20 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  void _handleRealtimePostUpdate(RealtimePostUpdate state) {
+    final index = _userPosts.indexWhere((p) => p.id == state.postId);
+    if (index != -1 && mounted) {
+      final updatedPost = _userPosts[index].copyWith(
+        likesCount: state.likesCount ?? _userPosts[index].likesCount,
+        commentsCount: state.commentsCount ?? _userPosts[index].commentsCount,
+        favoritesCount:
+            state.favoritesCount ?? _userPosts[index].favoritesCount,
+        sharesCount: state.sharesCount ?? _userPosts[index].sharesCount,
+      );
+      setState(() => _userPosts[index] = updatedPost);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -101,7 +122,7 @@ class _ProfilePageState extends State<ProfilePage> {
         listeners: [
           BlocListener<ProfileBloc, ProfileState>(
             listener: (context, state) {
-              // no-op; profile reload handled in events and edit page will re-trigger
+              // Profile reload handled in events
             },
           ),
           BlocListener<PostsBloc, PostsState>(
@@ -135,28 +156,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   );
                   setState(() => _userPosts[index] = updatedPost);
                 }
-              } else if (state is PostShared) {
-                // Sync if needed
-              }
-            },
-          ),
-          BlocListener<FavoritesBloc, FavoritesState>(
-            listener: (context, state) {
-              if (state is FavoriteAdded) {
-                final index = _userPosts.indexWhere(
-                  (p) => p.id == state.postId,
-                );
-                if (index != -1 && mounted) {
-                  final updatedPost = _userPosts[index].copyWith(
-                    favoritesCount:
-                        _userPosts[index].favoritesCount +
-                        (state.isFavorited ? 1 : -1),
-                    isFavorited: state.isFavorited,
-                  );
-                  setState(() => _userPosts[index] = updatedPost);
-                }
-              } else if (state is FavoritesError) {
-                // Handle error if needed
+              } else if (state is RealtimePostUpdate) {
+                _handleRealtimePostUpdate(state);
               }
             },
           ),

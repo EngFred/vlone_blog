@@ -10,6 +10,7 @@ import 'package:vlone_blog_app/features/posts/domain/repositories/posts_reposito
 
 class PostsRepositoryImpl implements PostsRepository {
   final PostsRemoteDataSource remoteDataSource;
+
   PostsRepositoryImpl(this.remoteDataSource);
 
   @override
@@ -101,6 +102,28 @@ class PostsRepositoryImpl implements PostsRepository {
   }
 
   @override
+  Future<Either<Failure, Unit>> favoritePost({
+    required String postId,
+    required String userId,
+    required bool isFavorited,
+  }) async {
+    try {
+      await remoteDataSource.favoritePost(
+        postId: postId,
+        userId: userId,
+        isFavorited: isFavorited,
+      );
+      return const Right(unit);
+    } on ServerException catch (e) {
+      AppLogger.error(
+        'ServerException in favoritePost repo: ${e.message}',
+        error: e,
+      );
+      return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
   Future<Either<Failure, Unit>> sharePost({required String postId}) async {
     try {
       await remoteDataSource.sharePost(postId: postId);
@@ -130,10 +153,12 @@ class PostsRepositoryImpl implements PostsRepository {
       final favorited = (map['favorited'] ?? <String>[])
           .map((e) => e.toString())
           .toSet();
+
       final states = InteractionStates(
         likedPostIds: liked,
         favoritedPostIds: favorited,
       );
+
       return right(states);
     } on ServerException catch (e) {
       return left(ServerFailure(e.message));
@@ -150,6 +175,140 @@ class PostsRepositoryImpl implements PostsRepository {
       return Right(postModel.toEntity());
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
+  Future<Either<Failure, List<PostEntity>>> getFavorites({
+    required String userId,
+  }) async {
+    try {
+      final postModels = await remoteDataSource.getFavorites(userId: userId);
+      return Right(postModels.map((model) => model.toEntity()).toList());
+    } on ServerException catch (e) {
+      AppLogger.error(
+        'ServerException in getFavorites repo: ${e.message}',
+        error: e,
+      );
+      return Left(ServerFailure(e.message));
+    }
+  }
+
+  // ==================== REAL-TIME STREAMS ====================
+
+  @override
+  Stream<Either<Failure, PostEntity>> streamNewPosts() {
+    try {
+      AppLogger.info('Repository: Setting up new posts stream');
+
+      return remoteDataSource
+          .streamNewPosts()
+          .map((postModel) => Right<Failure, PostEntity>(postModel.toEntity()))
+          .handleError((error) {
+            AppLogger.error(
+              'Error in streamNewPosts repo: $error',
+              error: error,
+            );
+            return Left<Failure, PostEntity>(ServerFailure(error.toString()));
+          });
+    } catch (e) {
+      AppLogger.error('Exception setting up streamNewPosts: $e', error: e);
+      return Stream.value(Left(ServerFailure(e.toString())));
+    }
+  }
+
+  @override
+  Stream<Either<Failure, Map<String, dynamic>>> streamPostUpdates() {
+    try {
+      AppLogger.info('Repository: Setting up post updates stream');
+
+      return remoteDataSource
+          .streamPostUpdates()
+          .map((update) => Right<Failure, Map<String, dynamic>>(update))
+          .handleError((error) {
+            AppLogger.error(
+              'Error in streamPostUpdates repo: $error',
+              error: error,
+            );
+            return Left<Failure, Map<String, dynamic>>(
+              ServerFailure(error.toString()),
+            );
+          });
+    } catch (e) {
+      AppLogger.error('Exception setting up streamPostUpdates: $e', error: e);
+      return Stream.value(Left(ServerFailure(e.toString())));
+    }
+  }
+
+  @override
+  Stream<Either<Failure, Map<String, dynamic>>> streamLikes() {
+    try {
+      AppLogger.info('Repository: Setting up likes stream');
+
+      return remoteDataSource
+          .streamLikes()
+          .map((likeEvent) => Right<Failure, Map<String, dynamic>>(likeEvent))
+          .handleError((error) {
+            AppLogger.error('Error in streamLikes repo: $error', error: error);
+            return Left<Failure, Map<String, dynamic>>(
+              ServerFailure(error.toString()),
+            );
+          });
+    } catch (e) {
+      AppLogger.error('Exception setting up streamLikes: $e', error: e);
+      return Stream.value(Left(ServerFailure(e.toString())));
+    }
+  }
+
+  @override
+  Stream<Either<Failure, Map<String, dynamic>>> streamComments() {
+    try {
+      AppLogger.info('Repository: Setting up comments stream');
+
+      return remoteDataSource
+          .streamComments()
+          .map(
+            (commentEvent) =>
+                Right<Failure, Map<String, dynamic>>(commentEvent),
+          )
+          .handleError((error) {
+            AppLogger.error(
+              'Error in streamComments repo: $error',
+              error: error,
+            );
+            return Left<Failure, Map<String, dynamic>>(
+              ServerFailure(error.toString()),
+            );
+          });
+    } catch (e) {
+      AppLogger.error('Exception setting up streamComments: $e', error: e);
+      return Stream.value(Left(ServerFailure(e.toString())));
+    }
+  }
+
+  @override
+  Stream<Either<Failure, Map<String, dynamic>>> streamFavorites() {
+    try {
+      AppLogger.info('Repository: Setting up favorites stream');
+
+      return remoteDataSource
+          .streamFavorites()
+          .map(
+            (favoriteEvent) =>
+                Right<Failure, Map<String, dynamic>>(favoriteEvent),
+          )
+          .handleError((error) {
+            AppLogger.error(
+              'Error in streamFavorites repo: $error',
+              error: error,
+            );
+            return Left<Failure, Map<String, dynamic>>(
+              ServerFailure(error.toString()),
+            );
+          });
+    } catch (e) {
+      AppLogger.error('Exception setting up streamFavorites: $e', error: e);
+      return Stream.value(Left(ServerFailure(e.toString())));
     }
   }
 }

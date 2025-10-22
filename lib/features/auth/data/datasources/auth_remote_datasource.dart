@@ -103,9 +103,8 @@ class AuthRemoteDataSource {
     try {
       AppLogger.info('Attempting logout');
       await client.auth.signOut();
-      AppLogger.info('Logout successful');
-      // remove persisted session from secure storage if you stored it manually
       await _secureStorage.delete(key: 'supabase_persisted_session');
+      AppLogger.info('Logout successful');
     } catch (e, stackTrace) {
       AppLogger.error(
         'Error during logout: $e',
@@ -157,7 +156,7 @@ class AuthRemoteDataSource {
         return true;
       }
 
-      // Read persisted session JSON from secure storage (your LocalStorage implementation)
+      // Read persisted session JSON from secure storage
       final persisted = await _secureStorage.read(
         key: 'supabase_persisted_session',
       );
@@ -168,6 +167,7 @@ class AuthRemoteDataSource {
       }
 
       AppLogger.info('Found persisted session, attempting recoverSession');
+      await client.auth.recoverSession(persisted);
       final hasSession = client.auth.currentUser != null;
       AppLogger.info(
         'Session restoration ${hasSession ? 'successful' : 'failed'}',

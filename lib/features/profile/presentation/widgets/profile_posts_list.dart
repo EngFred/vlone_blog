@@ -11,6 +11,7 @@ class ProfilePostsList extends StatelessWidget {
   final bool isLoading;
   final String? error;
   final VoidCallback onRetry;
+
   const ProfilePostsList({
     super.key,
     required this.posts,
