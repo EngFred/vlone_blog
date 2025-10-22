@@ -315,8 +315,8 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     result.fold(
       (failure) {
+        // FIX: Log failure silently, no state emission for UX
         AppLogger.error('Like post failed: ${failure.message}');
-        emit(PostsError(failure.message));
       },
       (_) {
         AppLogger.info('Post liked/unliked successfully');
@@ -337,8 +337,8 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     result.fold(
       (failure) {
+        // FIX: Log failure silently, no state emission for UX
         AppLogger.error('Share post failed: ${failure.message}');
-        emit(PostsError(failure.message));
       },
       (_) {
         AppLogger.info('Post shared successfully');
@@ -365,8 +365,8 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     result.fold(
       (failure) {
+        // FIX: Log failure silently, no state emission for UX
         AppLogger.error('Favorite post failed: ${failure.message}');
-        emit(PostsError(failure.message));
       },
       (_) {
         AppLogger.info('Post favorited/unfavorited successfully');

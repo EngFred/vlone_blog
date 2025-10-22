@@ -78,10 +78,18 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     if (state.postId == widget.postId && _hasInitializedPost && mounted) {
       setState(() {
         _post = _post.copyWith(
-          likesCount: state.likesCount ?? _post.likesCount,
-          commentsCount: state.commentsCount ?? _post.commentsCount,
-          favoritesCount: state.favoritesCount ?? _post.favoritesCount,
-          sharesCount: state.sharesCount ?? _post.sharesCount,
+          likesCount: (state.likesCount ?? _post.likesCount)
+              .clamp(0, double.infinity)
+              .toInt(),
+          commentsCount: (state.commentsCount ?? _post.commentsCount)
+              .clamp(0, double.infinity)
+              .toInt(),
+          favoritesCount: (state.favoritesCount ?? _post.favoritesCount)
+              .clamp(0, double.infinity)
+              .toInt(),
+          sharesCount: (state.sharesCount ?? _post.sharesCount)
+              .clamp(0, double.infinity)
+              .toInt(),
         );
       });
     }
@@ -126,14 +134,40 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
           } else if (state is PostLiked &&
               state.postId == widget.postId &&
               _hasInitializedPost) {
-            setState(
-              () => _post = _post.copyWith(
-                likesCount: _post.likesCount + (state.isLiked ? 1 : -1),
-                isLiked: state.isLiked,
-              ),
-            );
+            if (mounted) {
+              // FIX: Clamp to prevent negative counts
+              final delta = state.isLiked ? 1 : -1;
+              final newCount = (_post.likesCount + delta)
+                  .clamp(0, double.infinity)
+                  .toInt();
+              setState(
+                () => _post = _post.copyWith(
+                  likesCount: newCount,
+                  isLiked: state.isLiked,
+                ),
+              );
+            }
+          } else if (state is PostFavorited &&
+              state.postId == widget.postId &&
+              _hasInitializedPost) {
+            if (mounted) {
+              // FIX: Add handling for PostFavorited with clamping (mirrors PostLiked)
+              final delta = state.isFavorited ? 1 : -1;
+              final newCount = (_post.favoritesCount + delta)
+                  .clamp(0, double.infinity)
+                  .toInt();
+              setState(
+                () => _post = _post.copyWith(
+                  favoritesCount: newCount,
+                  isFavorited: state.isFavorited,
+                ),
+              );
+            }
           } else if (state is RealtimePostUpdate) {
             _handleRealtimePostUpdate(state);
+          } else if (state is PostsError) {
+            // FIX: Log silently for interaction errors; no toasts
+            AppLogger.error('PostsError in PostDetailsPage: ${state.message}');
           }
         },
         child: _hasInitializedPost

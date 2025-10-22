@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
@@ -8,22 +9,57 @@ class ReelActions extends StatelessWidget {
   final PostEntity post;
   final String userId;
   const ReelActions({super.key, required this.post, required this.userId});
+
+  // Debounce helper to prevent rapid taps
+  static const Duration _debounceDuration = Duration(milliseconds: 300);
+  static final Map<String, Timer> _debounceTimers = {};
+
   void _toggleLike(BuildContext context) {
-    final newLiked = !post.isLiked;
-    context.read<PostsBloc>().add(
-      LikePostEvent(postId: post.id, userId: userId, isLiked: newLiked),
-    );
+    final postId = post.id;
+    final actionKey = 'like_$postId';
+
+    // Cancel existing timer if any
+    _debounceTimers[actionKey]?.cancel();
+
+    // Set new timer to dispatch event
+    _debounceTimers[actionKey] = Timer(_debounceDuration, () {
+      final newLiked = !post.isLiked;
+      context.read<PostsBloc>().add(
+        LikePostEvent(postId: postId, userId: userId, isLiked: newLiked),
+      );
+      _debounceTimers.remove(actionKey);
+    });
   }
 
   void _toggleFavorite(BuildContext context) {
-    final newFav = !post.isFavorited;
-    context.read<PostsBloc>().add(
-      FavoritePostEvent(postId: post.id, userId: userId, isFavorited: newFav),
-    );
+    final postId = post.id;
+    final actionKey = 'favorite_$postId';
+
+    // Cancel existing timer if any
+    _debounceTimers[actionKey]?.cancel();
+
+    // Set new timer to dispatch event
+    _debounceTimers[actionKey] = Timer(_debounceDuration, () {
+      final newFav = !post.isFavorited;
+      context.read<PostsBloc>().add(
+        FavoritePostEvent(postId: postId, userId: userId, isFavorited: newFav),
+      );
+      _debounceTimers.remove(actionKey);
+    });
   }
 
   void _share(BuildContext context) {
-    context.read<PostsBloc>().add(SharePostEvent(postId: post.id));
+    final postId = post.id;
+    final actionKey = 'share_$postId';
+
+    // Cancel existing timer if any
+    _debounceTimers[actionKey]?.cancel();
+
+    // Set new timer to dispatch event
+    _debounceTimers[actionKey] = Timer(_debounceDuration, () {
+      context.read<PostsBloc>().add(SharePostEvent(postId: postId));
+      _debounceTimers.remove(actionKey);
+    });
   }
 
   void _handleComment(BuildContext context) {
@@ -37,40 +73,32 @@ class ReelActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<PostsBloc, PostsState>(
-      listener: (context, state) {
-        if (state is PostsError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to update action')),
-          );
-        }
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _actionIcon(
-            icon: post.isLiked ? Icons.favorite : Icons.favorite_border,
-            label: post.likesCount.toString(),
-            onTap: () => _toggleLike(context),
-          ),
-          _actionIcon(
-            icon: Icons.comment,
-            label: post.commentsCount.toString(),
-            onTap: () => _handleComment(context),
-          ),
-          _actionIcon(
-            icon: Icons.share,
-            label: post.sharesCount.toString(),
-            onTap: () => _share(context),
-          ),
-          _actionIcon(
-            icon: post.isFavorited ? Icons.bookmark : Icons.bookmark_border,
-            label: post.favoritesCount.toString(),
-            onTap: () => _toggleFavorite(context),
-          ),
-        ],
-      ),
+    // FIX: Remove BlocListener - no error toasts for actions
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _actionIcon(
+          icon: post.isLiked ? Icons.favorite : Icons.favorite_border,
+          label: post.likesCount.toString(),
+          onTap: () => _toggleLike(context),
+        ),
+        _actionIcon(
+          icon: Icons.comment,
+          label: post.commentsCount.toString(),
+          onTap: () => _handleComment(context),
+        ),
+        _actionIcon(
+          icon: Icons.share,
+          label: post.sharesCount.toString(),
+          onTap: () => _share(context),
+        ),
+        _actionIcon(
+          icon: post.isFavorited ? Icons.bookmark : Icons.bookmark_border,
+          label: post.favoritesCount.toString(),
+          onTap: () => _toggleFavorite(context),
+        ),
+      ],
     );
   }
 

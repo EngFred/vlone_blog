@@ -158,8 +158,13 @@ class _FeedPageState extends State<FeedPage> {
           } else if (state is PostLiked) {
             final index = _posts.indexWhere((p) => p.id == state.postId);
             if (index != -1 && mounted) {
+              // FIX: Clamp to prevent negative counts
+              final delta = state.isLiked ? 1 : -1;
+              final newCount = (_posts[index].likesCount + delta)
+                  .clamp(0, double.infinity)
+                  .toInt();
               final updatedPost = _posts[index].copyWith(
-                likesCount: _posts[index].likesCount + (state.isLiked ? 1 : -1),
+                likesCount: newCount,
                 isLiked: state.isLiked,
               );
               setState(() => _posts[index] = updatedPost);
@@ -167,9 +172,13 @@ class _FeedPageState extends State<FeedPage> {
           } else if (state is PostFavorited) {
             final index = _posts.indexWhere((p) => p.id == state.postId);
             if (index != -1 && mounted) {
+              // FIX: Clamp to prevent negative counts
+              final delta = state.isFavorited ? 1 : -1;
+              final newCount = (_posts[index].favoritesCount + delta)
+                  .clamp(0, double.infinity)
+                  .toInt();
               final updatedPost = _posts[index].copyWith(
-                favoritesCount:
-                    _posts[index].favoritesCount + (state.isFavorited ? 1 : -1),
+                favoritesCount: newCount,
                 isFavorited: state.isFavorited,
               );
               setState(() => _posts[index] = updatedPost);
@@ -178,21 +187,36 @@ class _FeedPageState extends State<FeedPage> {
             final index = _posts.indexWhere((p) => p.id == state.postId);
             if (index != -1 && mounted) {
               final post = _posts[index];
+              // FIX: Clamp to prevent negative counts from real-time updates
               final updatedPost = post.copyWith(
-                likesCount: state.likesCount ?? post.likesCount,
-                commentsCount: state.commentsCount ?? post.commentsCount,
-                favoritesCount: state.favoritesCount ?? post.favoritesCount,
-                sharesCount: state.sharesCount ?? post.sharesCount,
+                likesCount: (state.likesCount ?? post.likesCount)
+                    .clamp(0, double.infinity)
+                    .toInt(),
+                commentsCount: (state.commentsCount ?? post.commentsCount)
+                    .clamp(0, double.infinity)
+                    .toInt(),
+                favoritesCount: (state.favoritesCount ?? post.favoritesCount)
+                    .clamp(0, double.infinity)
+                    .toInt(),
+                sharesCount: (state.sharesCount ?? post.sharesCount)
+                    .clamp(0, double.infinity)
+                    .toInt(),
               );
               setState(() => _posts[index] = updatedPost);
             }
           } else if (state is PostsError) {
-            AppLogger.error('PostsError in FeedPage: ${state.message}');
-            if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text(state.message)));
+            // FIX: Only show errors for non-interaction failures (e.g., load/create). Log interaction errors silently.
+            if (!state.message.contains('update action') &&
+                !state.message.contains('like') &&
+                !state.message.contains('favorite') &&
+                !state.message.contains('share')) {
+              if (mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(state.message)));
+              }
             }
+            AppLogger.error('PostsError in FeedPage: ${state.message}');
           }
         },
         child: RefreshIndicator(

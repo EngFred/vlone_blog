@@ -72,10 +72,28 @@ class _ProfilePageState extends State<ProfilePage> {
         if (postsState is UserPostsLoaded &&
             postsState.posts.any((p) => p.userId == widget.userId)) {
           AppLogger.info('Using cached user posts from PostsBloc');
-          setState(() {
-            _userPosts.clear();
-            _userPosts.addAll(postsState.posts);
-          });
+          if (mounted) {
+            setState(() {
+              _userPosts.clear();
+              // FIX: Clamp counts when setting from cache
+              _userPosts.addAll(
+                postsState.posts.map(
+                  (p) => p.copyWith(
+                    likesCount: p.likesCount.clamp(0, double.infinity).toInt(),
+                    commentsCount: p.commentsCount
+                        .clamp(0, double.infinity)
+                        .toInt(),
+                    favoritesCount: p.favoritesCount
+                        .clamp(0, double.infinity)
+                        .toInt(),
+                    sharesCount: p.sharesCount
+                        .clamp(0, double.infinity)
+                        .toInt(),
+                  ),
+                ),
+              );
+            });
+          }
         } else {
           AppLogger.info('Fetching user posts for profile: ${widget.userId}');
           context.read<PostsBloc>().add(
@@ -92,12 +110,21 @@ class _ProfilePageState extends State<ProfilePage> {
   void _handleRealtimePostUpdate(RealtimePostUpdate state) {
     final index = _userPosts.indexWhere((p) => p.id == state.postId);
     if (index != -1 && mounted) {
-      final updatedPost = _userPosts[index].copyWith(
-        likesCount: state.likesCount ?? _userPosts[index].likesCount,
-        commentsCount: state.commentsCount ?? _userPosts[index].commentsCount,
-        favoritesCount:
-            state.favoritesCount ?? _userPosts[index].favoritesCount,
-        sharesCount: state.sharesCount ?? _userPosts[index].sharesCount,
+      final post = _userPosts[index];
+      // FIX: Clamp to prevent negative counts from real-time updates
+      final updatedPost = post.copyWith(
+        likesCount: (state.likesCount ?? post.likesCount)
+            .clamp(0, double.infinity)
+            .toInt(),
+        commentsCount: (state.commentsCount ?? post.commentsCount)
+            .clamp(0, double.infinity)
+            .toInt(),
+        favoritesCount: (state.favoritesCount ?? post.favoritesCount)
+            .clamp(0, double.infinity)
+            .toInt(),
+        sharesCount: (state.sharesCount ?? post.sharesCount)
+            .clamp(0, double.infinity)
+            .toInt(),
       );
       setState(() => _userPosts[index] = updatedPost);
     }
@@ -133,7 +160,25 @@ class _ProfilePageState extends State<ProfilePage> {
                 if (mounted) {
                   setState(() {
                     _userPosts.clear();
-                    _userPosts.addAll(state.posts);
+                    // FIX: Clamp counts when setting from loaded state
+                    _userPosts.addAll(
+                      state.posts.map(
+                        (p) => p.copyWith(
+                          likesCount: p.likesCount
+                              .clamp(0, double.infinity)
+                              .toInt(),
+                          commentsCount: p.commentsCount
+                              .clamp(0, double.infinity)
+                              .toInt(),
+                          favoritesCount: p.favoritesCount
+                              .clamp(0, double.infinity)
+                              .toInt(),
+                          sharesCount: p.sharesCount
+                              .clamp(0, double.infinity)
+                              .toInt(),
+                        ),
+                      ),
+                    );
                     _isUserPostsLoading = false;
                   });
                 }
@@ -149,15 +194,38 @@ class _ProfilePageState extends State<ProfilePage> {
                   (p) => p.id == state.postId,
                 );
                 if (index != -1 && mounted) {
+                  // FIX: Clamp to prevent negative counts
+                  final delta = state.isLiked ? 1 : -1;
+                  final newCount = (_userPosts[index].likesCount + delta)
+                      .clamp(0, double.infinity)
+                      .toInt();
                   final updatedPost = _userPosts[index].copyWith(
-                    likesCount:
-                        _userPosts[index].likesCount + (state.isLiked ? 1 : -1),
+                    likesCount: newCount,
                     isLiked: state.isLiked,
+                  );
+                  setState(() => _userPosts[index] = updatedPost);
+                }
+              } else if (state is PostFavorited) {
+                final index = _userPosts.indexWhere(
+                  (p) => p.id == state.postId,
+                );
+                if (index != -1 && mounted) {
+                  // FIX: Add handling for PostFavorited with clamping
+                  final delta = state.isFavorited ? 1 : -1;
+                  final newCount = (_userPosts[index].favoritesCount + delta)
+                      .clamp(0, double.infinity)
+                      .toInt();
+                  final updatedPost = _userPosts[index].copyWith(
+                    favoritesCount: newCount,
+                    isFavorited: state.isFavorited,
                   );
                   setState(() => _userPosts[index] = updatedPost);
                 }
               } else if (state is RealtimePostUpdate) {
                 _handleRealtimePostUpdate(state);
+              } else if (state is PostsError) {
+                // FIX: Log silently for interaction errors; no toasts
+                AppLogger.error('PostsError in ProfilePage: ${state.message}');
               }
             },
           ),
