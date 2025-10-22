@@ -6,11 +6,17 @@ import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.d
 class ProfileHeader extends StatelessWidget {
   final ProfileEntity profile;
   final bool isOwnProfile;
+  final bool? isFollowing;
+  final bool isProcessingFollow;
+  final Function(bool)? onFollowToggle;
 
   const ProfileHeader({
     super.key,
     required this.profile,
     required this.isOwnProfile,
+    this.isFollowing,
+    this.isProcessingFollow = false,
+    this.onFollowToggle,
   });
 
   @override
@@ -19,14 +25,51 @@ class ProfileHeader extends StatelessWidget {
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          CircleAvatar(
-            radius: 50,
-            backgroundImage: profile.profileImageUrl != null
-                ? CachedNetworkImageProvider(profile.profileImageUrl!)
-                : null,
-            child: profile.profileImageUrl == null
-                ? const Icon(Icons.person, size: 50)
-                : null,
+          Stack(
+            alignment: Alignment.bottomRight,
+            children: [
+              CircleAvatar(
+                radius: 50,
+                backgroundImage: profile.profileImageUrl != null
+                    ? CachedNetworkImageProvider(profile.profileImageUrl!)
+                    : null,
+                child: profile.profileImageUrl == null
+                    ? const Icon(Icons.person, size: 50)
+                    : null,
+              ),
+              if (!isOwnProfile &&
+                  isFollowing != null &&
+                  onFollowToggle != null)
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: GestureDetector(
+                    onTap: isProcessingFollow
+                        ? null
+                        : () => onFollowToggle!(!isFollowing!),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        isFollowing! ? Icons.check : Icons.add,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(

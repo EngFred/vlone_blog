@@ -26,38 +26,14 @@ class _FeedPageState extends State<FeedPage> {
   void initState() {
     super.initState();
     AppLogger.info('Initializing FeedPage');
-    _loadCurrentUserFromAuth();
-  }
-
-  void _loadCurrentUserFromAuth() {
-    final authState = context.read<AuthBloc>().state;
-    if (authState is AuthAuthenticated) {
-      _userId = authState.user.id;
-      AppLogger.info('Current user from AuthBloc: $_userId');
-      _loadFeed();
-    } else {
-      AppLogger.error('No authenticated user, redirecting to login');
-      context.go(Constants.loginRoute);
-    }
-  }
-
-  void _loadFeed() {
-    // Check for cached feed data
-    final postsState = context.read<PostsBloc>().state;
-    if (postsState is FeedLoaded && postsState.posts.isNotEmpty) {
-      AppLogger.info('Using cached posts from PostsBloc');
-      if (mounted) {
-        _updatePosts(postsState.posts);
-        if (!postsState.isRealtimeActive) {
-          _startRealtimeListeners();
-        } else {
-          _realtimeStarted = true;
-        }
+    // REMOVED: No auto-load here. MainPage dispatches GetFeedEvent when tab selected (initially for Feed).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authState = context.read<AuthBloc>().state;
+      if (authState is AuthAuthenticated && mounted) {
+        setState(() => _userId = authState.user.id);
+        AppLogger.info('Current user from AuthBloc: $_userId');
       }
-    } else {
-      AppLogger.info('Fetching initial feed for user: $_userId');
-      context.read<PostsBloc>().add(GetFeedEvent(userId: _userId));
-    }
+    });
   }
 
   void _startRealtimeListeners() {

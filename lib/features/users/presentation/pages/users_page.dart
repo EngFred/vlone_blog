@@ -19,31 +19,21 @@ class UsersPage extends StatefulWidget {
 class _UsersPageState extends State<UsersPage> {
   String? _currentUserId;
   List<UserListEntity> _users = [];
+  final Set<String> _loadingUserIds = {};
 
   @override
   void initState() {
     super.initState();
-
-    // Wait until first frame so context.read(...) is safe and blocs are available.
+    // REMOVED: No auto-load here. MainPage dispatches GetAllUsersEvent when tab selected.
+    // Still set _currentUserId for use in UI.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _maybeLoadUsers();
+      final authState = context.read<AuthBloc>().state;
+      if (authState is AuthAuthenticated && mounted) {
+        setState(() => _currentUserId = authState.user.id);
+        AppLogger.info('UsersPage: Set currentUserId=$_currentUserId');
+      }
+      // No dispatch here—let MainPage handle it.
     });
-  }
-
-  void _maybeLoadUsers() {
-    final authState = context.read<AuthBloc>().state;
-    if (authState is AuthAuthenticated) {
-      _currentUserId = authState.user.id;
-      AppLogger.info(
-        'UsersPage: authenticated user id=$_currentUserId — dispatching GetAllUsersEvent',
-      );
-      context.read<UsersBloc>().add(GetAllUsersEvent(_currentUserId!));
-    } else {
-      AppLogger.warning(
-        'UsersPage: no authenticated user available on init. authState=$authState',
-      );
-      // If auth becomes authenticated later, we also listen to it below via BlocListener.
-    }
   }
 
   void _handleFollowUpdate(String followedUserId, bool nowFollowing) {
@@ -54,6 +44,7 @@ class _UsersPageState extends State<UsersPage> {
       } else {
         AppLogger.warning('Follow update for unknown user id=$followedUserId');
       }
+      _loadingUserIds.remove(followedUserId);
     });
   }
 
@@ -91,6 +82,7 @@ class _UsersPageState extends State<UsersPage> {
                   'AuthBloc -> Authenticated in UsersPage, userId=${state.user.id}',
                 );
                 _currentUserId = state.user.id;
+                // Optional: Auto-load if auth changes while on this page.
                 context.read<UsersBloc>().add(
                   GetAllUsersEvent(_currentUserId!),
                 );
@@ -106,8 +98,13 @@ class _UsersPageState extends State<UsersPage> {
                   'FollowersBloc -> Follow update: ${state.followedUserId} nowFollowing=${state.isFollowing}',
                 );
                 _handleFollowUpdate(state.followedUserId, state.isFollowing);
-              } else if (state is FollowersError) {
+              } else if (state is FollowersError &&
+                  _loadingUserIds.isNotEmpty) {
+                // Follow action failed
                 AppLogger.error('FollowersBloc error: ${state.message}');
+                setState(() {
+                  _loadingUserIds.clear();
+                });
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Follow error: ${state.message}')),
                 );
@@ -135,14 +132,14 @@ class _UsersPageState extends State<UsersPage> {
             }
           },
           builder: (context, state) {
-            // show loading while waiting
+            // Show loading on initial or loading state
             if (state is UsersLoading || state is UsersInitial) {
               return const Center(child: LoadingIndicator());
             }
 
             // If we have UsersLoaded but list is empty -> show empty state
             if ((state is UsersLoaded && _users.isEmpty) || _users.isEmpty) {
-              return EmptyStateWidget(
+              return const EmptyStateWidget(
                 message: 'No users found.',
                 icon: Icons.people_outline,
               );
@@ -177,6 +174,7 @@ class _UsersPageState extends State<UsersPage> {
                 return UserListItem(
                   user: user,
                   currentUserId: _currentUserId ?? '',
+                  isLoading: _loadingUserIds.contains(user.id),
                   onFollowToggle: (followedId, isFollowing) {
                     if (_currentUserId == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -188,6 +186,9 @@ class _UsersPageState extends State<UsersPage> {
                       );
                       return;
                     }
+                    setState(() {
+                      _loadingUserIds.add(followedId);
+                    });
                     context.read<FollowersBloc>().add(
                       FollowUserEvent(
                         followerId: _currentUserId!,
@@ -195,7 +196,7 @@ class _UsersPageState extends State<UsersPage> {
                         isFollowing: isFollowing,
                       ),
                     );
-                    // Optimistic update can be applied here:
+                    // Optimistic update
                     _handleFollowUpdate(followedId, isFollowing);
                   },
                 );

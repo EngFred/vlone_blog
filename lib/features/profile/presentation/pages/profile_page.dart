@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
-import 'package:vlone_blog_app/core/di/injection_container.dart';
-import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
-import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
+import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
@@ -28,83 +26,29 @@ class _ProfilePageState extends State<ProfilePage> {
   final List<PostEntity> _userPosts = [];
   bool _isUserPostsLoading = false;
   String? _userPostsError;
+  bool? _isFollowing;
+  bool _isProcessingFollow = false;
 
   @override
   void initState() {
     super.initState();
-    final bloc = context.read<ProfileBloc>();
-    final currentState = bloc.state;
-    if (!(currentState is ProfileDataLoaded &&
-        currentState.profile.id == widget.userId)) {
-      bloc.add(GetProfileDataEvent(widget.userId));
-    }
-    _checkIfOwnProfile();
-
-    // Start real-time updates
-    bloc.add(StartProfileRealtimeEvent(widget.userId));
+    // REMOVED: No auto-load here. MainPage dispatches GetProfileDataEvent, StartProfileRealtimeEvent, and GetUserPostsEvent when tab selected.
+    // Set own profile flags since this is always the current user's profile in the bottom nav.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _isOwnProfile = true;
+          _userId = widget.userId; // Same as current user ID
+        });
+        AppLogger.info('ProfilePage: Set as own profile, userId: $_userId');
+      }
+    });
   }
 
   @override
   void dispose() {
-    context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
+    // Note: Realtime stop is handled in Bloc or MainPage dispose; no per-page stop needed with IndexedStack.
     super.dispose();
-  }
-
-  Future<void> _checkIfOwnProfile() async {
-    AppLogger.info('Checking if own profile for userId: ${widget.userId}');
-    final result = await sl<GetCurrentUserUseCase>()(NoParams());
-    result.fold(
-      (failure) {
-        AppLogger.error('Failed to current user: ${failure.message}');
-        if (mounted) {
-          setState(() => _userPostsError = failure.message);
-        }
-      },
-      (user) {
-        if (!mounted) return;
-        setState(() {
-          _isOwnProfile = user.id == widget.userId;
-          _userId = user.id;
-        });
-        AppLogger.info('User loaded, _userId: $_userId, isOwn: $_isOwnProfile');
-
-        final postsState = context.read<PostsBloc>().state;
-        if (postsState is UserPostsLoaded &&
-            postsState.posts.any((p) => p.userId == widget.userId)) {
-          AppLogger.info('Using cached user posts from PostsBloc');
-          if (mounted) {
-            setState(() {
-              _userPosts.clear();
-              // FIX: Clamp counts when setting from cache
-              _userPosts.addAll(
-                postsState.posts.map(
-                  (p) => p.copyWith(
-                    likesCount: p.likesCount.clamp(0, double.infinity).toInt(),
-                    commentsCount: p.commentsCount
-                        .clamp(0, double.infinity)
-                        .toInt(),
-                    favoritesCount: p.favoritesCount
-                        .clamp(0, double.infinity)
-                        .toInt(),
-                    sharesCount: p.sharesCount
-                        .clamp(0, double.infinity)
-                        .toInt(),
-                  ),
-                ),
-              );
-            });
-          }
-        } else {
-          AppLogger.info('Fetching user posts for profile: ${widget.userId}');
-          context.read<PostsBloc>().add(
-            GetUserPostsEvent(
-              profileUserId: widget.userId,
-              viewerUserId: _userId,
-            ),
-          );
-        }
-      },
-    );
   }
 
   void _handleRealtimePostUpdate(RealtimePostUpdate state) {
@@ -128,6 +72,21 @@ class _ProfilePageState extends State<ProfilePage> {
       );
       setState(() => _userPosts[index] = updatedPost);
     }
+  }
+
+  void _onFollowToggle(bool newFollowing) {
+    if (_isProcessingFollow) return;
+    setState(() {
+      _isProcessingFollow = true;
+      _isFollowing = newFollowing;
+    });
+    context.read<FollowersBloc>().add(
+      FollowUserEvent(
+        followerId: _userId!,
+        followingId: widget.userId,
+        isFollowing: newFollowing,
+      ),
+    );
   }
 
   @override
@@ -229,6 +188,36 @@ class _ProfilePageState extends State<ProfilePage> {
               }
             },
           ),
+          BlocListener<FollowersBloc, FollowersState>(
+            listener: (context, state) {
+              if (state is FollowStatusLoaded &&
+                  state.followingId == widget.userId) {
+                if (mounted) {
+                  setState(() => _isFollowing = state.isFollowing);
+                }
+              } else if (state is UserFollowed &&
+                  state.followedUserId == widget.userId) {
+                if (mounted) {
+                  setState(() {
+                    _isFollowing = state.isFollowing;
+                    _isProcessingFollow = false;
+                  });
+                }
+              } else if (state is FollowersError) {
+                if (mounted) {
+                  if (_isProcessingFollow) {
+                    setState(() {
+                      _isFollowing = !_isFollowing!;
+                      _isProcessingFollow = false;
+                    });
+                  }
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(state.message)));
+                }
+              }
+            },
+          ),
         ],
         child: BlocBuilder<ProfileBloc, ProfileState>(
           builder: (context, state) {
@@ -273,6 +262,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       ProfileHeader(
                         profile: state.profile,
                         isOwnProfile: _isOwnProfile,
+                        isFollowing: _isFollowing,
+                        onFollowToggle: _onFollowToggle,
+                        isProcessingFollow: _isProcessingFollow,
                       ),
                       ProfilePostsList(
                         posts: _userPosts,

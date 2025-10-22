@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
+import 'package:vlone_blog_app/core/error/failures.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
@@ -10,6 +12,10 @@ import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart'
 import 'package:vlone_blog_app/features/posts/presentation/pages/reels_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:vlone_blog_app/features/users/presentation/pages/users_page.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
+import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -23,6 +29,7 @@ class _MainPageState extends State<MainPage> {
   int _selectedIndex = 0;
   late final List<Widget> _pages;
   bool _initializedPages = false;
+  final Set<int> _loadedTabs = {};
 
   @override
   void initState() {
@@ -37,18 +44,48 @@ class _MainPageState extends State<MainPage> {
       final result = await sl<GetCurrentUserUseCase>()(NoParams());
       result.fold(
         (failure) {
-          AppLogger.error('Failed to load current user: ${failure.message}');
-          FlutterNativeSplash.remove();
-          if (context.mounted) context.go(Constants.loginRoute);
+          // CRITICAL: Distinguish between network and auth failures
+          if (failure is NetworkFailure) {
+            AppLogger.warning(
+              'Network error loading user, but will proceed with cached data: ${failure.message}',
+            );
+            // Still remove splash and let pages handle offline state
+            FlutterNativeSplash.remove();
+            // Try to get userId from session
+            final supabase = sl<SupabaseClient>();
+            final sessionUserId = supabase.auth.currentUser?.id;
+            if (sessionUserId != null && mounted) {
+              setState(() => _userId = sessionUserId);
+              _initPagesIfNeeded();
+              _syncSelectedIndexWithLocation();
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  _dispatchLoadForIndex(_selectedIndex);
+                }
+              });
+            } else {
+              // No session at all, go to login
+              if (context.mounted) context.go(Constants.loginRoute);
+            }
+          } else {
+            // Real auth failure
+            AppLogger.error('Failed to load current user: ${failure.message}');
+            FlutterNativeSplash.remove();
+            if (context.mounted) context.go(Constants.loginRoute);
+          }
         },
         (user) {
           AppLogger.info('Current user loaded: ${user.id}');
-
           if (mounted) {
             setState(() => _userId = user.id);
             FlutterNativeSplash.remove();
             _initPagesIfNeeded();
             _syncSelectedIndexWithLocation();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                _dispatchLoadForIndex(_selectedIndex);
+              }
+            });
           }
         },
       );
@@ -89,26 +126,42 @@ class _MainPageState extends State<MainPage> {
     }
   }
 
+  void _dispatchLoadForIndex(int index) {
+    if (_userId == null) return;
+    if (_loadedTabs.contains(index)) return;
+    _loadedTabs.add(index);
+
+    AppLogger.info('Loading data for tab index: $index (user: $_userId)');
+    switch (index) {
+      case 0:
+        context.read<PostsBloc>().add(GetFeedEvent(userId: _userId!));
+        break;
+      case 1:
+        context.read<PostsBloc>().add(GetReelsEvent(userId: _userId!));
+        break;
+      case 2:
+        context.read<UsersBloc>().add(GetAllUsersEvent(_userId!));
+        break;
+      case 3:
+        context.read<ProfileBloc>().add(GetProfileDataEvent(_userId!));
+        context.read<ProfileBloc>().add(StartProfileRealtimeEvent(_userId!));
+        context.read<PostsBloc>().add(
+          GetUserPostsEvent(profileUserId: _userId!, viewerUserId: _userId!),
+        );
+        break;
+    }
+  }
+
   void _onItemTapped(int index) {
     if (_userId == null) {
       AppLogger.warning('Cannot navigate, userId is null');
       return;
     }
     if (!_initializedPages) _initPagesIfNeeded();
-    if (index == 0) {
-      AppLogger.info('Navigating to Feed');
-      context.go(Constants.feedRoute);
-    } else if (index == 1) {
-      AppLogger.info('Navigating to Reels');
-      context.go(Constants.reelsRoute);
-    } else if (index == 2) {
-      AppLogger.info('Navigating to Users');
-      context.go(Constants.usersRoute);
-    } else if (index == 3) {
-      AppLogger.info('Navigating to Profile for user: $_userId');
-      context.go('${Constants.profileRoute}/$_userId');
+    if (index != _selectedIndex && mounted) {
+      setState(() => _selectedIndex = index);
+      _dispatchLoadForIndex(index);
     }
-    if (mounted) setState(() => _selectedIndex = index);
   }
 
   @override
@@ -124,6 +177,7 @@ class _MainPageState extends State<MainPage> {
     if (_userId == null || !_initializedPages) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+
     return Scaffold(
       body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
@@ -146,5 +200,10 @@ class _MainPageState extends State<MainPage> {
         onTap: _onItemTapped,
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 }

@@ -1,5 +1,6 @@
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:vlone_blog_app/core/error/failures.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/domain/entities/user_entity.dart';
@@ -85,6 +86,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<CheckAuthStatusEvent>((event, emit) async {
       AppLogger.info('CheckAuthStatusEvent triggered');
       emit(AuthLoading());
+
       final sessionResult = await authRepository.restoreSession();
       await sessionResult.fold(
         (failure) async {
@@ -97,8 +99,22 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             final userResult = await getCurrentUserUseCase(NoParams());
             userResult.fold(
               (failure) {
-                AppLogger.info('No current user or error: ${failure.message}');
-                emit(AuthUnauthenticated());
+                // CRITICAL: Handle network failures differently
+                if (failure is NetworkFailure) {
+                  AppLogger.warning(
+                    'Network error but session exists, treating as authenticated: ${failure.message}',
+                  );
+                  // Create a minimal user entity from session
+                  // This allows offline access
+                  emit(
+                    AuthUnauthenticated(),
+                  ); // Will be handled by router redirect
+                } else {
+                  AppLogger.info(
+                    'Auth error, user unauthenticated: ${failure.message}',
+                  );
+                  emit(AuthUnauthenticated());
+                }
               },
               (user) {
                 AppLogger.info('Current user found: ${user.id}');

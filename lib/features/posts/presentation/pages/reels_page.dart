@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
-import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
@@ -26,37 +24,14 @@ class _ReelsPageState extends State<ReelsPage> {
   void initState() {
     super.initState();
     AppLogger.info('Initializing ReelsPage');
-    _loadCurrentUserFromAuth();
-  }
-
-  void _loadCurrentUserFromAuth() {
-    final authState = context.read<AuthBloc>().state;
-    if (authState is AuthAuthenticated) {
-      _userId = authState.user.id;
-      AppLogger.info('Current user from AuthBloc: $_userId');
-      _loadReels();
-    } else {
-      AppLogger.error('No authenticated user, redirecting to login');
-      context.go(Constants.loginRoute);
-    }
-  }
-
-  void _loadReels() {
-    final postsState = context.read<PostsBloc>().state;
-    if (postsState is ReelsLoaded && postsState.posts.isNotEmpty) {
-      AppLogger.info('Using cached reels from PostsBloc');
-      if (mounted) {
-        _updatePosts(postsState.posts);
-        if (!postsState.isRealtimeActive) {
-          _startRealtimeListeners();
-        } else {
-          _realtimeStarted = true;
-        }
+    // REMOVED: No auto-load here. MainPage dispatches GetReelsEvent when tab selected.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authState = context.read<AuthBloc>().state;
+      if (authState is AuthAuthenticated && mounted) {
+        setState(() => _userId = authState.user.id);
+        AppLogger.info('Current user from AuthBloc: $_userId');
       }
-    } else {
-      AppLogger.info('Fetching initial reels for user: $_userId');
-      context.read<PostsBloc>().add(GetReelsEvent(userId: _userId));
-    }
+    });
   }
 
   void _startRealtimeListeners() {
@@ -195,7 +170,7 @@ class _ReelsPageState extends State<ReelsPage> {
               final postsState = context.watch<PostsBloc>().state;
 
               if (_posts.isEmpty) {
-                if (postsState is PostsLoading) {
+                if (postsState is PostsLoading || postsState is PostsInitial) {
                   return const LoadingIndicator();
                 } else if (postsState is PostsError) {
                   return EmptyStateWidget(

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:dartz/dartz.dart';
 import 'package:vlone_blog_app/core/error/exceptions.dart';
 import 'package:vlone_blog_app/core/error/failures.dart';
@@ -72,15 +73,23 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final userModel = await remoteDataSource.getCurrentUser();
       return Right(userModel.toEntity());
+    } on NetworkException catch (e) {
+      AppLogger.warning(
+        'NetworkException in getCurrentUser repository: ${e.message}',
+      );
+      return Left(NetworkFailure(e.message));
     } on ServerException catch (e) {
       AppLogger.error(
         'ServerException in getCurrentUser repository: ${e.message}',
-        error: e,
       );
       return Left(ServerFailure(e.message));
+    } on SocketException catch (e) {
+      AppLogger.warning('SocketException in getCurrentUser repository: $e');
+      return Left(NetworkFailure('No internet connection'));
     }
   }
 
+  @override
   Future<Either<Failure, bool>> restoreSession() async {
     try {
       final restored = await remoteDataSource.restoreSession();

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
+import 'package:vlone_blog_app/core/error/failures.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
@@ -84,11 +85,6 @@ final GoRouter appRouter = GoRouter(
           builder: (context, state) =>
               ProfilePage(userId: state.pathParameters['userId']!),
         ),
-        GoRoute(
-          path: Constants.profileRoute + '/:userId',
-          builder: (context, state) =>
-              ProfilePage(userId: state.pathParameters['userId']!),
-        ),
       ],
     ),
   ],
@@ -111,20 +107,30 @@ final GoRouter appRouter = GoRouter(
         state.uri.path == Constants.loginRoute ||
         state.uri.path == Constants.signupRoute;
 
+    // If no session and trying to access protected route, go to login
     if (!isLoggedIn && !isAuthRoute) {
-      AppLogger.warning('User not logged in, redirecting to login');
+      AppLogger.warning('No session found, redirecting to login');
       return Constants.loginRoute;
     }
 
+    // If has session and trying to access auth pages, redirect to feed
     if (isLoggedIn && isAuthRoute) {
-      AppLogger.info('User logged in, redirecting to feed');
+      AppLogger.info('User has session, checking profile access');
       try {
         final result = await sl<GetCurrentUserUseCase>()(NoParams());
         return result.fold(
           (failure) {
-            AppLogger.error(
-              'Failed to load current user for redirect: ${failure.message}',
-            );
+            // CRITICAL: Check if it's a network failure
+            if (failure is NetworkFailure) {
+              AppLogger.warning(
+                'Network error during redirect, but session exists. Allowing access to feed: ${failure.message}',
+              );
+              // User has valid session but no internet - let them access the app
+              return Constants.feedRoute;
+            }
+
+            // Actual auth failure - redirect to login
+            AppLogger.error('Auth failure during redirect: ${failure.message}');
             return Constants.loginRoute;
           },
           (user) {
@@ -138,6 +144,11 @@ final GoRouter appRouter = GoRouter(
           error: e,
           stackTrace: stackTrace,
         );
+        // If we have a session, let user proceed despite error
+        if (isLoggedIn) {
+          AppLogger.info('Session exists despite error, allowing access');
+          return Constants.feedRoute;
+        }
         return Constants.loginRoute;
       }
     }

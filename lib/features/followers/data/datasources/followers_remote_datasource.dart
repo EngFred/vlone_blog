@@ -2,7 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vlone_blog_app/core/error/exceptions.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/followers/data/models/follower_model.dart';
-import 'package:vlone_blog_app/features/profile/data/models/profile_model.dart';
+import 'package:vlone_blog_app/features/users/data/models/user_list_model.dart';
 
 class FollowersRemoteDataSource {
   final SupabaseClient client;
@@ -14,14 +14,11 @@ class FollowersRemoteDataSource {
     required String followingId,
     required bool isFollowing,
   }) async {
-    // This log will now be correct
     AppLogger.info(
       'Attempting to ${isFollowing ? 'follow' : 'unfollow'} user: $followingId by follower: $followerId',
     );
     try {
-      // V-- LOGIC IS NOW SWAPPED --V
       if (isFollowing) {
-        // isFollowing is TRUE, so we CREATE the follow
         AppLogger.info(
           'Creating follow relationship for follower: $followerId, following: $followingId',
         );
@@ -33,7 +30,6 @@ class FollowersRemoteDataSource {
         AppLogger.info('Follow relationship created successfully');
         return FollowerModel.fromMap(response);
       } else {
-        // isFollowing is FALSE, so we DELETE the follow
         AppLogger.info(
           'Deleting follow relationship for follower: $followerId, following: $followingId',
         );
@@ -42,14 +38,12 @@ class FollowersRemoteDataSource {
           'following_id': followingId,
         });
         AppLogger.info('Follow relationship deleted successfully');
-        // Return a dummy model since the row is gone
         return FollowerModel(
           id: '',
           followerId: followerId,
           followingId: followingId,
         );
       }
-      // ^-- LOGIC IS NOW SWAPPED --^
     } catch (e, stackTrace) {
       AppLogger.error(
         'Failed to ${isFollowing ? 'follow' : 'unfollow'} user: $followingId, error: $e',
@@ -60,24 +54,23 @@ class FollowersRemoteDataSource {
     }
   }
 
-  Future<List<ProfileModel>> getFollowers({
+  Future<List<UserListModel>> getFollowers({
     required String userId,
-    int page = 1,
-    int limit = 20,
+    String? currentUserId,
   }) async {
-    AppLogger.info(
-      'Fetching followers for user: $userId, page: $page, limit: $limit',
-    );
+    AppLogger.info('Fetching followers for user: $userId');
     try {
-      final from = (page - 1) * limit;
-      final to = from + limit - 1;
-      final response = await client
-          .from('followers')
-          .select('profiles!followers_follower_id_fkey(*)')
-          .eq('following_id', userId)
-          .range(from, to);
+      final response = await client.rpc(
+        'get_followers_with_follow_status',
+        params: {
+          'current_user_id_input': currentUserId,
+          'target_user_id': userId,
+        },
+      );
       final followers = response
-          .map((map) => ProfileModel.fromMap(map['profiles']))
+          .map<UserListModel>(
+            (map) => UserListModel.fromMap(map as Map<String, dynamic>),
+          )
           .toList();
       AppLogger.info('Fetched ${followers.length} followers for user: $userId');
       return followers;
@@ -91,30 +84,54 @@ class FollowersRemoteDataSource {
     }
   }
 
-  Future<List<ProfileModel>> getFollowing({
+  Future<List<UserListModel>> getFollowing({
     required String userId,
-    int page = 1,
-    int limit = 20,
+    String? currentUserId,
   }) async {
-    AppLogger.info(
-      'Fetching following for user: $userId, page: $page, limit: $limit',
-    );
+    AppLogger.info('Fetching following for user: $userId');
     try {
-      final from = (page - 1) * limit;
-      final to = from + limit - 1;
-      final response = await client
-          .from('followers')
-          .select('profiles!followers_following_id_fkey(*)')
-          .eq('follower_id', userId)
-          .range(from, to);
+      final response = await client.rpc(
+        'get_following_with_follow_status',
+        params: {
+          'current_user_id_input': currentUserId,
+          'target_user_id': userId,
+        },
+      );
       final following = response
-          .map((map) => ProfileModel.fromMap(map['profiles']))
+          .map<UserListModel>(
+            (map) => UserListModel.fromMap(map as Map<String, dynamic>),
+          )
           .toList();
       AppLogger.info('Fetched ${following.length} following for user: $userId');
       return following;
     } catch (e, stackTrace) {
       AppLogger.error(
         'Failed to fetch following for user: $userId, error: $e',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      throw ServerException(e.toString());
+    }
+  }
+
+  Future<bool> getFollowStatus({
+    required String followerId,
+    required String followingId,
+  }) async {
+    AppLogger.info(
+      'Checking follow status for follower: $followerId, following: $followingId',
+    );
+    try {
+      final response = await client.from('followers').select('id').match({
+        'follower_id': followerId,
+        'following_id': followingId,
+      }).maybeSingle();
+      final isFollowing = response != null;
+      AppLogger.info('Follow status: $isFollowing');
+      return isFollowing;
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Failed to check follow status, error: $e',
         error: e,
         stackTrace: stackTrace,
       );

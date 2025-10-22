@@ -1,22 +1,27 @@
 import 'package:dartz/dartz.dart';
 import 'package:vlone_blog_app/core/error/failures.dart';
 import 'package:vlone_blog_app/features/followers/domain/entities/follower_entity.dart';
-import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
+import 'package:vlone_blog_app/features/users/domain/entities/user_list_entity.dart';
 
 abstract class FollowersRepository {
   Future<Either<Failure, FollowerEntity>> followUser({
     required String followerId,
     required String followingId,
-    required bool isFollowing, // To toggle
+    required bool isFollowing,
   });
-  Future<Either<Failure, List<ProfileEntity>>> getFollowers({
+
+  Future<Either<Failure, List<UserListEntity>>> getFollowers({
     required String userId,
-    int page = 1,
-    int limit = 20,
+    String? currentUserId,
   });
-  Future<Either<Failure, List<ProfileEntity>>> getFollowing({
+
+  Future<Either<Failure, List<UserListEntity>>> getFollowing({
     required String userId,
-    int page = 1,
-    int limit = 20,
+    String? currentUserId,
+  });
+
+  Future<Either<Failure, bool>> getFollowStatus({
+    required String followerId,
+    required String followingId,
   });
 }

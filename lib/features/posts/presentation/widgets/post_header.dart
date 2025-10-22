@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 
 class PostHeader extends StatelessWidget {
@@ -25,7 +24,7 @@ class PostHeader extends StatelessWidget {
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
       subtitle: Text(post.formattedCreatedAt),
-      onTap: () => context.push('/profile/${post.userId}'),
+      // onTap: () => context.push('/profile/${post.userId}'), <-- Removed the navigation
     );
   }
 }

@@ -9,6 +9,7 @@ import 'package:vlone_blog_app/features/auth/domain/usecases/login_usecase.dart'
 import 'package:vlone_blog_app/features/auth/domain/usecases/logout_usecase.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/signup_usecase.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:vlone_blog_app/features/followers/domain/usecases/get_follow_status_usecase.dart';
 import 'package:vlone_blog_app/features/posts/data/datasources/posts_remote_datasource.dart';
 import 'package:vlone_blog_app/features/posts/data/repositories/posts_repository_impl.dart';
 import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
@@ -213,11 +214,16 @@ Future<void> init() async {
   sl.registerLazySingleton<GetFollowingUseCase>(
     () => GetFollowingUseCase(sl<FollowersRepository>()),
   );
+  //get follow status
+  sl.registerLazySingleton<GetFollowStatusUseCase>(
+    () => GetFollowStatusUseCase(sl<FollowersRepository>()),
+  );
   sl.registerFactory<FollowersBloc>(
     () => FollowersBloc(
       followUserUseCase: sl<FollowUserUseCase>(),
       getFollowersUseCase: sl<GetFollowersUseCase>(),
       getFollowingUseCase: sl<GetFollowingUseCase>(),
+      getFollowStatusUseCase: sl<GetFollowStatusUseCase>(),
     ),
   );
 
