@@ -44,6 +44,11 @@ import 'package:vlone_blog_app/features/followers/domain/usecases/follow_user_us
 import 'package:vlone_blog_app/features/followers/domain/usecases/get_followers_usecase.dart';
 import 'package:vlone_blog_app/features/followers/domain/usecases/get_following_usecase.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
+import 'package:vlone_blog_app/features/users/data/datasources/users_remote_datasource.dart';
+import 'package:vlone_blog_app/features/users/data/repository/users_repository_impl.dart';
+import 'package:vlone_blog_app/features/users/domain/repository/users_repository.dart';
+import 'package:vlone_blog_app/features/users/domain/usecases/get_all_users_usecase.dart';
+import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 
 final sl = GetIt.instance;
 
@@ -215,4 +220,12 @@ Future<void> init() async {
       getFollowingUseCase: sl<GetFollowingUseCase>(),
     ),
   );
+
+  //users
+  sl.registerLazySingleton<UsersRemoteDataSource>(
+    () => UsersRemoteDataSource(sl()),
+  );
+  sl.registerLazySingleton<UsersRepository>(() => UsersRepositoryImpl(sl()));
+  sl.registerLazySingleton(() => GetAllUsersUseCase(sl()));
+  sl.registerFactory(() => UsersBloc(getAllUsersUseCase: sl()));
 }

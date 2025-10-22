@@ -14,25 +14,14 @@ class FollowersRemoteDataSource {
     required String followingId,
     required bool isFollowing,
   }) async {
+    // This log will now be correct
     AppLogger.info(
-      'Attempting to ${isFollowing ? 'unfollow' : 'follow'} user: $followingId by follower: $followerId',
+      'Attempting to ${isFollowing ? 'follow' : 'unfollow'} user: $followingId by follower: $followerId',
     );
     try {
+      // V-- LOGIC IS NOW SWAPPED --V
       if (isFollowing) {
-        AppLogger.info(
-          'Deleting follow relationship for follower: $followerId, following: $followingId',
-        );
-        await client.from('followers').delete().match({
-          'follower_id': followerId,
-          'following_id': followingId,
-        });
-        AppLogger.info('Follow relationship deleted successfully');
-        return FollowerModel(
-          id: '',
-          followerId: followerId,
-          followingId: followingId,
-        );
-      } else {
+        // isFollowing is TRUE, so we CREATE the follow
         AppLogger.info(
           'Creating follow relationship for follower: $followerId, following: $followingId',
         );
@@ -43,10 +32,27 @@ class FollowersRemoteDataSource {
             .single();
         AppLogger.info('Follow relationship created successfully');
         return FollowerModel.fromMap(response);
+      } else {
+        // isFollowing is FALSE, so we DELETE the follow
+        AppLogger.info(
+          'Deleting follow relationship for follower: $followerId, following: $followingId',
+        );
+        await client.from('followers').delete().match({
+          'follower_id': followerId,
+          'following_id': followingId,
+        });
+        AppLogger.info('Follow relationship deleted successfully');
+        // Return a dummy model since the row is gone
+        return FollowerModel(
+          id: '',
+          followerId: followerId,
+          followingId: followingId,
+        );
       }
+      // ^-- LOGIC IS NOW SWAPPED --^
     } catch (e, stackTrace) {
       AppLogger.error(
-        'Failed to ${isFollowing ? 'unfollow' : 'follow'} user: $followingId, error: $e',
+        'Failed to ${isFollowing ? 'follow' : 'unfollow'} user: $followingId, error: $e',
         error: e,
         stackTrace: stackTrace,
       );

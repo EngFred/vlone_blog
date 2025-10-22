@@ -18,6 +18,7 @@ import 'package:vlone_blog_app/features/auth/presentation/pages/login_page.dart'
 import 'package:vlone_blog_app/features/auth/presentation/pages/signup_page.dart';
 import 'package:vlone_blog_app/features/followers/presentation/pages/followers_page.dart';
 import 'package:vlone_blog_app/features/followers/presentation/pages/following_page.dart';
+import 'package:vlone_blog_app/features/users/presentation/pages/users_page.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: Constants.loginRoute,
@@ -73,6 +74,15 @@ final GoRouter appRouter = GoRouter(
         GoRoute(
           path: Constants.reelsRoute,
           builder: (context, state) => const ReelsPage(),
+        ),
+        GoRoute(
+          path: Constants.usersRoute,
+          builder: (context, state) => const UsersPage(),
+        ),
+        GoRoute(
+          path: Constants.profileRoute + '/:userId',
+          builder: (context, state) =>
+              ProfilePage(userId: state.pathParameters['userId']!),
         ),
         GoRoute(
           path: Constants.profileRoute + '/:userId',

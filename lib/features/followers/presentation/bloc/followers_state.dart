@@ -28,13 +28,13 @@ class FollowingLoaded extends FollowersState {
 }
 
 class UserFollowed extends FollowersState {
-  final String userId;
+  final String followedUserId;
   final bool isFollowing;
 
-  UserFollowed(this.userId, this.isFollowing);
+  UserFollowed(this.followedUserId, this.isFollowing);
 
   @override
-  List<Object?> get props => [userId, isFollowing];
+  List<Object?> get props => [followedUserId, isFollowing];
 }
 
 class FollowersError extends FollowersState {

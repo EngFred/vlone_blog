@@ -69,6 +69,11 @@ class _PostMediaState extends State<PostMedia>
     }
   }
 
+  BoxFit _getBoxFit() {
+    // FIX: Use BoxFit.contain for centering without cropping (feeds/details), cover for reels (autoPlay)
+    return widget.autoPlay ? BoxFit.cover : BoxFit.contain;
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -82,6 +87,7 @@ class _PostMediaState extends State<PostMedia>
   }
 
   Widget _buildImage() {
+    final boxFit = _getBoxFit();
     if (widget.height != null) {
       // Full or fixed height mode (e.g., details or reels)
       return SizedBox(
@@ -89,7 +95,7 @@ class _PostMediaState extends State<PostMedia>
         width: double.infinity,
         child: CachedNetworkImage(
           imageUrl: widget.post.mediaUrl!,
-          fit: BoxFit.cover,
+          fit: boxFit,
           placeholder: (context, url) => SizedBox(
             height: widget.height,
             child: const Center(child: CircularProgressIndicator()),
@@ -105,7 +111,7 @@ class _PostMediaState extends State<PostMedia>
       // Auto height mode (natural aspect for feeds/profile/details)
       return CachedNetworkImage(
         imageUrl: widget.post.mediaUrl!,
-        fit: BoxFit.fitWidth,
+        fit: boxFit,
         width: double.infinity,
         placeholder: (context, url) => Container(
           width: double.infinity,
@@ -124,6 +130,7 @@ class _PostMediaState extends State<PostMedia>
 
   Widget _buildVideo() {
     final bool isFixedHeight = widget.height != null;
+    final boxFit = _getBoxFit();
     if (isFixedHeight) {
       // Fixed height mode (reels/details)
       return SizedBox(
@@ -177,7 +184,7 @@ class _PostMediaState extends State<PostMedia>
                 children: [
                   if (_initialized && _videoController != null)
                     FittedBox(
-                      fit: BoxFit.cover,
+                      fit: boxFit,
                       child: SizedBox(
                         width: _videoController!.value.size.width.toDouble(),
                         height: _videoController!.value.size.height.toDouble(),
@@ -190,7 +197,7 @@ class _PostMediaState extends State<PostMedia>
                       child: widget.post.thumbnailUrl != null
                           ? CachedNetworkImage(
                               imageUrl: widget.post.thumbnailUrl!,
-                              fit: BoxFit.cover,
+                              fit: boxFit,
                               width: double.infinity,
                               height: double.infinity,
                             )
@@ -266,7 +273,7 @@ class _PostMediaState extends State<PostMedia>
                 children: [
                   if (_initialized && _videoController != null)
                     FittedBox(
-                      fit: BoxFit.cover,
+                      fit: boxFit,
                       child: SizedBox(
                         width: _videoController!.value.size.width.toDouble(),
                         height: _videoController!.value.size.height.toDouble(),
@@ -279,7 +286,7 @@ class _PostMediaState extends State<PostMedia>
                       child: widget.post.thumbnailUrl != null
                           ? CachedNetworkImage(
                               imageUrl: widget.post.thumbnailUrl!,
-                              fit: BoxFit.cover,
+                              fit: boxFit,
                               width: double.infinity,
                               height: double.infinity,
                             )

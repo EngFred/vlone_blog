@@ -9,6 +9,7 @@ import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_us
 import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/reels_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
+import 'package:vlone_blog_app/features/users/presentation/pages/users_page.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -67,13 +68,15 @@ class _MainPageState extends State<MainPage> {
     _pages = [
       const FeedPage(key: PageStorageKey('feed_page')),
       const ReelsPage(key: PageStorageKey('reels_page')),
+      const UsersPage(key: PageStorageKey('users_page')),
       ProfilePage(key: const PageStorageKey('profile_page'), userId: _userId!),
     ];
     _initializedPages = true;
   }
 
   int _calculateSelectedIndexFromLocation(String location) {
-    if (location.startsWith(Constants.profileRoute)) return 2;
+    if (location.startsWith(Constants.profileRoute)) return 3;
+    if (location == Constants.usersRoute) return 2;
     if (location == Constants.reelsRoute) return 1;
     return 0;
   }
@@ -99,6 +102,9 @@ class _MainPageState extends State<MainPage> {
       AppLogger.info('Navigating to Reels');
       context.go(Constants.reelsRoute);
     } else if (index == 2) {
+      AppLogger.info('Navigating to Users');
+      context.go(Constants.usersRoute);
+    } else if (index == 3) {
       AppLogger.info('Navigating to Profile for user: $_userId');
       context.go('${Constants.profileRoute}/$_userId');
     }
@@ -127,6 +133,7 @@ class _MainPageState extends State<MainPage> {
             icon: Icon(Icons.video_library),
             label: 'Reels',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Users'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
         currentIndex: _selectedIndex,

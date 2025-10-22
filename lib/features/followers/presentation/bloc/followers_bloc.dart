@@ -29,7 +29,7 @@ class FollowersBloc extends Bloc<FollowersEvent, FollowersState> {
       );
       result.fold(
         (failure) => emit(FollowersError(failure.message)),
-        (follower) => emit(UserFollowed(event.followingId, !event.isFollowing)),
+        (follower) => emit(UserFollowed(event.followingId, event.isFollowing)),
       );
     });
 

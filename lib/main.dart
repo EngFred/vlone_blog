@@ -10,6 +10,7 @@ import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
+import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 import 'router.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -101,6 +102,7 @@ class MyApp extends StatelessWidget {
         BlocProvider<ProfileBloc>(create: (_) => di.sl<ProfileBloc>()),
         BlocProvider<CommentsBloc>(create: (_) => di.sl<CommentsBloc>()),
         BlocProvider<FollowersBloc>(create: (_) => di.sl<FollowersBloc>()),
+        BlocProvider<UsersBloc>(create: (_) => di.sl<UsersBloc>()),
       ],
       child: BlocListener<AuthBloc, AuthState>(
         listener: (context, state) {

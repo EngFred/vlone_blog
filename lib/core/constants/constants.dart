@@ -23,6 +23,7 @@ class Constants {
   static const String followingRoute = '/following';
   static const String createPostRoute = '/create-post';
   static const String postDetailsRoute = '/post';
+  static const String usersRoute = '/users';
 
   // Other
   static const int maxVideoDurationSeconds = 600; // 10 minutes
