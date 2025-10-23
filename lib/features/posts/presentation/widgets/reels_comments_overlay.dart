@@ -121,12 +121,13 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                     // Comments list (scrollable)
                     Expanded(
                       child: CommentsSection(
-                        commentsCount: widget.post.commentsCount,
+                        commentsCount: null,
+                        showCountHeader: false,
                         onReply: (comment) {
                           setState(() => _replyingTo = comment);
                           _focusNode.requestFocus();
                         },
-                        scrollable: true, // <-- important
+                        scrollable: true,
                       ),
                     ),
 

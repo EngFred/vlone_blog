@@ -6,22 +6,34 @@ class MediaPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 200,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: Colors.grey.shade200,
+          // Use a subtle, theme-aware container color
+          color: theme.colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade400, width: 2),
+          // Use the theme's outline color for the border
+          border: Border.all(color: theme.colorScheme.outline, width: 1.5),
         ),
-        child: const Column(
+        child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add_a_photo_outlined, size: 50, color: Colors.grey),
-            SizedBox(height: 8),
-            Text('Add photo or video', style: TextStyle(color: Colors.grey)),
+            // Use a theme-aware "onSurface" color for text/icons
+            Icon(
+              Icons.add_a_photo_outlined,
+              size: 50,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Add photo or video',
+              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+            ),
           ],
         ),
       ),

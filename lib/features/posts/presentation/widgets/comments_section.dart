@@ -8,53 +8,77 @@ import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc
 import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_tile.dart';
 
 class CommentsSection extends StatelessWidget {
-  final int commentsCount;
+  final int? commentsCount;
   final void Function(CommentEntity) onReply;
-
-  /// When true the section itself scrolls (useful for overlays/panels).
-  /// When false the section is non-scrolling and expects an outer scroll (details page).
   final bool scrollable;
+  final bool showCountHeader;
 
   const CommentsSection({
     super.key,
-    required this.commentsCount,
+    this.commentsCount,
     required this.onReply,
     this.scrollable = false,
+    this.showCountHeader = true,
   });
 
   Widget _buildHeader(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
+    final theme = Theme.of(context);
+
+    // Fallback text if count is null
+    final countText = commentsCount != null
+        ? 'Comments ($commentsCount)'
+        : 'Comments';
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: theme.dividerColor.withOpacity(0.5),
+            width: 0.5,
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
       child: Text(
-        'Comments ($commentsCount)',
-        style: Theme.of(context).textTheme.titleMedium,
+        countText,
+        style: theme.textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final headerWidget = showCountHeader
+        ? _buildHeader(context)
+        : const SizedBox.shrink();
+
     return BlocBuilder<CommentsBloc, CommentsState>(
       builder: (context, state) {
         // --- Loading / Error / Empty states handling
         if (state is CommentsInitial || state is CommentsLoading) {
           if (scrollable) {
-            // For scrollable panel, show a centered loading indicator inside ListView
             return ListView(
               padding: EdgeInsets.zero,
               children: [
-                _buildHeader(context),
-                const SizedBox(height: 20),
+                headerWidget,
+                const SizedBox(height: 40),
                 const Center(child: LoadingIndicator()),
+                const SizedBox(height: 40),
               ],
             );
           }
-          // Non-scrollable: keep layout consistent with the page scroll
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(context),
-              const Center(child: LoadingIndicator()),
+              headerWidget,
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: LoadingIndicator(),
+                ),
+              ),
             ],
           );
         }
@@ -63,9 +87,12 @@ class CommentsSection extends StatelessWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(context),
+              headerWidget,
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 24.0,
+                ),
                 child: CustomErrorWidget(message: state.message),
               ),
             ],
@@ -73,17 +100,22 @@ class CommentsSection extends StatelessWidget {
         }
 
         if (state is CommentsLoaded) {
-          final root = state.rootComments;
+          final commentList = state.rootComments;
 
-          if (root.isEmpty) {
+          if (commentList.isEmpty) {
+            final emptyWidget = const EmptyStateWidget(
+              icon: Icons.chat_bubble_outline,
+              message: 'Be the first to comment',
+            );
+
             if (scrollable) {
               return ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  _buildHeader(context),
-                  const EmptyStateWidget(
-                    icon: Icons.chat_bubble_outline,
-                    message: 'Be the first to comment',
+                  headerWidget, // Use the conditional widget
+                  Padding(
+                    padding: const EdgeInsets.only(top: 40.0),
+                    child: emptyWidget,
                   ),
                 ],
               );
@@ -91,42 +123,56 @@ class CommentsSection extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildHeader(context),
-                const EmptyStateWidget(
-                  icon: Icons.chat_bubble_outline,
-                  message: 'Be the first to comment',
+                headerWidget,
+                Padding(
+                  padding: const EdgeInsets.only(top: 40.0),
+                  child: emptyWidget,
                 ),
               ],
             );
           }
 
-          // ----- SCROLLABLE MODE: build a single ListView (header as first item)
+          // ----- SCROLLABLE MODE: build a single ListView
           if (scrollable) {
             return ListView.builder(
               padding: EdgeInsets.zero,
-              itemCount: root.length + 1, // header + items
+              // Adjust itemCount based on whether the header is shown
+              itemCount: commentList.length + (showCountHeader ? 1 : 0),
               itemBuilder: (context, index) {
-                if (index == 0) return _buildHeader(context);
-                final comment = root[index - 1];
-                return CommentTile(comment: comment, onReply: onReply);
+                // Adjust index check based on whether the header is the first item
+                if (showCountHeader && index == 0) return headerWidget;
+
+                final commentIndex = showCountHeader ? index - 1 : index;
+                final comment = commentList[commentIndex];
+
+                return CommentTile(
+                  key: ValueKey(comment.id),
+                  comment: comment,
+                  onReply: onReply,
+                  depth: 0,
+                );
               },
             );
           }
 
-          // ----- NON-SCROLLABLE MODE (used inside a page scroll): keep shrinkWrap list
+          // ----- NON-SCROLLABLE MODE
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(context),
-              ListView.separated(
+              headerWidget, // Use the conditional widget
+              ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 padding: EdgeInsets.zero,
-                itemCount: root.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemCount: commentList.length,
                 itemBuilder: (context, index) {
-                  final comment = root[index];
-                  return CommentTile(comment: comment, onReply: onReply);
+                  final comment = commentList[index];
+                  return CommentTile(
+                    key: ValueKey(comment.id),
+                    comment: comment,
+                    onReply: onReply,
+                    depth: 0,
+                  );
                 },
               ),
             ],

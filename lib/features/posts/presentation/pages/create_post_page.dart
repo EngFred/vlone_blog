@@ -73,6 +73,8 @@ class _CreatePostPageState extends State<CreatePostPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return BlocSelector<AuthBloc, AuthState, String?>(
       selector: (state) {
         if (state is AuthAuthenticated) {
@@ -91,33 +93,48 @@ class _CreatePostPageState extends State<CreatePostPage> {
           child: Scaffold(
             appBar: AppBar(
               title: const Text('Create Post'),
+              // ✨ UI/UX: Make AppBar cleaner, matching the body
+              scrolledUnderElevation: 0.0,
+              elevation: 0,
               actions: [
                 BlocBuilder<PostsBloc, PostsState>(
                   builder: (context, state) {
-                    if (state is PostsLoading) {
-                      return const Padding(
-                        padding: EdgeInsets.only(right: 16.0),
-                        child: Center(child: LoadingIndicator()),
-                      );
-                    }
-                    return TextButton(
-                      // Setting onPressed to null automatically disables the button
-                      onPressed: _isPostButtonEnabled
-                          ? () {
-                              context.read<PostsBloc>().add(
-                                CreatePostEvent(
-                                  userId: userId,
-                                  content:
-                                      _contentController.text.trim().isEmpty
-                                      ? null
-                                      : _contentController.text.trim(),
-                                  mediaFile: _mediaFile,
-                                  mediaType: _mediaType,
+                    final isLoading = state is PostsLoading;
+
+                    // ✨ UI/UX: Use a FilledButton for the primary action.
+                    // Put the loading indicator *inside* the button
+                    // to prevent layout shift and look more professional.
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 12.0),
+                      child: FilledButton(
+                        // Disable button if not valid OR if loading
+                        onPressed: _isPostButtonEnabled && !isLoading
+                            ? () {
+                                context.read<PostsBloc>().add(
+                                  CreatePostEvent(
+                                    userId: userId,
+                                    content:
+                                        _contentController.text.trim().isEmpty
+                                        ? null
+                                        : _contentController.text.trim(),
+                                    mediaFile: _mediaFile,
+                                    mediaType: _mediaType,
+                                  ),
+                                );
+                              }
+                            : null,
+                        child: isLoading
+                            // ✨ UI/UX: In-button loader
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: theme.colorScheme.onPrimary,
                                 ),
-                              );
-                            }
-                          : null,
-                      child: const Text('Post'),
+                              )
+                            : const Text('Post'),
+                      ),
                     );
                   },
                 ),
@@ -136,11 +153,22 @@ class _CreatePostPageState extends State<CreatePostPage> {
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     children: [
+                      // ✨ UI/UX: Updated TextField for a modern, filled look
                       TextField(
                         controller: _contentController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           hintText: "What's on your mind?",
-                          border: InputBorder.none, // Minimal design
+                          filled: true,
+                          fillColor: theme.colorScheme.secondaryContainer
+                              .withOpacity(0.2),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
                         ),
                         maxLines: 8, // Give more room for text
                         minLines: 3,

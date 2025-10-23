@@ -25,6 +25,10 @@ class MediaPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final buttonBackgroundColor = Theme.of(
+      context,
+    ).colorScheme.background.withOpacity(0.6);
+
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -51,19 +55,23 @@ class MediaPreview extends StatelessWidget {
           ),
         ),
         if (mediaType == 'video' && !isPlaying)
-          IconButton(
-            icon: const Icon(
-              Icons.play_circle_fill,
-              color: Colors.white,
-              size: 64.0,
+          GestureDetector(
+            onTap: onPlayPause,
+            child: CircleAvatar(
+              radius: 32,
+              backgroundColor: buttonBackgroundColor,
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                color: Colors.white,
+                size: 44.0,
+              ),
             ),
-            onPressed: onPlayPause,
           ),
         Positioned(
           top: 8,
           right: 8,
           child: CircleAvatar(
-            backgroundColor: Colors.black.withOpacity(0.5),
+            backgroundColor: buttonBackgroundColor,
             child: IconButton(
               icon: const Icon(Icons.close, color: Colors.white, size: 20),
               onPressed: onRemove,
@@ -74,7 +82,7 @@ class MediaPreview extends StatelessWidget {
           bottom: 8,
           right: 8,
           child: CircleAvatar(
-            backgroundColor: Colors.black.withOpacity(0.5),
+            backgroundColor: buttonBackgroundColor,
             child: IconButton(
               icon: const Icon(Icons.edit, color: Colors.white, size: 20),
               onPressed: onEdit,

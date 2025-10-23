@@ -1,6 +1,6 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/reels_comments_overlay.dart';
@@ -8,119 +8,133 @@ import 'package:vlone_blog_app/features/posts/presentation/widgets/reels_comment
 class ReelActions extends StatelessWidget {
   final PostEntity post;
   final String userId;
+
   const ReelActions({super.key, required this.post, required this.userId});
 
-  // Debounce helper to prevent rapid taps
-  static const Duration _debounceDuration = Duration(milliseconds: 300);
-  static final Map<String, Timer> _debounceTimers = {};
+  void _showCommentsOverlay(BuildContext context) {
+    AppLogger.info('Opening comments overlay for post: ${post.id}');
 
-  void _toggleLike(BuildContext context) {
-    final postId = post.id;
-    final actionKey = 'like_$postId';
-
-    // Cancel existing timer if any
-    _debounceTimers[actionKey]?.cancel();
-
-    // Set new timer to dispatch event
-    _debounceTimers[actionKey] = Timer(_debounceDuration, () {
-      final newLiked = !post.isLiked;
-      context.read<PostsBloc>().add(
-        LikePostEvent(postId: postId, userId: userId, isLiked: newLiked),
-      );
-      _debounceTimers.remove(actionKey);
-    });
-  }
-
-  void _toggleFavorite(BuildContext context) {
-    final postId = post.id;
-    final actionKey = 'favorite_$postId';
-
-    // Cancel existing timer if any
-    _debounceTimers[actionKey]?.cancel();
-
-    // Set new timer to dispatch event
-    _debounceTimers[actionKey] = Timer(_debounceDuration, () {
-      final newFav = !post.isFavorited;
-      context.read<PostsBloc>().add(
-        FavoritePostEvent(postId: postId, userId: userId, isFavorited: newFav),
-      );
-      _debounceTimers.remove(actionKey);
-    });
-  }
-
-  void _share(BuildContext context) {
-    final postId = post.id;
-    final actionKey = 'share_$postId';
-
-    // Cancel existing timer if any
-    _debounceTimers[actionKey]?.cancel();
-
-    // Set new timer to dispatch event
-    _debounceTimers[actionKey] = Timer(_debounceDuration, () {
-      context.read<PostsBloc>().add(SharePostEvent(postId: postId));
-      _debounceTimers.remove(actionKey);
-    });
-  }
-
-  void _handleComment(BuildContext context) {
-    showDialog(
+    // ✅ FIX: Use showModalBottomSheet instead of Navigator.push
+    // This prevents navigation state conflicts
+    showModalBottomSheet(
       context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.5),
-      builder: (ctx) => ReelsCommentsOverlay(post: post, userId: userId),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) {
+        // ✅ CRITICAL: Provide the BLoC from the parent context
+        return BlocProvider.value(
+          value: context.read<PostsBloc>(),
+          child: ReelsCommentsOverlay(post: post, userId: userId),
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // FIX: Remove BlocListener - no error toasts for actions
     return Column(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        _actionIcon(
-          icon: post.isLiked ? Icons.favorite : Icons.favorite_border,
-          label: post.likesCount.toString(),
-          onTap: () => _toggleLike(context),
+        // Like button
+        IconButton(
+          icon: Icon(
+            post.isLiked ? Icons.favorite : Icons.favorite_border,
+            color: post.isLiked ? Colors.red : Colors.white,
+            size: 32,
+          ),
+          onPressed: () {
+            context.read<PostsBloc>().add(
+              LikePostEvent(
+                postId: post.id,
+                userId: userId,
+                isLiked: !post.isLiked,
+              ),
+            );
+          },
         ),
-        _actionIcon(
-          icon: Icons.comment,
-          label: post.commentsCount.toString(),
-          onTap: () => _handleComment(context),
+        Text(
+          '${post.likesCount}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            shadows: [
+              Shadow(
+                color: Colors.black54,
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
         ),
-        _actionIcon(
-          icon: Icons.share,
-          label: post.sharesCount.toString(),
-          onTap: () => _share(context),
+        const SizedBox(height: 20),
+
+        // Comment button - FIXED
+        IconButton(
+          icon: const Icon(
+            Icons.chat_bubble_outline,
+            color: Colors.white,
+            size: 32,
+          ),
+          onPressed: () => _showCommentsOverlay(context),
         ),
-        _actionIcon(
-          icon: post.isFavorited ? Icons.bookmark : Icons.bookmark_border,
-          label: post.favoritesCount.toString(),
-          onTap: () => _toggleFavorite(context),
+        Text(
+          '${post.commentsCount}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            shadows: [
+              Shadow(
+                color: Colors.black54,
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Favorite button
+        IconButton(
+          icon: Icon(
+            post.isFavorited ? Icons.bookmark : Icons.bookmark_border,
+            color: post.isFavorited ? Colors.amber : Colors.white,
+            size: 32,
+          ),
+          onPressed: () {
+            context.read<PostsBloc>().add(
+              FavoritePostEvent(
+                postId: post.id,
+                userId: userId,
+                isFavorited: !post.isFavorited,
+              ),
+            );
+          },
+        ),
+        Text(
+          '${post.favoritesCount}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            shadows: [
+              Shadow(
+                color: Colors.black54,
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Share button
+        IconButton(
+          icon: const Icon(Icons.share, color: Colors.white, size: 32),
+          onPressed: () {
+            // Implement share functionality
+            AppLogger.info('Share button tapped for post: ${post.id}');
+          },
         ),
       ],
-    );
-  }
-
-  Widget _actionIcon({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Column(
-        children: [
-          IconButton(
-            icon: Icon(icon, color: Colors.white, size: 32),
-            onPressed: onTap,
-          ),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white, fontSize: 12),
-          ),
-        ],
-      ),
     );
   }
 }

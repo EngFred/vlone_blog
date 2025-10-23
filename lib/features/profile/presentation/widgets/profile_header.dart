@@ -21,82 +21,140 @@ class ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
+    // Determine if the follow button should be shown
+    final showFollowButton =
+        !isOwnProfile && isFollowing != null && onFollowToggle != null;
+
+    return Container(
+      padding: const EdgeInsets.only(top: 24.0, bottom: 16.0),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).colorScheme.shadow.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         children: [
-          Stack(
-            alignment: Alignment.bottomRight,
-            children: [
-              CircleAvatar(
-                radius: 50,
-                backgroundImage: profile.profileImageUrl != null
-                    ? CachedNetworkImageProvider(profile.profileImageUrl!)
-                    : null,
-                child: profile.profileImageUrl == null
-                    ? const Icon(Icons.person, size: 50)
-                    : null,
-              ),
-              if (!isOwnProfile &&
-                  isFollowing != null &&
-                  onFollowToggle != null)
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: GestureDetector(
-                    onTap: isProcessingFollow
-                        ? null
-                        : () => onFollowToggle!(!isFollowing!),
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        isFollowing! ? Icons.check : Icons.add,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
+          // 1. Avatar
+          CircleAvatar(
+            radius: 54,
+            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+            backgroundImage: profile.profileImageUrl != null
+                ? CachedNetworkImageProvider(profile.profileImageUrl!)
+                : null,
+            child: profile.profileImageUrl == null
+                ? Icon(
+                    Icons.person,
+                    size: 54,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  )
+                : null,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
+
+          // 2. Username and Email
           Text(
             profile.username,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
-          Text(profile.email, style: const TextStyle(color: Colors.grey)),
-          if (profile.bio != null) Text(profile.bio!),
+          Text(
+            profile.email,
+            style: TextStyle(
+              fontSize: 14,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // 3. Bio
+          if (profile.bio != null && profile.bio!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Text(
+                profile.bio!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+            ),
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildCountColumn(context, 'Posts', profile.postsCount, null),
-              _buildCountColumn(
-                context,
-                'Followers',
-                profile.followersCount,
-                '/followers/${profile.id}',
-              ),
-              _buildCountColumn(
-                context,
-                'Following',
-                profile.followingCount,
-                '/following/${profile.id}',
-              ),
-            ],
+
+          // 4. Stats
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildCountColumn(context, 'Posts', profile.postsCount, null),
+                const SizedBox(height: 40, child: VerticalDivider(width: 1)),
+                _buildCountColumn(
+                  context,
+                  'Followers',
+                  profile.followersCount,
+                  '/followers/${profile.id}',
+                ),
+                const SizedBox(height: 40, child: VerticalDivider(width: 1)),
+                _buildCountColumn(
+                  context,
+                  'Following',
+                  profile.followingCount,
+                  '/following/${profile.id}',
+                ),
+              ],
+            ),
           ),
+          const SizedBox(height: 16),
+
+          // 5. Follow/Unfollow Button (If not own profile)
+          if (showFollowButton)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: isProcessingFollow
+                      ? null
+                      : () => onFollowToggle!(!isFollowing!),
+                  icon: isProcessingFollow
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          isFollowing! ? Icons.person_remove : Icons.person_add,
+                        ),
+                  label: Text(
+                    isFollowing! ? 'Following' : 'Follow',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isFollowing!
+                        ? Theme.of(context).colorScheme.surfaceVariant
+                        : Theme.of(context).colorScheme.primary,
+                    foregroundColor: isFollowing!
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
+                        : Theme.of(context).colorScheme.onPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    elevation: isFollowing! ? 0 : 4,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -108,16 +166,33 @@ class ProfileHeader extends StatelessWidget {
     int count,
     String? route,
   ) {
-    return GestureDetector(
-      onTap: route != null ? () => context.push(route) : null,
-      child: Column(
-        children: [
-          Text(
-            count.toString(),
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    return Expanded(
+      child: InkWell(
+        onTap: route != null ? () => context.push(route) : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          child: Column(
+            children: [
+              Text(
+                count.toString(),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
-          Text(label),
-        ],
+        ),
       ),
     );
   }

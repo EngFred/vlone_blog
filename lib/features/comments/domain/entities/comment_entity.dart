@@ -10,6 +10,10 @@ class CommentEntity extends Equatable {
   final String? parentCommentId;
   final String? username;
   final String? avatarUrl;
+
+  // ✅ ADDED for flat thread display (Replying to @user)
+  final String? parentUsername;
+
   final List<CommentEntity> replies;
 
   const CommentEntity({
@@ -21,6 +25,8 @@ class CommentEntity extends Equatable {
     this.parentCommentId,
     this.username,
     this.avatarUrl,
+    // ✅ ADDED to constructor
+    this.parentUsername,
     this.replies = const [],
   });
 
@@ -35,6 +41,7 @@ class CommentEntity extends Equatable {
     String? parentCommentId,
     String? username,
     String? avatarUrl,
+    String? parentUsername,
     List<CommentEntity>? replies,
   }) {
     return CommentEntity(
@@ -46,6 +53,8 @@ class CommentEntity extends Equatable {
       parentCommentId: parentCommentId ?? this.parentCommentId,
       username: username ?? this.username,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      // ✅ ADDED to copyWith body
+      parentUsername: parentUsername ?? this.parentUsername,
       replies: replies ?? this.replies,
     );
   }
@@ -60,6 +69,7 @@ class CommentEntity extends Equatable {
     parentCommentId,
     username,
     avatarUrl,
+    parentUsername,
     replies,
   ];
 }

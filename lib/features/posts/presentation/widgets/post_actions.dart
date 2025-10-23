@@ -26,10 +26,8 @@ class PostActions extends StatelessWidget {
     final postId = post.id;
     final actionKey = 'like_$postId';
 
-    // Cancel existing timer if any
     _debounceTimers[actionKey]?.cancel();
 
-    // Set new timer to dispatch event
     _debounceTimers[actionKey] = Timer(_debounceDuration, () {
       final newLiked = !post.isLiked;
       context.read<PostsBloc>().add(
@@ -43,10 +41,8 @@ class PostActions extends StatelessWidget {
     final postId = post.id;
     final actionKey = 'favorite_$postId';
 
-    // Cancel existing timer if any
     _debounceTimers[actionKey]?.cancel();
 
-    // Set new timer to dispatch event
     _debounceTimers[actionKey] = Timer(_debounceDuration, () {
       final newFav = !post.isFavorited;
       context.read<PostsBloc>().add(
@@ -60,10 +56,8 @@ class PostActions extends StatelessWidget {
     final postId = post.id;
     final actionKey = 'share_$postId';
 
-    // Cancel existing timer if any
     _debounceTimers[actionKey]?.cancel();
 
-    // Set new timer to dispatch event
     _debounceTimers[actionKey] = Timer(_debounceDuration, () {
       context.read<PostsBloc>().add(SharePostEvent(postId: postId));
       _debounceTimers.remove(actionKey);
@@ -80,31 +74,51 @@ class PostActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIX: Remove BlocListener - no error toasts for actions
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0), // Use full padding
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        // Spread the main actions to the left and favorite to the right
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _actionButton(
-            icon: post.isLiked ? Icons.favorite : Icons.favorite_border,
-            label: post.likesCount.toString(),
-            onTap: () => _toggleLike(context),
+          Row(
+            children: [
+              // Like
+              _actionButton(
+                icon: post.isLiked ? Icons.favorite : Icons.favorite_border,
+                label: post.likesCount.toString(),
+                onTap: () => _toggleLike(context),
+                isPrimary: true,
+                isActive: post.isLiked,
+              ),
+              const SizedBox(width: 20),
+
+              // Comment
+              _actionButton(
+                icon: Icons
+                    .comment_outlined, // Switched to outlined for clean look
+                label: post.commentsCount.toString(),
+                onTap: () => _handleComment(context),
+                isPrimary: false,
+              ),
+              const SizedBox(width: 20),
+
+              // Share
+              _actionButton(
+                icon: Icons.share_outlined,
+                label: post.sharesCount.toString(),
+                onTap: () => _share(context),
+                isPrimary: false,
+              ),
+            ],
           ),
-          _actionButton(
-            icon: Icons.comment,
-            label: post.commentsCount.toString(),
-            onTap: () => _handleComment(context),
-          ),
-          _actionButton(
-            icon: Icons.share,
-            label: post.sharesCount.toString(),
-            onTap: () => _share(context),
-          ),
+
+          // Favorite/Bookmark (Pinned to the right)
           _actionButton(
             icon: post.isFavorited ? Icons.bookmark : Icons.bookmark_border,
             label: post.favoritesCount.toString(),
             onTap: () => _toggleFavorite(context),
+            isPrimary: false,
+            isActive: post.isFavorited,
           ),
         ],
       ),
@@ -115,12 +129,27 @@ class PostActions extends StatelessWidget {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
+    required bool isPrimary,
+    bool isActive = false,
   }) {
-    return Row(
-      children: [
-        IconButton(icon: Icon(icon), onPressed: onTap),
-        Text(label),
-      ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8.0),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 24),
+            // Only show label if the count is greater than 0 for a cleaner look
+            if (int.tryParse(label) != null && int.parse(label) > 0)
+              Padding(
+                padding: const EdgeInsets.only(left: 4.0),
+                child: Text(label),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

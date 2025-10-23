@@ -40,42 +40,120 @@ class _UserListItemState extends State<UserListItem> {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundImage: widget.user.profileImageUrl != null
-            ? NetworkImage(widget.user.profileImageUrl!)
-            : null,
-        child: widget.user.profileImageUrl == null
-            ? const Icon(Icons.person)
-            : null,
-      ),
-      title: Text(widget.user.username),
-      subtitle: Text(widget.user.bio ?? 'No bio'),
-      trailing: SizedBox(
-        width: 100,
-        child: ElevatedButton(
-          onPressed: widget.isLoading ? null : _handleFollowTap,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: widget.user.isFollowing ? Colors.grey : null,
-            foregroundColor: widget.user.isFollowing ? Colors.white : null,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+    final theme = Theme.of(context);
+    final isFollowing = widget.user.isFollowing;
+    final isSelf = widget.user.id == widget.currentUserId;
+
+    // Use InkWell/GestureDetector on a clean container for better control over visual feedback
+    return GestureDetector(
+      onTap: () => context.push('${Constants.profileRoute}/${widget.user.id}'),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        decoration: BoxDecoration(
+          // Subtle border for definition
+          border: Border(
+            bottom: BorderSide(
+              color: theme.dividerColor.withOpacity(0.3),
+              width: 0.5,
+            ),
           ),
-          child: widget.isLoading
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+        child: Row(
+          children: [
+            // 1. Avatar (Slightly larger for presence)
+            CircleAvatar(
+              radius: 24,
+              backgroundImage: widget.user.profileImageUrl != null
+                  ? NetworkImage(widget.user.profileImageUrl!)
+                  : null,
+              child: widget.user.profileImageUrl == null
+                  ? const Icon(Icons.person, size: 28)
+                  : null,
+            ),
+            const SizedBox(width: 12),
+
+            // 2. Title and Subtitle (Expanded to take available space)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    widget.user.username,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                )
-              : Text(
-                  widget.user.isFollowing ? 'Following' : 'Follow',
-                  style: const TextStyle(fontSize: 13),
+                  const SizedBox(height: 2),
+                  // Use a dimmed color for the bio for hierarchy
+                  Text(
+                    widget.user.bio ?? 'No bio available',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            // 3. Follow Button (Only shown if not self)
+            if (!isSelf)
+              SizedBox(
+                width: 90, // Fixed width for consistent alignment
+                height: 36, // Standard button height
+                child: ElevatedButton(
+                  onPressed: widget.isLoading ? null : _handleFollowTap,
+                  style: ElevatedButton.styleFrom(
+                    // ✅ Pill Shape, no elevation
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18.0),
+                      side: BorderSide(
+                        color: isFollowing
+                            ? theme.dividerColor
+                            : theme.colorScheme.primary,
+                        width: isFollowing ? 1.0 : 0.0,
+                      ),
+                    ),
+                    // ✅ Dynamic Colors
+                    backgroundColor: isFollowing
+                        ? theme.colorScheme.surface
+                        : theme.colorScheme.primary,
+                    foregroundColor: isFollowing
+                        ? theme.textTheme.bodyMedium?.color
+                        : theme.colorScheme.onPrimary,
+                    padding: const EdgeInsets.symmetric(horizontal: 0),
+                  ),
+                  child: widget.isLoading
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            // Use a color that contrasts with the button background
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              isFollowing
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onPrimary,
+                            ),
+                          ),
+                        )
+                      : Text(
+                          isFollowing ? 'Following' : 'Follow',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ),
+              ),
+          ],
         ),
       ),
-      onTap: () => context.push('${Constants.profileRoute}/${widget.user.id}'),
     );
   }
 }

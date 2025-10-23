@@ -78,7 +78,14 @@ class CommentsRepositoryImpl implements CommentsRepository {
     // Step 3: Recursively build the tree bottom-up
     CommentEntity _buildNode(CommentEntity node) {
       final children = childrenMap[node.id] ?? [];
-      final builtChildren = children.map(_buildNode).toList();
+      final builtChildren = children.map((child) {
+        // CRITICAL FIX: node is the parent, so we use node.username.
+        final childWithParentContext = child.copyWith(
+          parentUsername: node.username,
+        );
+        return _buildNode(childWithParentContext);
+      }).toList();
+
       return node.copyWith(replies: builtChildren);
     }
 

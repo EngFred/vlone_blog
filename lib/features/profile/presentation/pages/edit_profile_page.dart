@@ -5,7 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
-import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -43,6 +43,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   Future<void> _pickImage() async {
+    if (_isSubmitting) return; // Prevent picking while submitting
+
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
@@ -63,7 +65,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         ? null
         : _bioController.text.trim();
 
-    // Avoid sending unchanged values (optional)
+    // Check for actual changes
     final usernameChanged =
         _initialProfile == null || newUsername != _initialProfile!.username;
     final bioChanged =
@@ -71,9 +73,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final hasImage = _pickedImage != null;
 
     if (!usernameChanged && !bioChanged && !hasImage) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No changes to save')));
+      SnackbarUtils.showInfo(context, 'No changes detected.');
       return;
     }
 
@@ -89,34 +89,48 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
+  // Helper for consistent input styling
+  InputDecoration _getInputDecoration(String labelText, {String? hintText}) {
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.0)),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10.0),
+        borderSide: BorderSide(
+          color: Theme.of(context).colorScheme.primary,
+          width: 2.0,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Edit Profile')),
       body: BlocConsumer<ProfileBloc, ProfileState>(
         listener: (context, state) {
-          if (state is ProfileLoading) {
-            // show progress via local flag already set when submitting
-            AppLogger.info('ProfileBloc: loading');
-          } else if (state is ProfileError) {
+          if (state is ProfileError) {
             setState(() => _isSubmitting = false);
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(state.message)));
+            SnackbarUtils.showError(context, state.message);
           } else if (state is ProfileDataLoaded) {
-            // If we were submitting, this is the update success; pop and show success.
+            // Success handler logic
             if (_isSubmitting) {
               setState(() => _isSubmitting = false);
-              ScaffoldMessenger.of(
+              SnackbarUtils.showSuccess(
                 context,
-              ).showSnackBar(const SnackBar(content: Text('Profile updated')));
-              context.pop(); // return to profile screen
+                'Profile updated successfully!',
+              );
+              context.pop();
               return;
             }
-            // initial load: populate fields
-            _initialProfile ??= state.profile;
-            _usernameController.text = state.profile.username;
-            _bioController.text = state.profile.bio ?? '';
+            // Initial load logic
+            if (_initialProfile == null) {
+              _initialProfile = state.profile;
+              _usernameController.text = state.profile.username;
+              _bioController.text = state.profile.bio ?? '';
+            }
           }
         },
         builder: (context, state) {
@@ -126,47 +140,77 @@ class _EditProfilePageState extends State<EditProfilePage> {
           }
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(24.0),
             child: Column(
               children: [
-                // Avatar preview and pick
+                // Avatar preview and pick area
                 GestureDetector(
                   onTap: _pickImage,
-                  child: CircleAvatar(
-                    radius: 54,
-                    backgroundColor: Theme.of(
-                      context,
-                    ).colorScheme.surfaceVariant,
-                    backgroundImage: _pickedImage != null
-                        ? FileImage(File(_pickedImage!.path)) as ImageProvider
-                        : (_initialProfile?.profileImageUrl != null
-                              ? CachedNetworkImageProvider(
-                                  _initialProfile!.profileImageUrl!,
-                                )
-                              : null),
-                    child:
-                        _pickedImage == null &&
-                            (_initialProfile?.profileImageUrl == null)
-                        ? const Icon(Icons.person, size: 48)
-                        : null,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CircleAvatar(
+                        radius: 60,
+                        backgroundColor: Theme.of(
+                          context,
+                        ).colorScheme.surfaceVariant,
+                        backgroundImage: _pickedImage != null
+                            ? FileImage(File(_pickedImage!.path))
+                                  as ImageProvider
+                            : (_initialProfile?.profileImageUrl != null
+                                  ? CachedNetworkImageProvider(
+                                      _initialProfile!.profileImageUrl!,
+                                    )
+                                  : null),
+                        child:
+                            _pickedImage == null &&
+                                (_initialProfile?.profileImageUrl == null)
+                            ? Icon(
+                                Icons.person,
+                                size: 54,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              )
+                            : null,
+                      ),
+                      // Overlay to clearly indicate tap area
+                      Positioned.fill(
+                        child: CircleAvatar(
+                          radius: 60,
+                          backgroundColor: Colors.black54.withOpacity(
+                            _isSubmitting ? 0.6 : 0.0,
+                          ), // Darken on submission
+                          child: Icon(
+                            Icons.camera_alt,
+                            size: 32,
+                            color: Colors.white.withOpacity(0.9),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextButton.icon(
-                  onPressed: _pickImage,
-                  icon: const Icon(Icons.photo),
-                  label: const Text('Change profile photo'),
+                  onPressed: _isSubmitting ? null : _pickImage,
+                  icon: const Icon(Icons.photo_library),
+                  label: Text(
+                    _pickedImage != null
+                        ? 'Image Selected (Tap to Change)'
+                        : 'Change Profile Photo',
+                  ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
+
+                // Form Section
                 Form(
                   key: _formKey,
                   child: Column(
                     children: [
                       TextFormField(
                         controller: _usernameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Username',
-                        ),
+                        decoration: _getInputDecoration('Username'),
                         maxLength: 30,
                         validator: (v) {
                           if (v == null || v.trim().isEmpty)
@@ -175,30 +219,41 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           return null;
                         },
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       TextFormField(
                         controller: _bioController,
-                        decoration: const InputDecoration(
-                          labelText: 'Bio',
-                          hintText: 'Tell people about yourself',
+                        decoration: _getInputDecoration(
+                          'Bio',
+                          hintText: 'Tell people about yourself (optional)',
                         ),
                         maxLines: 4,
                         maxLength: 160,
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 32),
                       SizedBox(
                         width: double.infinity,
+                        height: 50,
                         child: ElevatedButton(
                           onPressed: _isSubmitting ? null : _submit,
+                          style: ElevatedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 4,
+                          ),
                           child: _isSubmitting
                               ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
+                                  height: 24,
+                                  width: 24,
                                   child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                                    strokeWidth: 3,
+                                    color: Colors.white,
                                   ),
                                 )
-                              : const Text('Save'),
+                              : const Text(
+                                  'Save Changes',
+                                  style: TextStyle(fontSize: 18),
+                                ),
                         ),
                       ),
                     ],

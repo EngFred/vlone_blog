@@ -19,104 +19,184 @@ class CommentTile extends StatefulWidget {
   State<CommentTile> createState() => _CommentTileState();
 }
 
-class _CommentTileState extends State<CommentTile>
-    with TickerProviderStateMixin {
-  // default collapsed so replies are not built eagerly
-  bool _isExpanded = false;
+class _CommentTileState extends State<CommentTile> {
+  bool _isRepliesExpanded = false;
+
+  List<CommentEntity> _flattenReplies(List<CommentEntity> replies) {
+    final List<CommentEntity> flatList = [];
+
+    void _addRecursively(CommentEntity comment) {
+      flatList.add(comment);
+      for (final reply in comment.replies) {
+        _addRecursively(reply);
+      }
+    }
+
+    for (final reply in replies) {
+      _addRecursively(reply);
+    }
+    return flatList;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final avatarRadius = (20 - (widget.depth * 2.0)).clamp(12.0, 20.0);
+    final theme = Theme.of(context);
+    final comment = widget.comment;
+    final hasReplies = comment.replies.isNotEmpty;
+    final replyCount = comment.replies.length;
+    final replyText = replyCount == 1 ? 'reply' : 'replies';
 
-    return Padding(
-      padding: EdgeInsets.only(left: widget.depth * 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 4,
-            ),
-            leading: CircleAvatar(
-              radius: avatarRadius,
-              backgroundImage: widget.comment.avatarUrl != null
-                  ? CachedNetworkImageProvider(widget.comment.avatarUrl!)
-                  : null,
-              child: widget.comment.avatarUrl == null
-                  ? const Icon(Icons.person)
-                  : null,
-            ),
-            title: Text(
-              widget.comment.username ?? 'Anonymous',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(widget.comment.text),
-                const SizedBox(height: 4),
-                Row(
+    const avatarRadius = 20.0;
+
+    final horizontalPadding = widget.depth == 0 ? 16.0 : 40.0;
+
+    final flatReplies = _flattenReplies(comment.replies);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(horizontalPadding, 8.0, 16.0, 8.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Avatar
+              CircleAvatar(
+                radius: avatarRadius,
+                backgroundImage: comment.avatarUrl != null
+                    ? CachedNetworkImageProvider(comment.avatarUrl!)
+                    : null,
+                child: comment.avatarUrl == null
+                    ? const Icon(Icons.person)
+                    : null,
+              ),
+              const SizedBox(width: 10),
+
+              // Comment Content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      timeago.format(
-                        widget.comment.createdAt,
-                        locale: 'en_short',
-                      ),
-                      style: Theme.of(context).textTheme.bodySmall,
+                    // Header Row (Username and Time)
+                    Row(
+                      children: [
+                        Text(
+                          comment.username ?? 'Anonymous',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '• ${timeago.format(comment.createdAt, locale: 'en_short')}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    GestureDetector(
-                      onTap: () => widget.onReply(widget.comment),
-                      child: Text(
-                        'Reply',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.bold,
+                    const SizedBox(height: 4),
+
+                    // Textual Reply Context (Replying to @parentUser)
+                    if (comment.parentUsername != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4.0),
+                        child: Text.rich(
+                          TextSpan(
+                            text: 'Replying to ',
+                            style: theme.textTheme.bodySmall,
+                            children: [
+                              TextSpan(
+                                text: '@${comment.parentUsername}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    if (widget.comment.replies.isNotEmpty)
-                      GestureDetector(
-                        onTap: () => setState(() => _isExpanded = !_isExpanded),
-                        child: Text(
-                          _isExpanded
-                              ? 'Hide ${widget.comment.replies.length} replies'
-                              : 'View ${widget.comment.replies.length} replies',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(fontWeight: FontWeight.w600),
+
+                    // Comment Text
+                    Text(comment.text, style: theme.textTheme.bodyMedium),
+                    const SizedBox(height: 8),
+
+                    // Actions Row
+                    Row(
+                      children: [
+                        // Reply button
+                        GestureDetector(
+                          onTap: () => widget.onReply(comment),
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 16.0),
+                            child: Text(
+                              'Reply',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+
+                        // "View Replies" button
+                        if (hasReplies && widget.depth < 1)
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _isRepliesExpanded = !_isRepliesExpanded;
+                              });
+                            },
+                            child: Text(
+                              // ✅ FIX: Use dynamic replyText for pluralization
+                              _isRepliesExpanded
+                                  ? 'Hide $replyCount $replyText'
+                                  : 'View $replyCount $replyText',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.onSurface.withOpacity(
+                                  0.6,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
+          ),
+        ),
+
+        // Optional Separator for root comments
+        if (widget.depth == 0)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.0),
+            child: Divider(height: 1, indent: 50),
           ),
 
-          // Replies (animated & built only when expanded)
-          if (widget.comment.replies.isNotEmpty)
-            AnimatedSize(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              child: _isExpanded
-                  ? Padding(
-                      padding: const EdgeInsets.only(left: 55.0),
-                      child: Column(
-                        children: widget.comment.replies
-                            .map(
-                              (reply) => CommentTile(
-                                comment: reply,
-                                onReply: widget.onReply,
-                                depth: widget.depth + 1,
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-        ],
-      ),
+        // Expanded Replies Section (Hybrid)
+        if (hasReplies && widget.depth < 1)
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            child: !_isRepliesExpanded
+                ? const SizedBox.shrink()
+                : Column(
+                    children: flatReplies.map((reply) {
+                      // All replies inside the expansion are rendered with depth 1.
+                      return CommentTile(
+                        key: ValueKey(reply.id),
+                        comment: reply,
+                        onReply: widget.onReply,
+                        depth: 1, // Enforce single indent
+                      );
+                    }).toList(),
+                  ),
+          ),
+      ],
     );
   }
 }

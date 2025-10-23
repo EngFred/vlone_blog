@@ -29,7 +29,7 @@ class PostDetailsContent extends StatelessWidget {
               child: Text(post.content!),
             ),
           if (post.mediaUrl != null)
-            PostMedia(post: post, height: detailsMediaHeight, autoPlay: false),
+            PostMedia(post: post, height: detailsMediaHeight),
           PostActions(post: post, userId: userId, onCommentTap: onCommentTap),
           const Divider(),
         ],

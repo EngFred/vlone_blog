@@ -44,14 +44,11 @@ class _MainPageState extends State<MainPage> {
       final result = await sl<GetCurrentUserUseCase>()(NoParams());
       result.fold(
         (failure) {
-          // CRITICAL: Distinguish between network and auth failures
           if (failure is NetworkFailure) {
             AppLogger.warning(
               'Network error loading user, but will proceed with cached data: ${failure.message}',
             );
-            // Still remove splash and let pages handle offline state
             FlutterNativeSplash.remove();
-            // Try to get userId from session
             final supabase = sl<SupabaseClient>();
             final sessionUserId = supabase.auth.currentUser?.id;
             if (sessionUserId != null && mounted) {
@@ -64,11 +61,9 @@ class _MainPageState extends State<MainPage> {
                 }
               });
             } else {
-              // No session at all, go to login
               if (context.mounted) context.go(Constants.loginRoute);
             }
           } else {
-            // Real auth failure
             AppLogger.error('Failed to load current user: ${failure.message}');
             FlutterNativeSplash.remove();
             if (context.mounted) context.go(Constants.loginRoute);
@@ -158,8 +153,29 @@ class _MainPageState extends State<MainPage> {
       return;
     }
     if (!_initializedPages) _initPagesIfNeeded();
+
+    // ✅ FIX: Use GoRouter navigation to update URL and preserve state
     if (index != _selectedIndex && mounted) {
-      setState(() => _selectedIndex = index);
+      String route;
+      switch (index) {
+        case 0:
+          route = Constants.feedRoute;
+          break;
+        case 1:
+          route = Constants.reelsRoute;
+          break;
+        case 2:
+          route = Constants.usersRoute;
+          break;
+        case 3:
+          route = '${Constants.profileRoute}/$_userId';
+          break;
+        default:
+          route = Constants.feedRoute;
+      }
+
+      // Navigate using GoRouter which will trigger _syncSelectedIndexWithLocation
+      context.go(route);
       _dispatchLoadForIndex(index);
     }
   }

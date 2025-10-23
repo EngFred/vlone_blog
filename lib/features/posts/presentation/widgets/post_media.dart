@@ -10,11 +10,18 @@ class PostMedia extends StatefulWidget {
   final PostEntity post;
   final double? height;
   final bool autoPlay;
+  final bool isReelMode; // ✅ NEW: Indicates if in reels page
+  final bool isCurrentReel; // ✅ NEW: Is this the active reel?
+  final bool shouldPreload; // ✅ NEW: Should preload this video?
+
   const PostMedia({
     super.key,
     required this.post,
     this.height,
     this.autoPlay = false,
+    this.isReelMode = false,
+    this.isCurrentReel = false,
+    this.shouldPreload = false,
   });
 
   @override
@@ -31,9 +38,41 @@ class _PostMediaState extends State<PostMedia>
   @override
   bool get wantKeepAlive => true;
 
+  @override
+  void initState() {
+    super.initState();
+    // ✅ Aggressive initialization for reels
+    if (widget.post.mediaType == 'video' &&
+        (widget.isReelMode && widget.shouldPreload)) {
+      _ensureControllerInitialized();
+    }
+  }
+
+  @override
+  void didUpdateWidget(PostMedia oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // ✅ Handle reel page changes
+    if (widget.isReelMode && widget.post.mediaType == 'video') {
+      if (widget.isCurrentReel && !oldWidget.isCurrentReel) {
+        // This reel became active - play it
+        _handleReelBecameActive();
+      } else if (!widget.isCurrentReel && oldWidget.isCurrentReel) {
+        // This reel became inactive - pause it
+        _handleReelBecameInactive();
+      }
+
+      // Handle preloading
+      if (widget.shouldPreload && !_initialized) {
+        _ensureControllerInitialized();
+      }
+    }
+  }
+
   Future<void> _ensureControllerInitialized() async {
     if (_isDisposed || !mounted) return;
     if (_videoController != null && _initialized) return;
+
     try {
       final controller = await _videoManager.getController(
         widget.post.id,
@@ -48,29 +87,58 @@ class _PostMediaState extends State<PostMedia>
           _videoController = controller;
           _initialized = true;
         });
+
+        // ✅ Auto-play if this is the current reel
+        if (widget.isReelMode && widget.isCurrentReel) {
+          _playVideo();
+        }
       }
     } catch (e) {
       // Ignore; fallback to thumbnail
     }
   }
 
+  // ✅ NEW: Handle when reel becomes active
+  void _handleReelBecameActive() {
+    if (!_initialized) {
+      _ensureControllerInitialized();
+    } else {
+      _playVideo();
+    }
+  }
+
+  // ✅ NEW: Handle when reel becomes inactive
+  void _handleReelBecameInactive() {
+    if (_videoController != null && _initialized) {
+      VideoPlaybackManager.pause();
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _playVideo() {
+    if (_isDisposed || !mounted) return;
+    if (_videoController == null || !_initialized) return;
+
+    VideoPlaybackManager.play(_videoController!, () {
+      if (mounted && !_isDisposed) setState(() {});
+    });
+    if (mounted) setState(() {});
+  }
+
   void _togglePlayPause() {
     if (_isDisposed || !mounted) return;
     if (_videoController == null || !_initialized) return;
+
     final isPlaying = VideoPlaybackManager.isPlaying(_videoController!);
     if (isPlaying) {
       VideoPlaybackManager.pause();
       if (mounted) setState(() {});
     } else {
-      VideoPlaybackManager.play(_videoController!, () {
-        if (mounted && !_isDisposed) setState(() {});
-      });
-      if (mounted) setState(() {});
+      _playVideo();
     }
   }
 
   BoxFit _getBoxFit() {
-    // FIX: Use BoxFit.contain for centering without cropping (feeds/details), cover for reels (autoPlay)
     return widget.autoPlay ? BoxFit.cover : BoxFit.contain;
   }
 
@@ -80,7 +148,7 @@ class _PostMediaState extends State<PostMedia>
     if (widget.post.mediaType == 'image') {
       return _buildImage();
     } else if (widget.post.mediaType == 'video') {
-      return _buildVideo();
+      return widget.isReelMode ? _buildReelVideo() : _buildVideo();
     } else {
       return const SizedBox.shrink();
     }
@@ -89,7 +157,6 @@ class _PostMediaState extends State<PostMedia>
   Widget _buildImage() {
     final boxFit = _getBoxFit();
     if (widget.height != null) {
-      // Full or fixed height mode (e.g., details or reels)
       return SizedBox(
         height: widget.height,
         width: double.infinity,
@@ -108,14 +175,13 @@ class _PostMediaState extends State<PostMedia>
         ),
       );
     } else {
-      // Auto height mode (natural aspect for feeds/profile/details)
       return CachedNetworkImage(
         imageUrl: widget.post.mediaUrl!,
         fit: boxFit,
         width: double.infinity,
         placeholder: (context, url) => Container(
           width: double.infinity,
-          height: 400, // Estimated height for placeholder
+          height: 400,
           child: const Center(child: CircularProgressIndicator()),
         ),
         errorWidget: (context, url, error) => Container(
@@ -128,11 +194,63 @@ class _PostMediaState extends State<PostMedia>
     }
   }
 
+  // ✅ NEW: Specialized reel video builder (no VisibilityDetector)
+  Widget _buildReelVideo() {
+    final boxFit = _getBoxFit();
+
+    return SizedBox(
+      height: widget.height ?? double.infinity,
+      width: double.infinity,
+      child: GestureDetector(
+        onTap: _initialized ? _togglePlayPause : null,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (_initialized && _videoController != null)
+              FittedBox(
+                fit: boxFit,
+                child: SizedBox(
+                  width: _videoController!.value.size.width.toDouble(),
+                  height: _videoController!.value.size.height.toDouble(),
+                  child: VideoPlayer(_videoController!),
+                ),
+              )
+            else
+              Container(
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                child: widget.post.thumbnailUrl != null
+                    ? CachedNetworkImage(
+                        imageUrl: widget.post.thumbnailUrl!,
+                        fit: boxFit,
+                        width: double.infinity,
+                        height: double.infinity,
+                      )
+                    : const Center(child: CircularProgressIndicator()),
+              ),
+
+            // ✅ Show play icon only when paused (not during loading)
+            if (_initialized &&
+                _videoController != null &&
+                !VideoPlaybackManager.isPlaying(_videoController!))
+              const Center(
+                child: Icon(
+                  Icons.play_circle_fill,
+                  size: 64.0,
+                  color: Colors.white,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Existing _buildVideo for feeds/profile (with VisibilityDetector)
   Widget _buildVideo() {
     final bool isFixedHeight = widget.height != null;
     final boxFit = _getBoxFit();
+
     if (isFixedHeight) {
-      // Fixed height mode (reels/details)
       return SizedBox(
         height: widget.height,
         width: double.infinity,
@@ -142,9 +260,11 @@ class _PostMediaState extends State<PostMedia>
             if (_isDisposed || !mounted) return;
             final visiblePct = info.visibleFraction;
             final controller = _videoController;
+
             if (visiblePct > 0.4 && !_initialized) {
               _ensureControllerInitialized();
             }
+
             if (controller != null &&
                 !_isDisposed &&
                 mounted &&
@@ -153,6 +273,7 @@ class _PostMediaState extends State<PostMedia>
               VideoPlaybackManager.pause();
               if (mounted) setState(() {});
             }
+
             if (widget.autoPlay) {
               if (visiblePct > 0.5) {
                 if (!_initialized) {
@@ -177,63 +298,58 @@ class _PostMediaState extends State<PostMedia>
           },
           child: GestureDetector(
             onTap: _initialized ? _togglePlayPause : null,
-            child: ClipRRect(
-              borderRadius: BorderRadius.zero,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (_initialized && _videoController != null)
-                    FittedBox(
-                      fit: boxFit,
-                      child: SizedBox(
-                        width: _videoController!.value.size.width.toDouble(),
-                        height: _videoController!.value.size.height.toDouble(),
-                        child: VideoPlayer(_videoController!),
-                      ),
-                    )
-                  else
-                    Container(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
-                      child: widget.post.thumbnailUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: widget.post.thumbnailUrl!,
-                              fit: boxFit,
-                              width: double.infinity,
-                              height: double.infinity,
-                            )
-                          : const Center(
-                              child: Icon(Icons.play_circle_outline),
-                            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (_initialized && _videoController != null)
+                  FittedBox(
+                    fit: boxFit,
+                    child: SizedBox(
+                      width: _videoController!.value.size.width.toDouble(),
+                      height: _videoController!.value.size.height.toDouble(),
+                      child: VideoPlayer(_videoController!),
                     ),
-                  if (!_initialized ||
-                      !VideoPlaybackManager.isPlaying(_videoController!))
-                    const Center(
-                      child: Icon(
-                        Icons.play_circle_fill,
-                        size: 64.0,
-                        color: Colors.white,
-                      ),
+                  )
+                else
+                  Container(
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    child: widget.post.thumbnailUrl != null
+                        ? CachedNetworkImage(
+                            imageUrl: widget.post.thumbnailUrl!,
+                            fit: boxFit,
+                            width: double.infinity,
+                            height: double.infinity,
+                          )
+                        : const Center(child: Icon(Icons.play_circle_outline)),
+                  ),
+                if (!_initialized ||
+                    !VideoPlaybackManager.isPlaying(_videoController!))
+                  const Center(
+                    child: Icon(
+                      Icons.play_circle_fill,
+                      size: 64.0,
+                      color: Colors.white,
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
         ),
       );
     } else {
-      // Constrained mode (feeds/profile - fixed aspect ratio)
       return AspectRatio(
-        aspectRatio:
-            1.0, // Square default; adjust as needed (e.g., 4/5 = 0.8 for portrait)
+        aspectRatio: 1.0,
         child: VisibilityDetector(
           key: Key('post_media_${widget.post.id}'),
           onVisibilityChanged: (info) {
             if (_isDisposed || !mounted) return;
             final visiblePct = info.visibleFraction;
             final controller = _videoController;
+
             if (visiblePct > 0.4 && !_initialized) {
               _ensureControllerInitialized();
             }
+
             if (controller != null &&
                 !_isDisposed &&
                 mounted &&
@@ -242,6 +358,7 @@ class _PostMediaState extends State<PostMedia>
               VideoPlaybackManager.pause();
               if (mounted) setState(() {});
             }
+
             if (widget.autoPlay) {
               if (visiblePct > 0.5) {
                 if (!_initialized) {
@@ -266,45 +383,40 @@ class _PostMediaState extends State<PostMedia>
           },
           child: GestureDetector(
             onTap: _initialized ? _togglePlayPause : null,
-            child: ClipRRect(
-              borderRadius: BorderRadius.zero,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (_initialized && _videoController != null)
-                    FittedBox(
-                      fit: boxFit,
-                      child: SizedBox(
-                        width: _videoController!.value.size.width.toDouble(),
-                        height: _videoController!.value.size.height.toDouble(),
-                        child: VideoPlayer(_videoController!),
-                      ),
-                    )
-                  else
-                    Container(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
-                      child: widget.post.thumbnailUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: widget.post.thumbnailUrl!,
-                              fit: boxFit,
-                              width: double.infinity,
-                              height: double.infinity,
-                            )
-                          : const Center(
-                              child: Icon(Icons.play_circle_outline),
-                            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (_initialized && _videoController != null)
+                  FittedBox(
+                    fit: boxFit,
+                    child: SizedBox(
+                      width: _videoController!.value.size.width.toDouble(),
+                      height: _videoController!.value.size.height.toDouble(),
+                      child: VideoPlayer(_videoController!),
                     ),
-                  if (!_initialized ||
-                      !VideoPlaybackManager.isPlaying(_videoController!))
-                    const Center(
-                      child: Icon(
-                        Icons.play_circle_fill,
-                        size: 64.0,
-                        color: Colors.white,
-                      ),
+                  )
+                else
+                  Container(
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    child: widget.post.thumbnailUrl != null
+                        ? CachedNetworkImage(
+                            imageUrl: widget.post.thumbnailUrl!,
+                            fit: boxFit,
+                            width: double.infinity,
+                            height: double.infinity,
+                          )
+                        : const Center(child: Icon(Icons.play_circle_outline)),
+                  ),
+                if (!_initialized ||
+                    !VideoPlaybackManager.isPlaying(_videoController!))
+                  const Center(
+                    child: Icon(
+                      Icons.play_circle_fill,
+                      size: 64.0,
+                      color: Colors.white,
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -319,7 +431,6 @@ class _PostMediaState extends State<PostMedia>
     _videoController = null;
     if (controller != null) {
       if (VideoPlaybackManager.isPlaying(controller)) {
-        // Pause without invoking other widget callbacks while we are disposing
         VideoPlaybackManager.pause(invokeCallback: false);
       }
       _videoManager.releaseController(widget.post.id);
