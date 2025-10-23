@@ -1,185 +1,248 @@
-// import 'package:flutter/material.dart';
-// import 'package:video_player/video_player.dart';
-// import 'package:cached_network_image/cached_network_image.dart';
-// import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-// import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
+import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
+import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
+import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
 
-// class ReelVideoPlayer extends StatefulWidget {
-//   final PostEntity post;
-//   final bool shouldPlay;
-//   final VoidCallback? onVideoInitialized;
+/// Dedicated video player for reels with proper lifecycle management
+/// Handles immediate autoplay and smooth preloading
+class ReelVideoPlayer extends StatefulWidget {
+  final PostEntity post;
+  final bool isActive;
+  final bool shouldPreload;
 
-//   const ReelVideoPlayer({
-//     super.key,
-//     required this.post,
-//     required this.shouldPlay,
-//     this.onVideoInitialized,
-//   });
+  const ReelVideoPlayer({
+    super.key,
+    required this.post,
+    required this.isActive,
+    this.shouldPreload = false,
+  });
 
-//   @override
-//   State<ReelVideoPlayer> createState() => _ReelVideoPlayerState();
-// }
+  @override
+  State<ReelVideoPlayer> createState() => _ReelVideoPlayerState();
+}
 
-// class _ReelVideoPlayerState extends State<ReelVideoPlayer> {
-//   VideoPlayerController? _videoController;
-//   bool _initialized = false;
-//   bool _isPlaying = false;
-//   bool _isDisposed = false;
-//   final VideoControllerManager _videoManager = VideoControllerManager();
+class _ReelVideoPlayerState extends State<ReelVideoPlayer>
+    with AutomaticKeepAliveClientMixin {
+  VideoPlayerController? _videoController;
+  bool _initialized = false;
+  bool _isDisposed = false;
+  bool _isInitializing = false; //Prevent double initialization
+  final VideoControllerManager _videoManager = VideoControllerManager();
 
-//   @override
-//   void initState() {
-//     super.initState();
-//     _initializeVideo();
-//   }
+  @override
+  bool get wantKeepAlive => true;
 
-//   Future<void> _initializeVideo() async {
-//     if (_isDisposed || widget.post.mediaUrl == null) return;
+  @override
+  void initState() {
+    super.initState();
+    //Only initialize if active or should preload, but don't auto-play yet
+    if (widget.isActive || widget.shouldPreload) {
+      _initializeIfNeeded();
+    }
+  }
 
-//     try {
-//       final controller = await _videoManager.getController(
-//         widget.post.id,
-//         widget.post.mediaUrl!,
-//       );
+  @override
+  void didUpdateWidget(ReelVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
 
-//       if (_isDisposed || !mounted) {
-//         _videoManager.releaseController(widget.post.id);
-//         return;
-//       }
+    // Handle active state changes
+    if (widget.isActive != oldWidget.isActive) {
+      if (widget.isActive) {
+        // Initialize first if needed, then play
+        if (!_initialized && !_isInitializing) {
+          _initializeIfNeeded().then((_) {
+            if (mounted && widget.isActive) {
+              _playVideo();
+            }
+          });
+        } else if (_initialized) {
+          _playVideo();
+        }
+      } else {
+        _pauseVideo();
+      }
+    }
 
-//       setState(() {
-//         _videoController = controller;
-//         _initialized = true;
-//       });
+    // Handle preload changes
+    if (widget.shouldPreload != oldWidget.shouldPreload) {
+      if (widget.shouldPreload && !_initialized && !_isInitializing) {
+        _initializeIfNeeded();
+      }
+    }
+  }
 
-//       // Set looping for reels
-//       controller.setLooping(true);
+  Future<void> _initializeIfNeeded() async {
+    if (_isDisposed || !mounted) return;
+    if (_initialized || _videoController != null) return;
+    if (_isInitializing) return; //Prevent concurrent initialization
 
-//       // Notify parent that video is ready
-//       widget.onVideoInitialized?.call();
+    // Only initialize if active or should preload
+    if (!widget.isActive && !widget.shouldPreload) return;
 
-//       // Auto-play if required
-//       if (widget.shouldPlay) {
-//         _playVideo();
-//       }
-//     } catch (e) {
-//       // Silently handle initialization errors
-//       if (mounted) {
-//         setState(() => _initialized = false);
-//       }
-//     }
-//   }
+    _isInitializing = true; // Lock to prevent race condition
+    AppLogger.info('Initializing video controller for post: ${widget.post.id}');
 
-//   void _playVideo() async {
-//     if (_isDisposed || !mounted || _videoController == null || !_initialized)
-//       return;
+    try {
+      final controller = await _videoManager.getController(
+        widget.post.id,
+        widget.post.mediaUrl!,
+      );
 
-//     try {
-//       await _videoController!.play();
-//       if (mounted) {
-//         setState(() => _isPlaying = true);
-//       }
-//     } catch (e) {
-//       // Silently handle play errors
-//     }
-//   }
+      if (_isDisposed || !mounted) {
+        _videoManager.releaseController(widget.post.id);
+        _isInitializing = false;
+        return;
+      }
 
-//   void _pauseVideo() async {
-//     if (_isDisposed || !mounted || _videoController == null) return;
+      if (mounted) {
+        setState(() {
+          _videoController = controller;
+          _initialized = true;
+          _isInitializing = false;
+        });
 
-//     try {
-//       await _videoController!.pause();
-//       if (mounted) {
-//         setState(() => _isPlaying = false);
-//       }
-//     } catch (e) {
-//       // Silently handle pause errors
-//     }
-//   }
+        AppLogger.info(
+          'Video controller initialized for post: ${widget.post.id}, isActive: ${widget.isActive}',
+        );
 
-//   void _togglePlayPause() {
-//     if (_isPlaying) {
-//       _pauseVideo();
-//     } else {
-//       _playVideo();
-//     }
-//   }
+        //Only auto-play if this is the active reel AND we're not already playing
+        if (widget.isActive &&
+            mounted &&
+            !VideoPlaybackManager.isPlaying(controller)) {
+          // Small delay to ensure UI is ready
+          Future.delayed(const Duration(milliseconds: 50), () {
+            if (mounted && widget.isActive && !_isDisposed) {
+              _playVideo();
+            }
+          });
+        }
+      }
+    } catch (e) {
+      AppLogger.error('Failed to initialize video controller: $e');
+      _isInitializing = false;
+      // Silently fail to thumbnail
+    }
+  }
 
-//   @override
-//   void didUpdateWidget(ReelVideoPlayer oldWidget) {
-//     super.didUpdateWidget(oldWidget);
+  void _playVideo() {
+    if (_isDisposed || !mounted) return;
 
-//     // Handle shouldPlay changes
-//     if (widget.shouldPlay != oldWidget.shouldPlay) {
-//       if (widget.shouldPlay && _initialized) {
-//         _playVideo();
-//       } else if (!widget.shouldPlay && _initialized) {
-//         _pauseVideo();
-//       }
-//     }
-//   }
+    if (!_initialized && _videoController == null) {
+      // Don't initialize here to avoid double init
+      AppLogger.warning('Cannot play video - not initialized yet');
+      return;
+    }
 
-//   @override
-//   Widget build(BuildContext context) {
-//     return GestureDetector(
-//       onTap: _togglePlayPause,
-//       child: Stack(
-//         fit: StackFit.expand,
-//         children: [
-//           // Video or thumbnail background
-//           if (_initialized && _videoController != null)
-//             FittedBox(
-//               fit: BoxFit.cover,
-//               child: SizedBox(
-//                 width: _videoController!.value.size.width,
-//                 height: _videoController!.value.size.height,
-//                 child: VideoPlayer(_videoController!),
-//               ),
-//             )
-//           else
-//             _buildThumbnail(),
+    if (_videoController != null && _initialized) {
+      AppLogger.info('Playing video for post: ${widget.post.id}');
+      VideoPlaybackManager.play(_videoController!, () {
+        if (mounted && !_isDisposed) setState(() {});
+      });
+      if (mounted) setState(() {});
+    }
+  }
 
-//           // Play/pause overlay
-//           if (!_isPlaying)
-//             Container(
-//               color: Colors.black54,
-//               child: const Center(
-//                 child: Icon(
-//                   Icons.play_arrow_rounded,
-//                   size: 64,
-//                   color: Colors.white,
-//                 ),
-//               ),
-//             ),
-//         ],
-//       ),
-//     );
-//   }
+  void _pauseVideo() {
+    if (_isDisposed || !mounted) return;
+    if (_videoController != null &&
+        VideoPlaybackManager.isPlaying(_videoController!)) {
+      AppLogger.info('Pausing video for post: ${widget.post.id}');
+      VideoPlaybackManager.pause();
+      if (mounted) setState(() {});
+    }
+  }
 
-//   Widget _buildThumbnail() {
-//     return CachedNetworkImage(
-//       imageUrl: widget.post.thumbnailUrl ?? widget.post.mediaUrl!,
-//       fit: BoxFit.cover,
-//       placeholder: (context, url) => Container(
-//         color: Colors.black,
-//         child: const Center(child: CircularProgressIndicator()),
-//       ),
-//       errorWidget: (context, url, error) => Container(
-//         color: Colors.black,
-//         child: const Center(
-//           child: Icon(Icons.videocam_off, color: Colors.white),
-//         ),
-//       ),
-//     );
-//   }
+  void _togglePlayPause() {
+    if (_isDisposed || !mounted) return;
+    if (_videoController == null || !_initialized) return;
 
-//   @override
-//   void dispose() {
-//     _isDisposed = true;
-//     _pauseVideo();
-//     if (_videoController != null) {
-//       _videoManager.releaseController(widget.post.id);
-//     }
-//     super.dispose();
-//   }
-// }
+    final isPlaying = VideoPlaybackManager.isPlaying(_videoController!);
+    if (isPlaying) {
+      _pauseVideo();
+    } else {
+      _playVideo();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+
+    return GestureDetector(
+      onTap: _initialized ? _togglePlayPause : null,
+      child: Container(
+        color: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Video player or thumbnail
+            if (_initialized && _videoController != null)
+              Center(
+                child: AspectRatio(
+                  aspectRatio: _videoController!.value.aspectRatio,
+                  child: VideoPlayer(_videoController!),
+                ),
+              )
+            else
+              // Show thumbnail while loading
+              widget.post.thumbnailUrl != null
+                  ? CachedNetworkImage(
+                      imageUrl: widget.post.thumbnailUrl!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                    )
+                  : Container(
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      child: const Center(
+                        child: Icon(
+                          Icons.play_circle_outline,
+                          size: 64,
+                          color: Colors.white54,
+                        ),
+                      ),
+                    ),
+
+            // Play icon overlay (only show when paused)
+            if (!_initialized ||
+                (_videoController != null &&
+                    !VideoPlaybackManager.isPlaying(_videoController!)))
+              const Center(
+                child: Icon(
+                  Icons.play_circle_fill,
+                  size: 80.0,
+                  color: Colors.white,
+                ),
+              ),
+
+            // Loading indicator during initialization
+            if (_isInitializing && widget.isActive)
+              const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    AppLogger.info('Disposing ReelVideoPlayer for post: ${widget.post.id}');
+    _isDisposed = true;
+    final controller = _videoController;
+    _videoController = null;
+
+    if (controller != null) {
+      if (VideoPlaybackManager.isPlaying(controller)) {
+        VideoPlaybackManager.pause(invokeCallback: false);
+      }
+      _videoManager.releaseController(widget.post.id);
+    }
+
+    super.dispose();
+  }
+}

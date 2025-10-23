@@ -1,21 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_header.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/post_media.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/reel_video_player.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/reel_actions.dart';
 
-class ReelItem extends StatelessWidget {
+class ReelItem extends StatefulWidget {
   final PostEntity post;
   final String userId;
-  const ReelItem({super.key, required this.post, required this.userId});
+  final bool isActive;
+  final bool isPrevious;
+  final bool isNext;
+
+  const ReelItem({
+    super.key,
+    required this.post,
+    required this.userId,
+    required this.isActive,
+    this.isPrevious = false,
+    this.isNext = false,
+  });
+
+  @override
+  State<ReelItem> createState() => _ReelItemState();
+}
+
+class _ReelItemState extends State<ReelItem>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); //Required for AutomaticKeepAliveClientMixin
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Background media (video/image)
-        PostMedia(post: post, height: double.infinity, autoPlay: true),
+        //Dedicated reel video player with proper lifecycle management
+        ReelVideoPlayer(
+          post: widget.post,
+          isActive: widget.isActive,
+          shouldPreload: widget.isPrevious || widget.isNext,
+        ),
 
         // Subtle vertical gradient at the bottom for text readability
         Align(
@@ -40,19 +66,16 @@ class ReelItem extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Top header (profile, more actions, etc.)
-              // The PostHeader is designed for light backgrounds, so we wrap it
-              // to make the content white for reels.
+              // Top header
               Theme(
                 data: Theme.of(context).copyWith(
-                  // Override icon and text colors for the reel overlay
                   iconTheme: const IconThemeData(color: Colors.white),
                   textTheme: Theme.of(context).textTheme.apply(
                     bodyColor: Colors.white,
                     displayColor: Colors.white,
                   ),
                 ),
-                child: PostHeader(post: post),
+                child: PostHeader(post: widget.post),
               ),
 
               // Bottom area: caption on bottom-left, actions pinned to the right
@@ -61,19 +84,20 @@ class ReelItem extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    // Caption area - takes remaining space on the left
+                    // Caption area
                     Expanded(
                       child: Align(
                         alignment: Alignment.bottomLeft,
-                        child: post.content != null && post.content!.isNotEmpty
+                        child:
+                            widget.post.content != null &&
+                                widget.post.content!.isNotEmpty
                             ? Text(
-                                post.content!,
+                                widget.post.content!,
                                 textAlign: TextAlign.left,
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 15, // Slightly larger text
+                                  fontSize: 15,
                                   height: 1.3,
-                                  // ✅ IMPROVED: Stronger text shadow for maximum readability
                                   shadows: [
                                     BoxShadow(
                                       color: Colors.black87,
@@ -89,14 +113,15 @@ class ReelItem extends StatelessWidget {
                       ),
                     ),
 
-                    // Small gap between caption and actions
                     const SizedBox(width: 12),
 
                     // Actions pinned on the right
                     SizedBox(
-                      width:
-                          50, // Slightly increased width for better tappability
-                      child: ReelActions(post: post, userId: userId),
+                      width: 50,
+                      child: ReelActions(
+                        post: widget.post,
+                        userId: widget.userId,
+                      ),
                     ),
                   ],
                 ),

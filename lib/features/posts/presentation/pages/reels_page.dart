@@ -8,24 +8,38 @@ import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/reel_item.dart';
+import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
 
 class ReelsPage extends StatefulWidget {
-  const ReelsPage({super.key});
+  final bool isVisible; // Receive visibility state from MainPage
+
+  const ReelsPage({super.key, this.isVisible = true});
 
   @override
   State<ReelsPage> createState() => _ReelsPageState();
 }
 
-class _ReelsPageState extends State<ReelsPage> {
+class _ReelsPageState extends State<ReelsPage>
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   final List<PostEntity> _posts = [];
   String? _userId;
   bool _realtimeStarted = false;
+  late PageController _pageController;
+  int _currentPage = 0;
+  bool _isPageChanging = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
     AppLogger.info('Initializing ReelsPage');
-    // REMOVED: No auto-load here. MainPage dispatches GetReelsEvent when tab selected.
+    _pageController = PageController(initialPage: 0, viewportFraction: 1.0);
+
+    // Listen to app lifecycle to pause videos when app goes background
+    WidgetsBinding.instance.addObserver(this);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authState = context.read<AuthBloc>().state;
       if (authState is AuthAuthenticated && mounted) {
@@ -33,6 +47,33 @@ class _ReelsPageState extends State<ReelsPage> {
         AppLogger.info('Current user from AuthBloc: $_userId');
       }
     });
+  }
+
+  //Handle visibility changes from parent
+  @override
+  void didUpdateWidget(ReelsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (widget.isVisible != oldWidget.isVisible) {
+      AppLogger.info('ReelsPage visibility changed: ${widget.isVisible}');
+      if (!widget.isVisible) {
+        // Page became invisible - pause video
+        VideoPlaybackManager.pause();
+      } else if (widget.isVisible && _posts.isNotEmpty) {
+        // Page became visible - trigger rebuild to resume current video
+        setState(() {});
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      AppLogger.info('App lifecycle paused/inactive - pausing reel video');
+      VideoPlaybackManager.pause();
+    }
   }
 
   void _startRealtimeListeners() {
@@ -72,11 +113,37 @@ class _ReelsPageState extends State<ReelsPage> {
           ..clear()
           ..addAll(newPosts);
       });
+
+      // Reset to first page when posts change
+      if (_posts.isNotEmpty && _pageController.hasClients) {
+        _pageController.jumpToPage(0);
+        _currentPage = 0;
+      }
     }
+  }
+
+  void _onPageChanged(int index) {
+    if (_isPageChanging) return;
+
+    setState(() {
+      _currentPage = index;
+      _isPageChanging = true;
+    });
+
+    AppLogger.info('Reel page changed to index: $index');
+
+    // Small delay to ensure smooth transition
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        setState(() => _isPageChanging = false);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     if (_userId == null) {
       return const LoadingIndicator();
     }
@@ -100,7 +167,6 @@ class _ReelsPageState extends State<ReelsPage> {
           } else if (state is PostLiked) {
             final index = _posts.indexWhere((p) => p.id == state.postId);
             if (index != -1 && mounted) {
-              // FIX: Clamp to prevent negative counts
               final delta = state.isLiked ? 1 : -1;
               final newCount = (_posts[index].likesCount + delta)
                   .clamp(0, double.infinity)
@@ -114,7 +180,6 @@ class _ReelsPageState extends State<ReelsPage> {
           } else if (state is PostFavorited) {
             final index = _posts.indexWhere((p) => p.id == state.postId);
             if (index != -1 && mounted) {
-              // FIX: Clamp to prevent negative counts
               final delta = state.isFavorited ? 1 : -1;
               final newCount = (_posts[index].favoritesCount + delta)
                   .clamp(0, double.infinity)
@@ -129,7 +194,6 @@ class _ReelsPageState extends State<ReelsPage> {
             final index = _posts.indexWhere((p) => p.id == state.postId);
             if (index != -1 && mounted) {
               final post = _posts[index];
-              // FIX: Clamp to prevent negative counts from real-time updates
               final updatedPost = post.copyWith(
                 likesCount: (state.likesCount ?? post.likesCount)
                     .clamp(0, double.infinity)
@@ -147,7 +211,6 @@ class _ReelsPageState extends State<ReelsPage> {
               setState(() => _posts[index] = updatedPost);
             }
           } else if (state is PostsError) {
-            // FIX: Only log errors silently for interactions; no toasts
             AppLogger.error('PostsError in ReelsPage: ${state.message}');
           }
         },
@@ -193,14 +256,23 @@ class _ReelsPageState extends State<ReelsPage> {
               }
 
               return PageView.builder(
+                controller: _pageController,
                 scrollDirection: Axis.vertical,
                 itemCount: _posts.length,
+                onPageChanged: _onPageChanged,
+                physics: const PageScrollPhysics(),
                 itemBuilder: (context, index) {
                   final post = _posts[index];
+                  final isCurrentPage = index == _currentPage;
+
                   return ReelItem(
                     key: ValueKey(post.id),
                     post: post,
                     userId: _userId!,
+                    // Only active if current page AND parent page is visible
+                    isActive: isCurrentPage && widget.isVisible,
+                    isPrevious: index == _currentPage - 1,
+                    isNext: index == _currentPage + 1,
                   );
                 },
               );
@@ -214,6 +286,9 @@ class _ReelsPageState extends State<ReelsPage> {
   @override
   void dispose() {
     AppLogger.info('Disposing ReelsPage');
+    WidgetsBinding.instance.removeObserver(this);
+    VideoPlaybackManager.pause();
+    _pageController.dispose();
     _stopRealtimeListeners();
     super.dispose();
   }

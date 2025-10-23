@@ -27,7 +27,6 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage> {
   String? _userId;
   int _selectedIndex = 0;
-  late final List<Widget> _pages;
   bool _initializedPages = false;
   final Set<int> _loadedTabs = {};
 
@@ -53,7 +52,7 @@ class _MainPageState extends State<MainPage> {
             final sessionUserId = supabase.auth.currentUser?.id;
             if (sessionUserId != null && mounted) {
               setState(() => _userId = sessionUserId);
-              _initPagesIfNeeded();
+              _initializedPages = true;
               _syncSelectedIndexWithLocation();
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) {
@@ -74,7 +73,7 @@ class _MainPageState extends State<MainPage> {
           if (mounted) {
             setState(() => _userId = user.id);
             FlutterNativeSplash.remove();
-            _initPagesIfNeeded();
+            _initializedPages = true;
             _syncSelectedIndexWithLocation();
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
@@ -93,17 +92,6 @@ class _MainPageState extends State<MainPage> {
       FlutterNativeSplash.remove();
       if (context.mounted) context.go(Constants.loginRoute);
     }
-  }
-
-  void _initPagesIfNeeded() {
-    if (_initializedPages || _userId == null) return;
-    _pages = [
-      const FeedPage(key: PageStorageKey('feed_page')),
-      const ReelsPage(key: PageStorageKey('reels_page')),
-      const UsersPage(key: PageStorageKey('users_page')),
-      ProfilePage(key: const PageStorageKey('profile_page'), userId: _userId!),
-    ];
-    _initializedPages = true;
   }
 
   int _calculateSelectedIndexFromLocation(String location) {
@@ -152,9 +140,7 @@ class _MainPageState extends State<MainPage> {
       AppLogger.warning('Cannot navigate, userId is null');
       return;
     }
-    if (!_initializedPages) _initPagesIfNeeded();
 
-    // ✅ FIX: Use GoRouter navigation to update URL and preserve state
     if (index != _selectedIndex && mounted) {
       String route;
       switch (index) {
@@ -174,7 +160,6 @@ class _MainPageState extends State<MainPage> {
           route = Constants.feedRoute;
       }
 
-      // Navigate using GoRouter which will trigger _syncSelectedIndexWithLocation
       context.go(route);
       _dispatchLoadForIndex(index);
     }
@@ -194,8 +179,19 @@ class _MainPageState extends State<MainPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    //Build pages dynamically with visibility state
+    final pages = [
+      const FeedPage(key: PageStorageKey('feed_page')),
+      ReelsPage(
+        key: const PageStorageKey('reels_page'),
+        isVisible: _selectedIndex == 1, //visibility state
+      ),
+      const UsersPage(key: PageStorageKey('users_page')),
+      ProfilePage(key: const PageStorageKey('profile_page'), userId: _userId!),
+    ];
+
     return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: _pages),
+      body: IndexedStack(index: _selectedIndex, children: pages),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(icon: Icon(Icons.feed), label: 'Feed'),
