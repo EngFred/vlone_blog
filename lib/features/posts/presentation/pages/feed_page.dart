@@ -28,7 +28,7 @@ class _FeedPageState extends State<FeedPage> {
   void initState() {
     super.initState();
     AppLogger.info('Initializing FeedPage');
-    // REMOVED: No auto-load here. MainPage dispatches GetFeedEvent when tab selected (initially for Feed).
+    //No auto-load here. MainPage dispatches GetFeedEvent when tab selected (initially for Feed).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authState = context.read<AuthBloc>().state;
       if (authState is AuthAuthenticated && mounted) {
@@ -87,10 +87,15 @@ class _FeedPageState extends State<FeedPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Feed'),
+        centerTitle: false,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         actions: [
           // This is the new Notification Icon button
           IconButton(
-            icon: const Icon(Icons.notifications_none),
+            icon: Icon(
+              Icons.notifications_none,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
             onPressed: () {
               // Navigate to the new NotificationsPage
               context.push(Constants.notificationsRoute);
@@ -142,7 +147,7 @@ class _FeedPageState extends State<FeedPage> {
           } else if (state is PostLiked) {
             final index = _posts.indexWhere((p) => p.id == state.postId);
             if (index != -1 && mounted) {
-              // FIX: Clamp to prevent negative counts
+              //Clamp to prevent negative counts
               final delta = state.isLiked ? 1 : -1;
               final newCount = (_posts[index].likesCount + delta)
                   .clamp(0, double.infinity)
@@ -156,7 +161,7 @@ class _FeedPageState extends State<FeedPage> {
           } else if (state is PostFavorited) {
             final index = _posts.indexWhere((p) => p.id == state.postId);
             if (index != -1 && mounted) {
-              // FIX: Clamp to prevent negative counts
+              // Clamp to prevent negative counts
               final delta = state.isFavorited ? 1 : -1;
               final newCount = (_posts[index].favoritesCount + delta)
                   .clamp(0, double.infinity)
@@ -171,7 +176,7 @@ class _FeedPageState extends State<FeedPage> {
             final index = _posts.indexWhere((p) => p.id == state.postId);
             if (index != -1 && mounted) {
               final post = _posts[index];
-              // FIX: Clamp to prevent negative counts from real-time updates
+              //Clamp to prevent negative counts from real-time updates
               final updatedPost = post.copyWith(
                 likesCount: (state.likesCount ?? post.likesCount)
                     .clamp(0, double.infinity)
@@ -189,7 +194,7 @@ class _FeedPageState extends State<FeedPage> {
               setState(() => _posts[index] = updatedPost);
             }
           } else if (state is PostsError) {
-            // FIX: Only show errors for non-interaction failures (e.g., load/create). Log interaction errors silently.
+            //Only show errors for non-interaction failures (e.g., load/create). Log interaction errors silently.
             if (!state.message.contains('update action') &&
                 !state.message.contains('like') &&
                 !state.message.contains('favorite') &&

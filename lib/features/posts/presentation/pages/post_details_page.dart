@@ -122,7 +122,14 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     if (_userId == null) return const Scaffold(body: LoadingIndicator());
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Post')),
+      appBar: AppBar(
+        title: const Text('Post'),
+        centerTitle: false,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        iconTheme: IconThemeData(
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+      ),
       body: BlocListener<PostsBloc, PostsState>(
         listener: (context, state) {
           if (state is PostLoaded && state.post.id == widget.postId) {
@@ -135,7 +142,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
               state.postId == widget.postId &&
               _hasInitializedPost) {
             if (mounted) {
-              // FIX: Clamp to prevent negative counts
+              //Clamp to prevent negative counts
               final delta = state.isLiked ? 1 : -1;
               final newCount = (_post.likesCount + delta)
                   .clamp(0, double.infinity)
@@ -151,7 +158,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
               state.postId == widget.postId &&
               _hasInitializedPost) {
             if (mounted) {
-              // FIX: Add handling for PostFavorited with clamping (mirrors PostLiked)
+              //Add handling for PostFavorited with clamping (mirrors PostLiked)
               final delta = state.isFavorited ? 1 : -1;
               final newCount = (_post.favoritesCount + delta)
                   .clamp(0, double.infinity)

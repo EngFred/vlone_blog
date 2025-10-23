@@ -95,10 +95,15 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
+        centerTitle: false,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         actions: [
           if (_isOwnProfile)
             IconButton(
-              icon: const Icon(Icons.edit),
+              icon: Icon(
+                Icons.edit,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
               onPressed: () => context.push(
                 '${Constants.profileRoute}/${widget.userId}/edit',
               ),

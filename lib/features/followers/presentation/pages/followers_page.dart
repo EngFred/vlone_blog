@@ -65,7 +65,14 @@ class _FollowersPageState extends State<FollowersPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Followers')),
+      appBar: AppBar(
+        title: const Text('Followers'),
+        centerTitle: false,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        iconTheme: IconThemeData(
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+      ),
       body: MultiBlocListener(
         listeners: [
           BlocListener<AuthBloc, AuthState>(

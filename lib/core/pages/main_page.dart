@@ -179,7 +179,7 @@ class _MainPageState extends State<MainPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    //Build pages dynamically with visibility state
+    // Build pages dynamically with visibility state
     final pages = [
       const FeedPage(key: PageStorageKey('feed_page')),
       ReelsPage(
@@ -189,6 +189,21 @@ class _MainPageState extends State<MainPage> {
       const UsersPage(key: PageStorageKey('users_page')),
       ProfilePage(key: const PageStorageKey('profile_page'), userId: _userId!),
     ];
+
+    // Determine if the current page is Reels (index 1)
+    final bool isReelsPage = _selectedIndex == 1;
+
+    // Define colors based on the page state
+    final Color barBackgroundColor = isReelsPage
+        ? Colors
+              .black // Forced dark background for Reels
+        : Theme.of(context).scaffoldBackgroundColor; // Default theme background
+
+    final Color unselectedColor = isReelsPage
+        ? Colors.white.withOpacity(0.6) // Light unselected items for dark bar
+        : Theme.of(
+            context,
+          ).colorScheme.onSurface.withOpacity(0.6); // Default theme color
 
     return Scaffold(
       body: IndexedStack(index: _selectedIndex, children: pages),
@@ -204,10 +219,9 @@ class _MainPageState extends State<MainPage> {
         ],
         currentIndex: _selectedIndex,
         selectedItemColor: Constants.primaryColor,
-        unselectedItemColor: Theme.of(
-          context,
-        ).colorScheme.onSurface.withOpacity(0.6),
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        // Apply the conditional colors here
+        unselectedItemColor: unselectedColor,
+        backgroundColor: barBackgroundColor,
         type: BottomNavigationBarType.fixed,
         onTap: _onItemTapped,
       ),

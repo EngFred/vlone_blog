@@ -74,7 +74,11 @@ class _UsersPageState extends State<UsersPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Users')),
+      appBar: AppBar(
+        title: const Text('Users'),
+        centerTitle: false,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+      ),
       body: MultiBlocListener(
         listeners: [
           // Listen to Auth state so if the user signs in after this page was created we fetch users.
