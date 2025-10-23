@@ -2,20 +2,20 @@ import 'dart:async';
 import 'dart:io';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
-import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/create_post_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/delete_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/favorite_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_feed_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_interactions_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_reels_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_user_posts_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/like_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/stream_post_deletions_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/stream_posts_usecase.dart';
 
 part 'posts_event.dart';
@@ -30,6 +30,7 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   final FavoritePostUseCase favoritePostUseCase;
   final SharePostUseCase sharePostUseCase;
   final GetPostUseCase getPostUseCase;
+  final DeletePostUseCase deletePostUseCase;
 
   // Real-time use cases
   final StreamNewPostsUseCase streamNewPostsUseCase;
@@ -37,6 +38,7 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   final StreamLikesUseCase streamLikesUseCase;
   final StreamCommentsUseCase streamCommentsUseCase;
   final StreamFavoritesUseCase streamFavoritesUseCase;
+  final StreamPostDeletionsUseCase streamPostDeletionsUseCase;
 
   // Stream subscriptions for cleanup
   StreamSubscription? _newPostsSubscription;
@@ -44,6 +46,7 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   StreamSubscription? _likesSubscription;
   StreamSubscription? _commentsSubscription;
   StreamSubscription? _favoritesSubscription;
+  StreamSubscription? _postDeletionsSubscription;
 
   // Track current user for real-time filtering
   String? _currentUserId;
@@ -57,17 +60,20 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     required this.favoritePostUseCase,
     required this.sharePostUseCase,
     required this.getPostUseCase,
+    required this.deletePostUseCase,
     required this.streamNewPostsUseCase,
     required this.streamPostUpdatesUseCase,
     required this.streamLikesUseCase,
     required this.streamCommentsUseCase,
     required this.streamFavoritesUseCase,
+    required this.streamPostDeletionsUseCase,
   }) : super(PostsInitial()) {
     on<CreatePostEvent>(_onCreatePost);
     on<GetFeedEvent>(_onGetFeed);
     on<GetReelsEvent>(_onGetReels);
     on<GetUserPostsEvent>(_onGetUserPosts);
     on<GetPostEvent>(_onGetPost);
+    on<DeletePostEvent>(_onDeletePost);
     on<LikePostEvent>(_onLikePost);
     on<SharePostEvent>(_onSharePost);
     on<FavoritePostEvent>(_onFavoritePost);
@@ -80,6 +86,7 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     on<_RealtimeLikeEvent>(_onRealtimeLike);
     on<_RealtimeCommentEvent>(_onRealtimeComment);
     on<_RealtimeFavoriteEvent>(_onRealtimeFavorite);
+    on<_RealtimePostDeletedEvent>(_onRealtimePostDeleted);
   }
 
   Future<void> _onCreatePost(
@@ -117,42 +124,15 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     final result = await getFeedUseCase(NoParams());
 
-    await result.fold(
-      (failure) async {
+    result.fold(
+      (failure) {
         final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
         AppLogger.error('Get feed failed: $friendlyMessage');
         emit(PostsError(friendlyMessage));
       },
-      (posts) async {
-        List<PostEntity> updatedPosts = posts;
-
-        if (event.userId != null) {
-          final postIds = posts.map((p) => p.id).toList();
-          final interResult = await sl<GetPostInteractionsUseCase>()(
-            GetPostInteractionsParams(userId: event.userId!, postIds: postIds),
-          );
-
-          interResult.fold(
-            (failure) {
-              AppLogger.error(
-                'Failed to fetch interactions for feed: ${failure.message}',
-              );
-            },
-            (states) {
-              updatedPosts = posts
-                  .map(
-                    (p) => p.copyWith(
-                      isLiked: states.isLiked(p.id),
-                      isFavorited: states.isFavorited(p.id),
-                    ),
-                  )
-                  .toList();
-            },
-          );
-        }
-
-        AppLogger.info('Feed loaded with ${updatedPosts.length} posts');
-        emit(FeedLoaded(updatedPosts));
+      (posts) {
+        AppLogger.info('Feed loaded with ${posts.length} posts');
+        emit(FeedLoaded(posts));
       },
     );
   }
@@ -166,42 +146,15 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     final result = await getReelsUseCase(NoParams());
 
-    await result.fold(
-      (failure) async {
+    result.fold(
+      (failure) {
         final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
         AppLogger.error('Get reels failed: $friendlyMessage');
         emit(PostsError(friendlyMessage));
       },
-      (posts) async {
-        List<PostEntity> updatedPosts = posts;
-
-        if (event.userId != null) {
-          final postIds = posts.map((p) => p.id).toList();
-          final interResult = await sl<GetPostInteractionsUseCase>()(
-            GetPostInteractionsParams(userId: event.userId!, postIds: postIds),
-          );
-
-          interResult.fold(
-            (failure) {
-              AppLogger.error(
-                'Failed to fetch interactions for reels: ${failure.message}',
-              );
-            },
-            (states) {
-              updatedPosts = posts
-                  .map(
-                    (p) => p.copyWith(
-                      isLiked: states.isLiked(p.id),
-                      isFavorited: states.isFavorited(p.id),
-                    ),
-                  )
-                  .toList();
-            },
-          );
-        }
-
-        AppLogger.info('Reels loaded with ${updatedPosts.length} posts');
-        emit(ReelsLoaded(updatedPosts));
+      (posts) {
+        AppLogger.info('Reels loaded with ${posts.length} posts');
+        emit(ReelsLoaded(posts));
       },
     );
   }
@@ -219,45 +172,15 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
       GetUserPostsParams(userId: event.profileUserId),
     );
 
-    await result.fold(
-      (failure) async {
+    result.fold(
+      (failure) {
         final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
         AppLogger.error('Get user posts failed: $friendlyMessage');
         emit(UserPostsError(friendlyMessage));
       },
-      (posts) async {
-        List<PostEntity> updatedPosts = posts;
-
-        if (event.viewerUserId != null) {
-          final postIds = posts.map((p) => p.id).toList();
-          final interResult = await sl<GetPostInteractionsUseCase>()(
-            GetPostInteractionsParams(
-              userId: event.viewerUserId!,
-              postIds: postIds,
-            ),
-          );
-
-          interResult.fold(
-            (failure) {
-              AppLogger.error(
-                'Failed to fetch interactions for user posts: ${failure.message}',
-              );
-            },
-            (states) {
-              updatedPosts = posts
-                  .map(
-                    (p) => p.copyWith(
-                      isLiked: states.isLiked(p.id),
-                      isFavorited: states.isFavorited(p.id),
-                    ),
-                  )
-                  .toList();
-            },
-          );
-        }
-
-        AppLogger.info('User posts loaded with ${updatedPosts.length} posts');
-        emit(UserPostsLoaded(updatedPosts));
+      (posts) {
+        AppLogger.info('User posts loaded with ${posts.length} posts');
+        emit(UserPostsLoaded(posts));
       },
     );
   }
@@ -273,32 +196,33 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
         AppLogger.error('Get post failed: $friendlyMessage');
         emit(PostsError(friendlyMessage));
       },
-      (post) async {
-        PostEntity updatedPost = post;
+      (post) {
+        AppLogger.info('Post loaded: ${post.id}');
+        emit(PostLoaded(post));
+      },
+    );
+  }
 
-        if (event.viewerUserId != null) {
-          final interResult = await sl<GetPostInteractionsUseCase>()(
-            GetPostInteractionsParams(
-              userId: event.viewerUserId!,
-              postIds: [post.id],
-            ),
-          );
+  Future<void> _onDeletePost(
+    DeletePostEvent event,
+    Emitter<PostsState> emit,
+  ) async {
+    AppLogger.info('DeletePostEvent triggered for post: ${event.postId}');
+    emit(PostDeleting(event.postId));
 
-          interResult.fold(
-            (failure) => AppLogger.error(
-              'Interactions fetch failed: ${failure.message}',
-            ),
-            (states) {
-              updatedPost = post.copyWith(
-                isLiked: states.isLiked(post.id),
-                isFavorited: states.isFavorited(post.id),
-              );
-            },
-          );
-        }
+    final result = await deletePostUseCase(
+      DeletePostParams(postId: event.postId),
+    );
 
-        AppLogger.info('Post loaded: ${updatedPost.id}');
-        emit(PostLoaded(updatedPost));
+    result.fold(
+      (failure) {
+        final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
+        AppLogger.error('Delete post failed: ${failure.message}');
+        emit(PostDeleteError(event.postId, friendlyMessage));
+      },
+      (_) {
+        AppLogger.info('Post deleted successfully: ${event.postId}');
+        emit(PostDeleted(event.postId));
       },
     );
   }
@@ -321,7 +245,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     result.fold(
       (failure) {
-        // FIX: Log failure silently, no state emission for UX
         AppLogger.error('Like post failed: ${failure.message}');
       },
       (_) {
@@ -343,7 +266,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     result.fold(
       (failure) {
-        // FIX: Log failure silently, no state emission for UX
         AppLogger.error('Share post failed: ${failure.message}');
       },
       (_) {
@@ -371,7 +293,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     result.fold(
       (failure) {
-        // FIX: Log failure silently, no state emission for UX
         AppLogger.error('Favorite post failed: ${failure.message}');
       },
       (_) {
@@ -422,15 +343,28 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
             AppLogger.info(
               'Real-time: Post update received for: ${updateData['id']}',
             );
+
+            // ================== FIX 1 START ==================
+            // Helper function to safely parse values that should be integers
+            // This handles nulls, ints, doubles (e.g., 10.0), and strings (e.g., "10")
+            int? safeParseInt(dynamic value) {
+              if (value == null) return null;
+              if (value is int) return value;
+              // Handle doubles and strings
+              return int.tryParse(value.toString().split('.').first);
+            }
+
             add(
               _RealtimePostUpdatedEvent(
                 postId: updateData['id'] as String,
-                likesCount: updateData['likes_count'] as int?,
-                commentsCount: updateData['comments_count'] as int?,
-                favoritesCount: updateData['favorites_count'] as int?,
-                sharesCount: updateData['shares_count'] as int?,
+                // Use the safe parser for all count fields
+                likesCount: safeParseInt(updateData['likes_count']),
+                commentsCount: safeParseInt(updateData['comments_count']),
+                favoritesCount: safeParseInt(updateData['favorites_count']),
+                sharesCount: safeParseInt(updateData['shares_count']),
               ),
             );
+            // ================== FIX 1 END ==================
           },
         );
       },
@@ -510,6 +444,27 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
       },
     );
 
+    // ================== FIX 2 START ==================
+    // Subscribe to post deletions
+    _postDeletionsSubscription = streamPostDeletionsUseCase(NoParams()).listen(
+      (either) {
+        either.fold(
+          (failure) => AppLogger.error(
+            'Real-time post deletion error: ${failure.message}',
+          ),
+          // The data from this stream is just the String postId, not a Map.
+          (postId) {
+            AppLogger.info('Real-time: Post deleted: $postId');
+            add(_RealtimePostDeletedEvent(postId)); // Pass the string directly
+          },
+        );
+      },
+      onError: (error) {
+        AppLogger.error('Post deletions stream error: $error', error: error);
+      },
+    );
+    // ================== FIX 2 END ==================
+
     AppLogger.info('Real-time listeners started successfully');
 
     // Re-emit current state with real-time active flag
@@ -542,71 +497,24 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   ) async {
     final currentState = state;
 
-    // Add new post to feed if we're in FeedLoaded state
+    // Add new post to feed if we're in FeedLoaded state (with default interaction states)
     if (currentState is FeedLoaded) {
-      // Fetch interactions for the new post if we have a user
-      PostEntity updatedPost = event.post;
-
-      if (_currentUserId != null) {
-        final interResult = await sl<GetPostInteractionsUseCase>()(
-          GetPostInteractionsParams(
-            userId: _currentUserId!,
-            postIds: [event.post.id],
-          ),
-        );
-
-        interResult.fold(
-          (failure) => AppLogger.error(
-            'Failed to fetch interactions for new post: ${failure.message}',
-          ),
-          (states) {
-            updatedPost = event.post.copyWith(
-              isLiked: states.isLiked(event.post.id),
-              isFavorited: states.isFavorited(event.post.id),
-            );
-          },
-        );
-      }
-
       // Avoid duplicates
-      final exists = currentState.posts.any((p) => p.id == updatedPost.id);
+      final exists = currentState.posts.any((p) => p.id == event.post.id);
       if (!exists) {
-        final updatedPosts = [updatedPost, ...currentState.posts];
+        final updatedPosts = [event.post, ...currentState.posts];
         emit(FeedLoaded(updatedPosts, isRealtimeActive: true));
-        AppLogger.info('New post added to feed: ${updatedPost.id}');
+        AppLogger.info('New post added to feed: ${event.post.id}');
       }
     }
 
     // Similar logic for ReelsLoaded if it's a video post
     if (currentState is ReelsLoaded && event.post.mediaType == 'video') {
-      PostEntity updatedPost = event.post;
-
-      if (_currentUserId != null) {
-        final interResult = await sl<GetPostInteractionsUseCase>()(
-          GetPostInteractionsParams(
-            userId: _currentUserId!,
-            postIds: [event.post.id],
-          ),
-        );
-
-        interResult.fold(
-          (failure) => AppLogger.error(
-            'Failed to fetch interactions for new reel: ${failure.message}',
-          ),
-          (states) {
-            updatedPost = event.post.copyWith(
-              isLiked: states.isLiked(event.post.id),
-              isFavorited: states.isFavorited(event.post.id),
-            );
-          },
-        );
-      }
-
-      final exists = currentState.posts.any((p) => p.id == updatedPost.id);
+      final exists = currentState.posts.any((p) => p.id == event.post.id);
       if (!exists) {
-        final updatedPosts = [updatedPost, ...currentState.posts];
+        final updatedPosts = [event.post, ...currentState.posts];
         emit(ReelsLoaded(updatedPosts, isRealtimeActive: true));
-        AppLogger.info('New reel added: ${updatedPost.id}');
+        AppLogger.info('New reel added: ${event.post.id}');
       }
     }
   }
@@ -678,6 +586,37 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
         sharesCount: event.sharesCount,
       ),
     );
+  }
+
+  void _onRealtimePostDeleted(
+    _RealtimePostDeletedEvent event,
+    Emitter<PostsState> emit,
+  ) {
+    final currentState = state;
+
+    if (currentState is FeedLoaded) {
+      final updatedPosts = currentState.posts
+          .where((post) => post.id != event.postId)
+          .toList();
+      emit(FeedLoaded(updatedPosts, isRealtimeActive: true));
+      AppLogger.info('Post removed from feed: ${event.postId}');
+    }
+
+    if (currentState is ReelsLoaded) {
+      final updatedPosts = currentState.posts
+          .where((post) => post.id != event.postId)
+          .toList();
+      emit(ReelsLoaded(updatedPosts, isRealtimeActive: true));
+      AppLogger.info('Reel removed: ${event.postId}');
+    }
+
+    if (currentState is UserPostsLoaded) {
+      final updatedPosts = currentState.posts
+          .where((post) => post.id != event.postId)
+          .toList();
+      emit(UserPostsLoaded(updatedPosts));
+      AppLogger.info('User post removed: ${event.postId}');
+    }
   }
 
   void _onRealtimeLike(_RealtimeLikeEvent event, Emitter<PostsState> emit) {
@@ -796,12 +735,14 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     await _likesSubscription?.cancel();
     await _commentsSubscription?.cancel();
     await _favoritesSubscription?.cancel();
+    await _postDeletionsSubscription?.cancel();
 
     _newPostsSubscription = null;
     _postUpdatesSubscription = null;
     _likesSubscription = null;
     _commentsSubscription = null;
     _favoritesSubscription = null;
+    _postDeletionsSubscription = null;
   }
 
   @override

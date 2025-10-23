@@ -29,27 +29,6 @@ class MediaPickerSheet extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ),
-
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('Take Photo'),
-              shape: tileShape,
-              onTap: () {
-                Navigator.pop(context);
-                onPick(ImageSource.camera, true);
-              },
-            ),
-
-            ListTile(
-              leading: const Icon(Icons.videocam_outlined),
-              title: const Text('Record Video'),
-              shape: tileShape,
-              onTap: () {
-                Navigator.pop(context);
-                onPick(ImageSource.camera, false);
-              },
-            ),
-
             ListTile(
               leading: const Icon(Icons.image_outlined),
               title: const Text('Pick Image from Gallery'),

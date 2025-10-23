@@ -20,12 +20,14 @@ class PostsRemoteDataSource {
   RealtimeChannel? _likesChannel;
   RealtimeChannel? _commentsChannel;
   RealtimeChannel? _favoritesChannel;
+  RealtimeChannel? _postDeletionsChannel;
 
   // Stream controllers for manual stream management
   StreamController<Map<String, dynamic>>? _postsController;
   StreamController<Map<String, dynamic>>? _likesController;
   StreamController<Map<String, dynamic>>? _commentsController;
   StreamController<Map<String, dynamic>>? _favoritesController;
+  StreamController<String>? _postDeletionsController;
 
   PostsRemoteDataSource(this.client);
 
@@ -313,7 +315,7 @@ class PostsRemoteDataSource {
   Future<void> sharePost({required String postId}) async {
     try {
       AppLogger.info('Attempting to share post: $postId');
-      final shareUrl = 'Check this post: https://yourapp.com/post/$postId';
+      final shareUrl = 'Check this post: https://myapp.com/post/$postId';
       await Share.share(shareUrl);
 
       final readResponse = await client
@@ -336,47 +338,31 @@ class PostsRemoteDataSource {
     }
   }
 
-  Future<Map<String, List<String>>> getInteractions({
-    required String userId,
-    required List<String> postIds,
-  }) async {
+  Future<void> deletePost(String postId) async {
     try {
-      final likesResponse = await client
-          .from('likes')
-          .select('post_id')
-          .inFilter('post_id', postIds)
-          .eq('user_id', userId);
+      AppLogger.info('Attempting to delete post: $postId');
 
-      final favoritesResponse = await client
-          .from('favorites')
-          .select('post_id')
-          .inFilter('post_id', postIds)
-          .eq('user_id', userId);
+      final response = await client
+          .from('posts')
+          .delete()
+          .eq('id', postId)
+          .select();
 
-      final likedIds = <String>[];
-      for (final like in likesResponse) {
-        likedIds.add(like['post_id'] as String);
+      if (response.isEmpty) {
+        AppLogger.error('No rows deleted for post: $postId');
+        throw const ServerException('Post not found or unauthorized');
       }
 
-      final favoritedIds = <String>[];
-      for (final fav in favoritesResponse) {
-        favoritedIds.add(fav['post_id'] as String);
-      }
-
-      return {'liked': likedIds, 'favorited': favoritedIds};
+      AppLogger.info('Post deleted successfully: $postId');
     } catch (e) {
-      AppLogger.error(
-        'Error in PostsRemoteDataSource.getInteractions: $e',
-        error: e,
-      );
-      rethrow;
+      AppLogger.error('Error deleting post: $e', error: e);
+      throw ServerException(e.toString());
     }
   }
 
   // ==================== REAL-TIME STREAMS ====================
 
   /// Stream for new posts being created
-  /// Emits PostModel whenever a new post is inserted into the database
   Stream<PostModel> streamNewPosts() {
     AppLogger.info('Setting up real-time stream for new posts');
 
@@ -387,10 +373,8 @@ class PostsRemoteDataSource {
         .asyncMap((data) async {
           if (data.isEmpty) return null;
 
-          // Get the most recent post from the stream
           final latestPost = data.first;
 
-          // Fetch complete post data with profile
           try {
             final completePost = await client
                 .from('posts')
@@ -412,18 +396,14 @@ class PostsRemoteDataSource {
   }
 
   /// Stream for post updates (likes_count, comments_count, etc.)
-  /// Emits map with post_id and updated fields
   Stream<Map<String, dynamic>> streamPostUpdates() {
     AppLogger.info('Setting up real-time stream for post updates');
 
-    // Clean up existing channel and controller
     _postsChannel?.unsubscribe();
     _postsController?.close();
 
-    // Create new stream controller
     _postsController = StreamController<Map<String, dynamic>>.broadcast();
 
-    // Create and subscribe to channel
     final channel = client.channel(
       'posts_updates_${DateTime.now().millisecondsSinceEpoch}',
     );
@@ -455,18 +435,14 @@ class PostsRemoteDataSource {
   }
 
   /// Stream for likes on specific posts
-  /// Emits like events for real-time like count updates
   Stream<Map<String, dynamic>> streamLikes() {
     AppLogger.info('Setting up real-time stream for likes');
 
-    // Clean up existing channel and controller
     _likesChannel?.unsubscribe();
     _likesController?.close();
 
-    // Create new stream controller
     _likesController = StreamController<Map<String, dynamic>>.broadcast();
 
-    // Create and subscribe to channel
     final channel = client.channel(
       'likes_updates_${DateTime.now().millisecondsSinceEpoch}',
     );
@@ -502,18 +478,14 @@ class PostsRemoteDataSource {
   }
 
   /// Stream for comments on posts
-  /// Emits comment events for real-time comment updates
   Stream<Map<String, dynamic>> streamComments() {
     AppLogger.info('Setting up real-time stream for comments');
 
-    // Clean up existing channel and controller
     _commentsChannel?.unsubscribe();
     _commentsController?.close();
 
-    // Create new stream controller
     _commentsController = StreamController<Map<String, dynamic>>.broadcast();
 
-    // Create and subscribe to channel
     final channel = client.channel(
       'comments_updates_${DateTime.now().millisecondsSinceEpoch}',
     );
@@ -548,18 +520,14 @@ class PostsRemoteDataSource {
   }
 
   /// Stream for favorites
-  /// Emits favorite events for real-time favorites updates
   Stream<Map<String, dynamic>> streamFavorites() {
     AppLogger.info('Setting up real-time stream for favorites');
 
-    // Clean up existing channel and controller
     _favoritesChannel?.unsubscribe();
     _favoritesController?.close();
 
-    // Create new stream controller
     _favoritesController = StreamController<Map<String, dynamic>>.broadcast();
 
-    // Create and subscribe to channel
     final channel = client.channel(
       'favorites_updates_${DateTime.now().millisecondsSinceEpoch}',
     );
@@ -594,6 +562,40 @@ class PostsRemoteDataSource {
     });
   }
 
+  /// Stream for post deletions
+  Stream<String> streamPostDeletions() {
+    AppLogger.info('Setting up real-time stream for post deletions');
+
+    _postDeletionsChannel?.unsubscribe();
+    _postDeletionsController?.close();
+
+    _postDeletionsController = StreamController<String>.broadcast();
+
+    final channel = client.channel(
+      'post_deletions_${DateTime.now().millisecondsSinceEpoch}',
+    );
+
+    _postDeletionsChannel = channel
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'posts',
+          callback: (payload) {
+            final deletedPostId = payload.oldRecord['id'] as String;
+            AppLogger.info('Post deletion detected: $deletedPostId');
+
+            if (!(_postDeletionsController?.isClosed ?? true)) {
+              _postDeletionsController!.add(deletedPostId);
+            }
+          },
+        )
+        .subscribe();
+
+    return _postDeletionsController!.stream.handleError((error) {
+      AppLogger.error('Error in post deletions stream: $error', error: error);
+    });
+  }
+
   /// Cleanup method to unsubscribe from all channels
   void dispose() {
     AppLogger.info('Disposing PostsRemoteDataSource - cleaning up channels');
@@ -601,10 +603,12 @@ class PostsRemoteDataSource {
     _likesChannel?.unsubscribe();
     _commentsChannel?.unsubscribe();
     _favoritesChannel?.unsubscribe();
+    _postDeletionsChannel?.unsubscribe();
 
     _postsController?.close();
     _likesController?.close();
     _commentsController?.close();
     _favoritesController?.close();
+    _postDeletionsController?.close();
   }
 }

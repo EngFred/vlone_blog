@@ -210,6 +210,11 @@ class _ReelsPageState extends State<ReelsPage>
               );
               setState(() => _posts[index] = updatedPost);
             }
+          } else if (state is PostDeleted) {
+            final index = _posts.indexWhere((p) => p.id == state.postId);
+            if (index != -1 && mounted) {
+              setState(() => _posts.removeAt(index));
+            }
           } else if (state is PostsError) {
             AppLogger.error('PostsError in ReelsPage: ${state.message}');
           }

@@ -177,6 +177,16 @@ class _RealtimeFavoriteEvent extends PostsEvent {
   List<Object?> get props => [postId, userId, isFavorited];
 }
 
+/// Internal event when a post deletion event is received
+class _RealtimePostDeletedEvent extends PostsEvent {
+  final String postId;
+
+  _RealtimePostDeletedEvent(this.postId);
+
+  @override
+  List<Object?> get props => [postId];
+}
+
 class FavoritePostEvent extends PostsEvent {
   final String postId;
   final String userId;
@@ -190,4 +200,13 @@ class FavoritePostEvent extends PostsEvent {
 
   @override
   List<Object?> get props => [postId, userId, isFavorited];
+}
+
+class DeletePostEvent extends PostsEvent {
+  final String postId;
+
+  DeletePostEvent({required this.postId});
+
+  @override
+  List<Object?> get props => [postId];
 }

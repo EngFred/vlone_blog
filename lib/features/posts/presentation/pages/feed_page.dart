@@ -193,6 +193,11 @@ class _FeedPageState extends State<FeedPage> {
               );
               setState(() => _posts[index] = updatedPost);
             }
+          } else if (state is PostDeleted) {
+            final index = _posts.indexWhere((p) => p.id == state.postId);
+            if (index != -1 && mounted) {
+              setState(() => _posts.removeAt(index));
+            }
           } else if (state is PostsError) {
             //Only show errors for non-interaction failures (e.g., load/create). Log interaction errors silently.
             if (!state.message.contains('update action') &&

@@ -6,12 +6,15 @@ import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
+import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_posts_list.dart';
+
+enum ProfileMenuOption { edit, logout }
 
 class ProfilePage extends StatefulWidget {
   final String userId;
@@ -33,7 +36,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    // REMOVED: No auto-load here. MainPage dispatches GetProfileDataEvent, StartProfileRealtimeEvent, and GetUserPostsEvent when tab selected.
+    // MainPage dispatches GetProfileDataEvent, StartProfileRealtimeEvent, and GetUserPostsEvent when tab selected.
     // Set own profile flags since this is always the current user's profile in the bottom nav.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -56,7 +59,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final index = _userPosts.indexWhere((p) => p.id == state.postId);
     if (index != -1 && mounted) {
       final post = _userPosts[index];
-      // FIX: Clamp to prevent negative counts from real-time updates
+      // Clamp to prevent negative counts from real-time updates
       final updatedPost = post.copyWith(
         likesCount: (state.likesCount ?? post.likesCount)
             .clamp(0, double.infinity)
@@ -90,6 +93,61 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        final theme = Theme.of(dialogContext);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.warning, color: Colors.orange),
+              const SizedBox(width: 8),
+              const Text('Logout Confirmation'),
+            ],
+          ),
+          content: const Text(
+            'Are you sure you want to log out? You will need to sign in again to access your account.',
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                context.read<AuthBloc>().add(LogoutEvent());
+                if (context.mounted) {
+                  SnackbarUtils.showInfo(context, 'Logging out...');
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.error,
+                foregroundColor: theme.colorScheme.onError,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'Logout',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -99,14 +157,50 @@ class _ProfilePageState extends State<ProfilePage> {
         backgroundColor: Theme.of(context).colorScheme.surface,
         actions: [
           if (_isOwnProfile)
-            IconButton(
+            PopupMenuButton<ProfileMenuOption>(
               icon: Icon(
-                Icons.edit,
+                Icons.more_vert,
                 color: Theme.of(context).colorScheme.onSurface,
               ),
-              onPressed: () => context.push(
-                '${Constants.profileRoute}/${widget.userId}/edit',
-              ),
+              onSelected: (value) {
+                switch (value) {
+                  case ProfileMenuOption.edit:
+                    context.push(
+                      '${Constants.profileRoute}/${widget.userId}/edit',
+                    );
+                    break;
+                  case ProfileMenuOption.logout:
+                    _showLogoutDialog(context);
+                    break;
+                }
+              },
+              itemBuilder: (menuContext) {
+                final iconColor = Theme.of(menuContext).colorScheme.onSurface;
+                final textStyle = Theme.of(menuContext).textTheme.bodyMedium;
+
+                return [
+                  PopupMenuItem<ProfileMenuOption>(
+                    value: ProfileMenuOption.edit,
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit, color: iconColor),
+                        const SizedBox(width: 8),
+                        Text('Edit Profile', style: textStyle),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<ProfileMenuOption>(
+                    value: ProfileMenuOption.logout,
+                    child: Row(
+                      children: [
+                        Icon(Icons.logout, color: iconColor),
+                        const SizedBox(width: 8),
+                        Text('Logout', style: textStyle),
+                      ],
+                    ),
+                  ),
+                ];
+              },
             ),
         ],
       ),
@@ -114,7 +208,8 @@ class _ProfilePageState extends State<ProfilePage> {
         listeners: [
           BlocListener<ProfileBloc, ProfileState>(
             listener: (context, state) {
-              // Profile reload handled in events
+              // Real-time updates are handled automatically via the stream
+              // No manual actions needed here
             },
           ),
           BlocListener<PostsBloc, PostsState>(
@@ -125,9 +220,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 if (mounted) {
                   setState(() {
                     _userPosts.clear();
-                    // Crucial: Clear the error when data is loaded successfully
                     _userPostsError = null;
-                    // FIX: Clamp counts when setting from loaded state
                     _userPosts.addAll(
                       state.posts.map(
                         (p) => p.copyWith(
@@ -161,7 +254,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   (p) => p.id == state.postId,
                 );
                 if (index != -1 && mounted) {
-                  // FIX: Clamp to prevent negative counts
                   final delta = state.isLiked ? 1 : -1;
                   final newCount = (_userPosts[index].likesCount + delta)
                       .clamp(0, double.infinity)
@@ -177,7 +269,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   (p) => p.id == state.postId,
                 );
                 if (index != -1 && mounted) {
-                  // FIX: Add handling for PostFavorited with clamping
                   final delta = state.isFavorited ? 1 : -1;
                   final newCount = (_userPosts[index].favoritesCount + delta)
                       .clamp(0, double.infinity)
@@ -190,8 +281,14 @@ class _ProfilePageState extends State<ProfilePage> {
                 }
               } else if (state is RealtimePostUpdate) {
                 _handleRealtimePostUpdate(state);
+              } else if (state is PostDeleted) {
+                final index = _userPosts.indexWhere(
+                  (p) => p.id == state.postId,
+                );
+                if (index != -1 && mounted) {
+                  setState(() => _userPosts.removeAt(index));
+                }
               } else if (state is PostsError) {
-                // FIX: Log silently for interaction errors; no toasts
                 AppLogger.error('PostsError in ProfilePage: ${state.message}');
               }
             },
@@ -210,6 +307,10 @@ class _ProfilePageState extends State<ProfilePage> {
                     _isFollowing = state.isFollowing;
                     _isProcessingFollow = false;
                   });
+                  // Profile counts will be updated automatically via real-time stream
+                  AppLogger.info(
+                    'Follow action completed. Profile counts will update via real-time stream.',
+                  );
                 }
               } else if (state is FollowersError) {
                 if (mounted) {
@@ -276,12 +377,10 @@ class _ProfilePageState extends State<ProfilePage> {
                         isLoading: _isUserPostsLoading,
                         error: _userPostsError,
                         onRetry: () {
-                          // FIX: Reset the error state immediately when retry is pressed
                           if (mounted) {
                             setState(() {
                               _userPostsError = null;
-                              _isUserPostsLoading =
-                                  true; // Optional: set loading indicator immediately
+                              _isUserPostsLoading = true;
                             });
                           }
 

@@ -106,19 +106,34 @@ class MyApp extends StatelessWidget {
       ],
       child: BlocListener<AuthBloc, AuthState>(
         listener: (context, state) {
+          // Clear any snackbars first to avoid leftover UI after navigation
+          try {
+            ScaffoldMessenger.of(context).clearSnackBars();
+          } catch (e) {
+            // Defensive: if the messenger isn't available for any reason, log and continue.
+            AppLogger.warning(
+              'Failed to clear snackbars before auth navigation: $e',
+            );
+          }
+
           if (state is AuthAuthenticated) {
             AppLogger.info(
               'AuthBloc: User authenticated, navigating to main page',
             );
+
+            // Navigate to feed/main area
             appRouter.go(Constants.feedRoute);
-            //DO NOT remove splash here. Let MainPage handle it.
+
+            //We intentionally do NOT remove the splash here; MainPage will handle it.
           } else if (state is AuthUnauthenticated) {
             AppLogger.info(
               'AuthBloc: User unauthenticated, navigating to login',
             );
+
+            // Ensure no snackbars remain visible, then navigate to login.
             appRouter.go(Constants.loginRoute);
-            // ONLY remove splash here for the unauthenticated case.
-            // This fixes the "stuck splash" on fresh install.
+
+            // ONLY remove splash here for the unauthenticated case (fixes stuck splash on fresh install).
             FlutterNativeSplash.remove();
           }
         },

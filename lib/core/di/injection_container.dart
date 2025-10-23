@@ -14,14 +14,15 @@ import 'package:vlone_blog_app/features/posts/data/datasources/posts_remote_data
 import 'package:vlone_blog_app/features/posts/data/repositories/posts_repository_impl.dart';
 import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/create_post_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/delete_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/favorite_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_favorites_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_feed_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_interactions_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_reels_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/like_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/stream_post_deletions_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/stream_posts_usecase.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/profile/data/datasources/profile_remote_datasource.dart';
@@ -141,9 +142,6 @@ Future<void> init() async {
   sl.registerLazySingleton<SharePostUseCase>(
     () => SharePostUseCase(sl<PostsRepository>()),
   );
-  sl.registerLazySingleton<GetPostInteractionsUseCase>(
-    () => GetPostInteractionsUseCase(sl<PostsRepository>()),
-  );
   sl.registerLazySingleton<GetReelsUseCase>(
     () => GetReelsUseCase(sl<PostsRepository>()),
   );
@@ -152,12 +150,17 @@ Future<void> init() async {
   //get favorites
   sl.registerLazySingleton(() => GetFavoritesUseCase(sl<PostsRepository>()));
 
+  sl.registerLazySingleton<DeletePostUseCase>(
+    () => DeletePostUseCase(sl<PostsRepository>()),
+  );
+
   // Real-time use cases
   sl.registerLazySingleton(() => StreamNewPostsUseCase(sl()));
   sl.registerLazySingleton(() => StreamPostUpdatesUseCase(sl()));
   sl.registerLazySingleton(() => StreamLikesUseCase(sl()));
   sl.registerLazySingleton(() => StreamCommentsUseCase(sl()));
   sl.registerLazySingleton(() => StreamFavoritesUseCase(sl()));
+  sl.registerLazySingleton(() => StreamPostDeletionsUseCase(sl()));
 
   sl.registerFactory<PostsBloc>(
     () => PostsBloc(
@@ -168,12 +171,14 @@ Future<void> init() async {
       getReelsUseCase: sl<GetReelsUseCase>(),
       sharePostUseCase: sl<SharePostUseCase>(),
       getPostUseCase: sl<GetPostUseCase>(),
+      deletePostUseCase: sl<DeletePostUseCase>(),
       getUserPostsUseCase: sl<GetUserPostsUseCase>(),
       streamNewPostsUseCase: sl(),
       streamPostUpdatesUseCase: sl(),
       streamLikesUseCase: sl(),
       streamCommentsUseCase: sl(),
       streamFavoritesUseCase: sl(),
+      streamPostDeletionsUseCase: sl(),
     ),
   );
 

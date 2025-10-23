@@ -6,7 +6,7 @@ import 'package:vlone_blog_app/features/posts/presentation/widgets/post_media.da
 
 class PostDetailsContent extends StatelessWidget {
   final PostEntity post;
-  final String userId;
+  final String userId; // Pass current user ID for delete check
   final VoidCallback onCommentTap;
   const PostDetailsContent({
     super.key,
@@ -22,7 +22,10 @@ class PostDetailsContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          PostHeader(post: post),
+          PostHeader(
+            post: post,
+            currentUserId: userId, // New: Pass for conditional delete
+          ),
           if (post.content != null)
             Padding(
               padding: const EdgeInsets.all(16.0),

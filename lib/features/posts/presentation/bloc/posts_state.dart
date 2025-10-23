@@ -77,6 +77,25 @@ class PostShared extends PostsState {
   List<Object?> get props => [postId];
 }
 
+class PostDeleting extends PostsState {
+  final String postId;
+
+  PostDeleting(this.postId);
+
+  @override
+  List<Object?> get props => [postId];
+}
+
+class PostDeleteError extends PostsState {
+  final String postId;
+  final String message;
+
+  PostDeleteError(this.postId, this.message);
+
+  @override
+  List<Object?> get props => [postId, message];
+}
+
 class UserPostsError extends PostsState {
   final String message;
 
@@ -129,4 +148,13 @@ class PostFavorited extends PostsState {
 
   @override
   List<Object?> get props => [postId, isFavorited];
+}
+
+class PostDeleted extends PostsState {
+  final String postId;
+
+  PostDeleted(this.postId);
+
+  @override
+  List<Object?> get props => [postId];
 }

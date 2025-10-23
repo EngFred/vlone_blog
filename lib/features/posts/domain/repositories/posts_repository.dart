@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:dartz/dartz.dart';
 import 'package:vlone_blog_app/core/error/failures.dart';
-import 'package:vlone_blog_app/features/posts/domain/entities/interaction_states.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 
 abstract class PostsRepository {
@@ -36,12 +35,9 @@ abstract class PostsRepository {
 
   Future<Either<Failure, Unit>> sharePost({required String postId});
 
-  Future<Either<Failure, InteractionStates>> getPostInteractions({
-    required String userId,
-    required List<String> postIds,
-  });
-
   Future<Either<Failure, PostEntity>> getPost(String postId);
+
+  Future<Either<Failure, Unit>> deletePost(String postId);
 
   // ==================== REAL-TIME STREAMS ====================
 
@@ -59,4 +55,6 @@ abstract class PostsRepository {
 
   /// Stream of favorite events
   Stream<Either<Failure, Map<String, dynamic>>> streamFavorites();
+
+  Stream<Either<Failure, String>> streamPostDeletions();
 }

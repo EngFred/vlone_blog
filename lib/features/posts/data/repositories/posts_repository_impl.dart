@@ -4,7 +4,6 @@ import 'package:vlone_blog_app/core/error/exceptions.dart';
 import 'package:vlone_blog_app/core/error/failures.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/data/datasources/posts_remote_datasource.dart';
-import 'package:vlone_blog_app/features/posts/domain/entities/interaction_states.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
 
@@ -138,37 +137,6 @@ class PostsRepositoryImpl implements PostsRepository {
   }
 
   @override
-  Future<Either<Failure, InteractionStates>> getPostInteractions({
-    required String userId,
-    required List<String> postIds,
-  }) async {
-    try {
-      final map = await remoteDataSource.getInteractions(
-        userId: userId,
-        postIds: postIds,
-      );
-      final liked = (map['liked'] ?? <String>[])
-          .map((e) => e.toString())
-          .toSet();
-      final favorited = (map['favorited'] ?? <String>[])
-          .map((e) => e.toString())
-          .toSet();
-
-      final states = InteractionStates(
-        likedPostIds: liked,
-        favoritedPostIds: favorited,
-      );
-
-      return right(states);
-    } on ServerException catch (e) {
-      return left(ServerFailure(e.message));
-    } catch (e) {
-      AppLogger.error('PostsRepositoryImpl.getPostInteractions error: $e');
-      return left(ServerFailure(e.toString()));
-    }
-  }
-
-  @override
   Future<Either<Failure, PostEntity>> getPost(String postId) async {
     try {
       final postModel = await remoteDataSource.getPost(postId);
@@ -188,6 +156,20 @@ class PostsRepositoryImpl implements PostsRepository {
     } on ServerException catch (e) {
       AppLogger.error(
         'ServerException in getFavorites repo: ${e.message}',
+        error: e,
+      );
+      return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
+  Future<Either<Failure, Unit>> deletePost(String postId) async {
+    try {
+      await remoteDataSource.deletePost(postId);
+      return const Right(unit);
+    } on ServerException catch (e) {
+      AppLogger.error(
+        'ServerException in deletePost repo: ${e.message}',
         error: e,
       );
       return Left(ServerFailure(e.message));
@@ -308,6 +290,27 @@ class PostsRepositoryImpl implements PostsRepository {
           });
     } catch (e) {
       AppLogger.error('Exception setting up streamFavorites: $e', error: e);
+      return Stream.value(Left(ServerFailure(e.toString())));
+    }
+  }
+
+  @override
+  Stream<Either<Failure, String>> streamPostDeletions() {
+    try {
+      AppLogger.info('Repository: Setting up post deletions stream');
+
+      return remoteDataSource
+          .streamPostDeletions()
+          .map((postId) => Right<Failure, String>(postId))
+          .handleError((error) {
+            AppLogger.error(
+              'Error in streamPostDeletions repo: $error',
+              error: error,
+            );
+            return Left<Failure, String>(ServerFailure(error.toString()));
+          });
+    } catch (e) {
+      AppLogger.error('Exception setting up streamPostDeletions: $e', error: e);
       return Stream.value(Left(ServerFailure(e.toString())));
     }
   }

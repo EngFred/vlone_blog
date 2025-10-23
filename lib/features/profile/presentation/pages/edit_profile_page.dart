@@ -27,12 +27,29 @@ class _EditProfilePageState extends State<EditProfilePage> {
   bool _isSubmitting = false;
 
   ProfileEntity? _initialProfile;
+  bool _hasInitializedControllers = false;
 
   @override
   void initState() {
     super.initState();
-    // Ensure profile is loaded
-    context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
+    // Initialize from current state if already loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final currentState = context.read<ProfileBloc>().state;
+      if (currentState is ProfileDataLoaded && !_hasInitializedControllers) {
+        _initializeFromProfile(currentState.profile);
+      }
+    });
+  }
+
+  void _initializeFromProfile(ProfileEntity profile) {
+    if (_hasInitializedControllers) return;
+
+    setState(() {
+      _initialProfile = profile;
+      _usernameController.text = profile.username;
+      _bioController.text = profile.bio ?? '';
+      _hasInitializedControllers = true;
+    });
   }
 
   @override
@@ -45,15 +62,19 @@ class _EditProfilePageState extends State<EditProfilePage> {
   Future<void> _pickImage() async {
     if (_isSubmitting) return; // Prevent picking while submitting
 
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-    );
-    if (picked != null) {
-      setState(() {
-        _pickedImage = picked;
-      });
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (picked != null) {
+        setState(() {
+          _pickedImage = picked;
+        });
+      }
+    } catch (e) {
+      SnackbarUtils.showError(context, 'Failed to pick image.');
     }
   }
 
@@ -91,30 +112,54 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   // Helper for consistent input styling
   InputDecoration _getInputDecoration(String labelText, {String? hintText}) {
+    final theme = Theme.of(context);
+    final isLight = theme.brightness == Brightness.light;
+
+    // Make borders and fill colors visible in both light and dark modes.
+    final borderColor = isLight
+        ? theme.colorScheme.onSurface.withOpacity(0.12)
+        : theme.colorScheme.outline;
+
+    final fillColor = isLight
+        ? theme.colorScheme.surfaceVariant.withOpacity(0.6)
+        : theme.colorScheme.surfaceVariant;
+
     return InputDecoration(
       labelText: labelText,
       hintText: hintText,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.0)),
+      filled: true,
+      fillColor: fillColor,
+      labelStyle: theme.textTheme.bodyMedium?.copyWith(
+        color: theme.colorScheme.onSurface,
+      ),
+      hintStyle: theme.textTheme.bodySmall,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10.0),
+        borderSide: BorderSide(color: borderColor, width: 1.0),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10.0),
+        borderSide: BorderSide(color: borderColor, width: 1.0),
+      ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10.0),
-        borderSide: BorderSide(
-          color: Theme.of(context).colorScheme.primary,
-          width: 2.0,
-        ),
+        borderSide: BorderSide(color: theme.colorScheme.primary, width: 2.0),
       ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Edit Profile'),
         centerTitle: false,
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        iconTheme: IconThemeData(
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
+        backgroundColor: theme.colorScheme.surface,
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
+        elevation: 0,
       ),
       body: BlocConsumer<ProfileBloc, ProfileState>(
         listener: (context, state) {
@@ -132,141 +177,165 @@ class _EditProfilePageState extends State<EditProfilePage> {
               context.pop();
               return;
             }
-            // Initial load logic
-            if (_initialProfile == null) {
-              _initialProfile = state.profile;
-              _usernameController.text = state.profile.username;
-              _bioController.text = state.profile.bio ?? '';
+            // Initial load logic - initialize controllers if not already done
+            if (!_hasInitializedControllers) {
+              _initializeFromProfile(state.profile);
             }
           }
         },
         builder: (context, state) {
           if (state is ProfileInitial ||
-              state is ProfileLoading && _initialProfile == null) {
+              (state is ProfileLoading && !_hasInitializedControllers)) {
             return const Center(child: LoadingIndicator());
           }
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              children: [
-                // Avatar preview and pick area
-                GestureDetector(
-                  onTap: _pickImage,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      CircleAvatar(
-                        radius: 60,
-                        backgroundColor: Theme.of(
-                          context,
-                        ).colorScheme.surfaceVariant,
-                        backgroundImage: _pickedImage != null
-                            ? FileImage(File(_pickedImage!.path))
-                                  as ImageProvider
-                            : (_initialProfile?.profileImageUrl != null
-                                  ? CachedNetworkImageProvider(
-                                      _initialProfile!.profileImageUrl!,
-                                    )
-                                  : null),
-                        child:
-                            _pickedImage == null &&
-                                (_initialProfile?.profileImageUrl == null)
-                            ? Icon(
-                                Icons.person,
-                                size: 54,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              )
-                            : null,
-                      ),
-                      // Overlay to clearly indicate tap area
-                      Positioned.fill(
-                        child: CircleAvatar(
+          // Use AbsorbPointer + Opacity to prevent interactions while submitting.
+          return AbsorbPointer(
+            absorbing: _isSubmitting,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                children: [
+                  // Avatar preview and pick area
+                  GestureDetector(
+                    onTap: _isSubmitting ? null : _pickImage,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CircleAvatar(
                           radius: 60,
-                          backgroundColor: Colors.black54.withOpacity(
-                            _isSubmitting ? 0.6 : 0.0,
-                          ), // Darken on submission
-                          child: Icon(
-                            Icons.camera_alt,
-                            size: 32,
-                            color: Colors.white.withOpacity(0.9),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextButton.icon(
-                  onPressed: _isSubmitting ? null : _pickImage,
-                  icon: const Icon(Icons.photo_library),
-                  label: Text(
-                    _pickedImage != null
-                        ? 'Image Selected (Tap to Change)'
-                        : 'Change Profile Photo',
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Form Section
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      TextFormField(
-                        controller: _usernameController,
-                        decoration: _getInputDecoration('Username'),
-                        maxLength: 30,
-                        validator: (v) {
-                          if (v == null || v.trim().isEmpty)
-                            return 'Username cannot be empty';
-                          if (v.trim().length < 3) return 'Username too short';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _bioController,
-                        decoration: _getInputDecoration(
-                          'Bio',
-                          hintText: 'Tell people about yourself (optional)',
-                        ),
-                        maxLines: 4,
-                        maxLength: 160,
-                      ),
-                      const SizedBox(height: 32),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: _isSubmitting ? null : _submit,
-                          style: ElevatedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 4,
-                          ),
-                          child: _isSubmitting
-                              ? const SizedBox(
-                                  height: 24,
-                                  width: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 3,
-                                    color: Colors.white,
-                                  ),
+                          backgroundColor: theme.colorScheme.surfaceVariant,
+                          backgroundImage: _pickedImage != null
+                              ? FileImage(File(_pickedImage!.path))
+                                    as ImageProvider
+                              : (_initialProfile?.profileImageUrl != null
+                                    ? CachedNetworkImageProvider(
+                                        _initialProfile!.profileImageUrl!,
+                                      )
+                                    : null),
+                          child:
+                              _pickedImage == null &&
+                                  (_initialProfile?.profileImageUrl == null)
+                              ? Icon(
+                                  Icons.person,
+                                  size: 54,
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 )
-                              : const Text(
-                                  'Save Changes',
-                                  style: TextStyle(fontSize: 18),
-                                ),
+                              : null,
                         ),
-                      ),
-                    ],
+
+                        // Small edit badge at bottom-right instead of full overlay.
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Material(
+                            shape: const CircleBorder(),
+                            elevation: 4,
+                            color: theme.colorScheme.surface,
+                            child: InkWell(
+                              onTap: _isSubmitting ? null : _pickImage,
+                              customBorder: const CircleBorder(),
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Icon(
+                                  Icons.camera_alt_outlined,
+                                  size: 18,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Semi-transparent overlay shown only when submitting so user sees the disabled state
+                        if (_isSubmitting)
+                          Positioned.fill(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: theme.brightness == Brightness.light
+                                    ? Colors.white.withOpacity(0.6)
+                                    : Colors.black.withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    onPressed: _isSubmitting ? null : _pickImage,
+                    icon: const Icon(Icons.photo_library),
+                    label: Text(
+                      _pickedImage != null
+                          ? 'Image Selected (Tap to Change)'
+                          : 'Change Profile Photo',
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Form Section
+                  Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        TextFormField(
+                          controller: _usernameController,
+                          decoration: _getInputDecoration('Username'),
+                          maxLength: 30,
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty)
+                              return 'Username cannot be empty';
+                            if (v.trim().length < 3)
+                              return 'Username too short';
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _bioController,
+                          decoration: _getInputDecoration(
+                            'Bio',
+                            hintText: 'Tell people about yourself (optional)',
+                          ),
+                          maxLines: 4,
+                          maxLength: 160,
+                        ),
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: _isSubmitting ? null : _submit,
+                            style: ElevatedButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 4,
+                            ),
+                            child: _isSubmitting
+                                ? const SizedBox(
+                                    height: 24,
+                                    width: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 3,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Save Changes',
+                                    style: TextStyle(fontSize: 18),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           );
         },

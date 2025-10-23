@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
 class SnackbarUtils {
-  /// Show error snackbar with user-friendly message
-  static void showError(BuildContext context, String message) {
+  /// Show error snackbar with white text
+  static void showError(
+    BuildContext context,
+    String message, {
+    int durationSeconds = 4,
+  }) {
     if (!context.mounted) return;
 
     ScaffoldMessenger.of(context)
@@ -14,13 +18,16 @@ class SnackbarUtils {
               const Icon(Icons.error_outline, color: Colors.white),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(message, style: const TextStyle(fontSize: 14)),
+                child: Text(
+                  message,
+                  style: const TextStyle(fontSize: 14, color: Colors.white),
+                ),
               ),
             ],
           ),
           backgroundColor: Colors.red.shade600,
           behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
+          duration: Duration(seconds: durationSeconds),
           action: SnackBarAction(
             label: 'OK',
             textColor: Colors.white,
@@ -32,8 +39,12 @@ class SnackbarUtils {
       );
   }
 
-  /// Show success snackbar
-  static void showSuccess(BuildContext context, String message) {
+  /// Show success snackbar with white text
+  static void showSuccess(
+    BuildContext context,
+    String message, {
+    int durationSeconds = 3,
+  }) {
     if (!context.mounted) return;
 
     ScaffoldMessenger.of(context)
@@ -45,19 +56,26 @@ class SnackbarUtils {
               const Icon(Icons.check_circle_outline, color: Colors.white),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(message, style: const TextStyle(fontSize: 14)),
+                child: Text(
+                  message,
+                  style: const TextStyle(fontSize: 14, color: Colors.white),
+                ),
               ),
             ],
           ),
           backgroundColor: Colors.green.shade600,
           behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
+          duration: Duration(seconds: durationSeconds),
         ),
       );
   }
 
-  /// Show info snackbar
-  static void showInfo(BuildContext context, String message) {
+  /// Show info snackbar with white text. durationSeconds defaults to 3.
+  static void showInfo(
+    BuildContext context,
+    String message, {
+    int durationSeconds = 3,
+  }) {
     if (!context.mounted) return;
 
     ScaffoldMessenger.of(context)
@@ -69,19 +87,26 @@ class SnackbarUtils {
               const Icon(Icons.info_outline, color: Colors.white),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(message, style: const TextStyle(fontSize: 14)),
+                child: Text(
+                  message,
+                  style: const TextStyle(fontSize: 14, color: Colors.white),
+                ),
               ),
             ],
           ),
           backgroundColor: Colors.blue.shade600,
           behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
+          duration: Duration(seconds: durationSeconds),
         ),
       );
   }
 
-  /// Show warning snackbar
-  static void showWarning(BuildContext context, String message) {
+  /// Show warning snackbar with white text
+  static void showWarning(
+    BuildContext context,
+    String message, {
+    int durationSeconds = 3,
+  }) {
     if (!context.mounted) return;
 
     ScaffoldMessenger.of(context)
@@ -90,19 +115,19 @@ class SnackbarUtils {
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.warning_amber_outlined, color: Colors.black87),
+              const Icon(Icons.warning_amber_outlined, color: Colors.white),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   message,
-                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+                  style: const TextStyle(fontSize: 14, color: Colors.white),
                 ),
               ),
             ],
           ),
-          backgroundColor: Colors.orange.shade400,
+          backgroundColor: Colors.orange.shade700,
           behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
+          duration: Duration(seconds: durationSeconds),
         ),
       );
   }
