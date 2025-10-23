@@ -1,15 +1,12 @@
-// features/posts/presentation/widgets/media_upload_widget.dart
-
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
+import 'package:vlone_blog_app/core/utils/crop_utils.dart';
 import 'package:vlone_blog_app/core/utils/helpers.dart';
-import 'package:vlone_blog_app/core/utils/snackbar_utils.dart'; // Added for showing errors
-import 'package:flutter/painting.dart'; // Added for pre-flight checking images
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 
 import 'media_picker_sheet.dart';
 import 'media_placeholder.dart';
@@ -150,48 +147,12 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
     if (_mediaFile == null) return;
 
     if (_mediaType == 'image') {
-      // 1. Get the current app theme from the context.
-      final theme = Theme.of(context);
-
-      try {
-        final cropped = await ImageCropper().cropImage(
-          sourcePath: _mediaFile!.path,
-          uiSettings: [
-            AndroidUiSettings(
-              toolbarTitle: 'Crop Image',
-              // Set toolbar to your desired 'surface' color
-              toolbarColor: theme.colorScheme.surface,
-              // Set toolbar text/icons to 'onSurface' for contrast
-              toolbarWidgetColor: theme.colorScheme.onSurface,
-
-              // Keep interactive elements like handles as your 'primary' (accent) color
-              activeControlsWidgetColor: theme.colorScheme.primary,
-              // Set the cropper background to your app's background color
-              backgroundColor: theme.colorScheme.background,
-              initAspectRatio: CropAspectRatioPreset.original,
-              lockAspectRatio: false,
-            ),
-            IOSUiSettings(
-              title: 'Crop Image',
-              doneButtonTitle: 'Done',
-              cancelButtonTitle: 'Cancel',
-            ),
-          ],
-        );
-
-        // handle both CroppedFile and XFile (older versions)
-        if (cropped != null) {
-          final croppedPath = cropped.path;
-          setState(() {
-            _mediaFile = File(croppedPath);
-          });
-          widget.onMediaSelected(_mediaFile, _mediaType);
-        }
-      } catch (e) {
-        debugPrint('Error cropping image: $e');
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Failed to crop image')));
+      final croppedFile = await cropImageFile(context, _mediaFile!);
+      if (croppedFile != null) {
+        setState(() {
+          _mediaFile = croppedFile;
+        });
+        widget.onMediaSelected(_mediaFile, _mediaType);
       }
     } else if (_mediaType == 'video') {
       // Video trimming logic remains the same
@@ -200,13 +161,11 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
           builder: (context) => TrimmerView(_mediaFile!),
         ),
       );
-
       if (trimmedFilePath != null) {
         await _videoController?.dispose();
         final newFile = File(trimmedFilePath);
         _videoController = VideoPlayerController.file(newFile)
           ..initialize().then((_) => setState(() {}));
-
         setState(() {
           _mediaFile = newFile;
           _isPreviewPlaying = false;

@@ -1,17 +1,20 @@
 part of 'posts_bloc.dart';
 
 abstract class PostsEvent extends Equatable {
+  const PostsEvent();
+
   @override
   List<Object?> get props => [];
 }
 
+// ==================== CREATE POST ====================
 class CreatePostEvent extends PostsEvent {
   final String userId;
   final String? content;
   final File? mediaFile;
   final String? mediaType;
 
-  CreatePostEvent({
+  const CreatePostEvent({
     required this.userId,
     this.content,
     this.mediaFile,
@@ -22,50 +25,68 @@ class CreatePostEvent extends PostsEvent {
   List<Object?> get props => [userId, content, mediaFile, mediaType];
 }
 
+// ==================== GET FEED ====================
 class GetFeedEvent extends PostsEvent {
-  final String? userId;
+  final String userId;
 
-  GetFeedEvent({this.userId});
+  const GetFeedEvent({required this.userId});
 
   @override
   List<Object?> get props => [userId];
 }
 
+// ==================== GET REELS ====================
 class GetReelsEvent extends PostsEvent {
-  final String? userId;
+  final String userId;
 
-  GetReelsEvent({this.userId});
+  const GetReelsEvent({required this.userId});
 
   @override
   List<Object?> get props => [userId];
 }
 
+// ==================== GET USER POSTS ====================
 class GetUserPostsEvent extends PostsEvent {
   final String profileUserId;
-  final String? viewerUserId;
+  final String currentUserId;
 
-  GetUserPostsEvent({required this.profileUserId, this.viewerUserId});
+  const GetUserPostsEvent({
+    required this.profileUserId,
+    required this.currentUserId,
+  });
 
   @override
-  List<Object?> get props => [profileUserId, viewerUserId];
+  List<Object?> get props => [profileUserId, currentUserId];
 }
 
+// ==================== GET SINGLE POST ====================
 class GetPostEvent extends PostsEvent {
   final String postId;
-  final String? viewerUserId;
+  final String currentUserId;
 
-  GetPostEvent(this.postId, {this.viewerUserId});
+  const GetPostEvent({required this.postId, required this.currentUserId});
 
   @override
-  List<Object?> get props => [postId, viewerUserId];
+  List<Object?> get props => [postId, currentUserId];
 }
 
+// ==================== DELETE POST ====================
+class DeletePostEvent extends PostsEvent {
+  final String postId;
+
+  const DeletePostEvent({required this.postId});
+
+  @override
+  List<Object?> get props => [postId];
+}
+
+// ==================== LIKE POST ====================
 class LikePostEvent extends PostsEvent {
   final String postId;
   final String userId;
   final bool isLiked;
 
-  LikePostEvent({
+  const LikePostEvent({
     required this.postId,
     required this.userId,
     required this.isLiked,
@@ -75,41 +96,60 @@ class LikePostEvent extends PostsEvent {
   List<Object?> get props => [postId, userId, isLiked];
 }
 
+// ==================== SHARE POST ====================
 class SharePostEvent extends PostsEvent {
   final String postId;
 
-  SharePostEvent({required this.postId});
+  const SharePostEvent({required this.postId});
 
   @override
   List<Object?> get props => [postId];
 }
 
+// ==================== FAVORITE POST ====================
+class FavoritePostEvent extends PostsEvent {
+  final String postId;
+  final String userId;
+  final bool isFavorited;
+
+  const FavoritePostEvent({
+    required this.postId,
+    required this.userId,
+    required this.isFavorited,
+  });
+
+  @override
+  List<Object?> get props => [postId, userId, isFavorited];
+}
+
 // ==================== REAL-TIME EVENTS ====================
-
-/// Start listening to real-time post updates
+// Start/Stop real-time listeners
 class StartRealtimeListenersEvent extends PostsEvent {
-  final String? userId;
+  final String userId;
 
-  StartRealtimeListenersEvent({this.userId});
+  const StartRealtimeListenersEvent({required this.userId});
 
   @override
   List<Object?> get props => [userId];
 }
 
-/// Stop listening to real-time post updates
-class StopRealtimeListenersEvent extends PostsEvent {}
+class StopRealtimeListenersEvent extends PostsEvent {
+  const StopRealtimeListenersEvent();
 
-/// Internal event when a new post is received via real-time
+  @override
+  List<Object?> get props => [];
+}
+
+// Internal real-time events (not dispatched externally)
 class _RealtimePostReceivedEvent extends PostsEvent {
   final PostEntity post;
 
-  _RealtimePostReceivedEvent(this.post);
+  const _RealtimePostReceivedEvent(this.post);
 
   @override
   List<Object?> get props => [post];
 }
 
-/// Internal event when post counts are updated via real-time
 class _RealtimePostUpdatedEvent extends PostsEvent {
   final String postId;
   final int? likesCount;
@@ -117,7 +157,7 @@ class _RealtimePostUpdatedEvent extends PostsEvent {
   final int? favoritesCount;
   final int? sharesCount;
 
-  _RealtimePostUpdatedEvent({
+  const _RealtimePostUpdatedEvent({
     required this.postId,
     this.likesCount,
     this.commentsCount,
@@ -135,13 +175,12 @@ class _RealtimePostUpdatedEvent extends PostsEvent {
   ];
 }
 
-/// Internal event when a like event is received
 class _RealtimeLikeEvent extends PostsEvent {
   final String postId;
   final String userId;
   final bool isLiked;
 
-  _RealtimeLikeEvent({
+  const _RealtimeLikeEvent({
     required this.postId,
     required this.userId,
     required this.isLiked,
@@ -151,23 +190,21 @@ class _RealtimeLikeEvent extends PostsEvent {
   List<Object?> get props => [postId, userId, isLiked];
 }
 
-/// Internal event when a comment event is received
 class _RealtimeCommentEvent extends PostsEvent {
   final String postId;
 
-  _RealtimeCommentEvent(this.postId);
+  const _RealtimeCommentEvent(this.postId);
 
   @override
   List<Object?> get props => [postId];
 }
 
-/// Internal event when a favorite event is received
 class _RealtimeFavoriteEvent extends PostsEvent {
   final String postId;
   final String userId;
   final bool isFavorited;
 
-  _RealtimeFavoriteEvent({
+  const _RealtimeFavoriteEvent({
     required this.postId,
     required this.userId,
     required this.isFavorited,
@@ -177,35 +214,10 @@ class _RealtimeFavoriteEvent extends PostsEvent {
   List<Object?> get props => [postId, userId, isFavorited];
 }
 
-/// Internal event when a post deletion event is received
 class _RealtimePostDeletedEvent extends PostsEvent {
   final String postId;
 
-  _RealtimePostDeletedEvent(this.postId);
-
-  @override
-  List<Object?> get props => [postId];
-}
-
-class FavoritePostEvent extends PostsEvent {
-  final String postId;
-  final String userId;
-  final bool isFavorited;
-
-  FavoritePostEvent({
-    required this.postId,
-    required this.userId,
-    required this.isFavorited,
-  });
-
-  @override
-  List<Object?> get props => [postId, userId, isFavorited];
-}
-
-class DeletePostEvent extends PostsEvent {
-  final String postId;
-
-  DeletePostEvent({required this.postId});
+  const _RealtimePostDeletedEvent(this.postId);
 
   @override
   List<Object?> get props => [postId];

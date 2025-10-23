@@ -11,11 +11,18 @@ abstract class PostsRepository {
     String? mediaType,
   });
 
-  Future<Either<Failure, List<PostEntity>>> getFeed();
+  Future<Either<Failure, List<PostEntity>>> getFeed({
+    required String currentUserId,
+  });
 
-  Future<Either<Failure, List<PostEntity>>> getReels();
+  Future<Either<Failure, List<PostEntity>>> getReels({
+    required String currentUserId,
+  });
 
-  Future<Either<Failure, List<PostEntity>>> getUserPosts(String userId);
+  Future<Either<Failure, List<PostEntity>>> getUserPosts({
+    required String profileUserId,
+    required String currentUserId,
+  });
 
   Future<Either<Failure, List<PostEntity>>> getFavorites({
     required String userId,
@@ -35,7 +42,10 @@ abstract class PostsRepository {
 
   Future<Either<Failure, Unit>> sharePost({required String postId});
 
-  Future<Either<Failure, PostEntity>> getPost(String postId);
+  Future<Either<Failure, PostEntity>> getPost({
+    required String postId,
+    required String currentUserId,
+  });
 
   Future<Either<Failure, Unit>> deletePost(String postId);
 

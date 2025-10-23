@@ -1,3 +1,4 @@
+// lib/features/posts/presentation/pages/feed_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -42,7 +43,7 @@ class _FeedPageState extends State<FeedPage> {
     if (!_realtimeStarted && _userId != null && mounted) {
       AppLogger.info('Starting real-time listeners from FeedPage');
       context.read<PostsBloc>().add(
-        StartRealtimeListenersEvent(userId: _userId),
+        StartRealtimeListenersEvent(userId: _userId!),
       );
       _realtimeStarted = true;
     }
@@ -219,7 +220,7 @@ class _FeedPageState extends State<FeedPage> {
             _stopRealtimeListeners();
 
             final bloc = context.read<PostsBloc>();
-            bloc.add(GetFeedEvent(userId: _userId));
+            bloc.add(GetFeedEvent(userId: _userId!));
 
             // Await the BLoC to finish loading or erroring
             await bloc.stream.firstWhere(
@@ -248,7 +249,7 @@ class _FeedPageState extends State<FeedPage> {
                 return CustomErrorWidget(
                   message: postsState.message,
                   onRetry: () => context.read<PostsBloc>().add(
-                    GetFeedEvent(userId: _userId),
+                    GetFeedEvent(userId: _userId!),
                   ),
                 );
               }

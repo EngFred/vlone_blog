@@ -80,7 +80,7 @@ class _ReelsPageState extends State<ReelsPage>
     if (!_realtimeStarted && _userId != null && mounted) {
       AppLogger.info('Starting real-time listeners from ReelsPage');
       context.read<PostsBloc>().add(
-        StartRealtimeListenersEvent(userId: _userId),
+        StartRealtimeListenersEvent(userId: _userId!),
       );
       _realtimeStarted = true;
     }
@@ -226,7 +226,7 @@ class _ReelsPageState extends State<ReelsPage>
             _stopRealtimeListeners();
 
             final bloc = context.read<PostsBloc>();
-            bloc.add(GetReelsEvent(userId: _userId));
+            bloc.add(GetReelsEvent(userId: _userId!));
 
             await bloc.stream.firstWhere(
               (state) => state is ReelsLoaded || state is PostsError,
@@ -245,7 +245,7 @@ class _ReelsPageState extends State<ReelsPage>
                   return CustomErrorWidget(
                     message: postsState.message,
                     onRetry: () => context.read<PostsBloc>().add(
-                      GetReelsEvent(userId: _userId),
+                      GetReelsEvent(userId: _userId!),
                     ),
                   );
                 } else {
@@ -254,7 +254,7 @@ class _ReelsPageState extends State<ReelsPage>
                     icon: Icons.video_library,
                     actionText: 'Check Again',
                     onRetry: () => context.read<PostsBloc>().add(
-                      GetReelsEvent(userId: _userId),
+                      GetReelsEvent(userId: _userId!),
                     ),
                   );
                 }

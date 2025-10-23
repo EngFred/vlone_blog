@@ -129,7 +129,7 @@ class _MainPageState extends State<MainPage> {
         context.read<ProfileBloc>().add(GetProfileDataEvent(_userId!));
         context.read<ProfileBloc>().add(StartProfileRealtimeEvent(_userId!));
         context.read<PostsBloc>().add(
-          GetUserPostsEvent(profileUserId: _userId!, viewerUserId: _userId!),
+          GetUserPostsEvent(profileUserId: _userId!, currentUserId: _userId!),
         );
         break;
     }

@@ -44,6 +44,7 @@ class PostsRemoteDataSource {
 
       if (mediaFile != null) {
         if (mediaType == 'video') {
+          // Assuming getVideoDuration is available from helpers.dart
           final duration = await getVideoDuration(mediaFile);
           if (duration > Constants.maxVideoDurationSeconds) {
             AppLogger.warning(
@@ -72,6 +73,7 @@ class PostsRemoteDataSource {
 
             try {
               if (await thumbFile.exists()) {
+                // Clean up local temp thumbnail file
                 await thumbFile.delete();
               }
             } catch (_) {}
@@ -87,6 +89,7 @@ class PostsRemoteDataSource {
         'thumbnail_url': thumbnailUrl,
       };
 
+      // Standard select works here as it's a single insert/fetch
       final response = await client
           .from('posts')
           .insert(postData)
@@ -157,30 +160,68 @@ class PostsRemoteDataSource {
     }
   }
 
-  Future<List<PostModel>> getFeed() async {
-    try {
-      AppLogger.info('Fetching feed');
-      final response = await client
-          .from('posts')
-          .select('*, profiles ( username, profile_image_url )')
-          .order('created_at', ascending: false);
+  // ==================== RPC for Feed Retrieval ====================
 
-      AppLogger.info('Feed fetched with ${response.length} posts');
-      return response.map((map) => PostModel.fromMap(map)).toList();
+  /// Fetches the main feed using the `get_feed_with_user_status` RPC for efficiency.
+  Future<List<PostModel>> getFeed({required String currentUserId}) async {
+    try {
+      AppLogger.info('Fetching feed via RPC for user: $currentUserId');
+
+      // Call the consolidated Postgres function
+      final response = await client.rpc(
+        'get_feed_with_user_status',
+        params: {'current_user_id': currentUserId},
+      );
+
+      if (response is List && response.isEmpty) {
+        return [];
+      }
+
+      AppLogger.info(
+        'Feed fetched with ${(response as List).length} posts via RPC',
+      );
+
+      // Model handles the flat RPC structure directly now
+      return (response as List).map((map) => PostModel.fromMap(map)).toList();
     } catch (e) {
-      AppLogger.error('Error fetching feed: $e', error: e);
+      AppLogger.error('Error fetching feed via RPC: $e', error: e);
       throw ServerException(e.toString());
     }
   }
 
-  Future<List<PostModel>> getReels() async {
+  // Sticking to original select/join method for Reels and UserPosts
+  Future<List<PostModel>> getReels({required String currentUserId}) async {
     try {
-      AppLogger.info('Fetching reels');
+      AppLogger.info('Fetching reels (video posts)');
+
       final response = await client
           .from('posts')
           .select('*, profiles ( username, profile_image_url )')
           .eq('media_type', 'video')
           .order('created_at', ascending: false);
+
+      if (response.isEmpty) {
+        return [];
+      }
+
+      final likedResponse = await client
+          .from('likes')
+          .select('post_id')
+          .eq('user_id', currentUserId);
+      final likedIds = likedResponse.map((e) => e['post_id'] as String).toSet();
+
+      final favoritedResponse = await client
+          .from('favorites')
+          .select('post_id')
+          .eq('user_id', currentUserId);
+      final favoritedIds = favoritedResponse
+          .map((e) => e['post_id'] as String)
+          .toSet();
+
+      for (var map in response) {
+        map['is_liked'] = likedIds.contains(map['id']);
+        map['is_favorited'] = favoritedIds.contains(map['id']);
+      }
 
       AppLogger.info('Reels fetched with ${response.length} posts');
       return response.map((map) => PostModel.fromMap(map)).toList();
@@ -190,14 +231,40 @@ class PostsRemoteDataSource {
     }
   }
 
-  Future<List<PostModel>> getUserPosts({required String userId}) async {
+  Future<List<PostModel>> getUserPosts({
+    required String profileUserId,
+    required String currentUserId,
+  }) async {
     try {
-      AppLogger.info('Fetching user posts for $userId');
+      AppLogger.info('Fetching user posts for $profileUserId');
       final response = await client
           .from('posts')
           .select('*, profiles ( username, profile_image_url )')
-          .eq('user_id', userId)
+          .eq('user_id', profileUserId)
           .order('created_at', ascending: false);
+
+      if (response.isEmpty) {
+        return [];
+      }
+
+      final likedResponse = await client
+          .from('likes')
+          .select('post_id')
+          .eq('user_id', currentUserId);
+      final likedIds = likedResponse.map((e) => e['post_id'] as String).toSet();
+
+      final favoritedResponse = await client
+          .from('favorites')
+          .select('post_id')
+          .eq('user_id', currentUserId);
+      final favoritedIds = favoritedResponse
+          .map((e) => e['post_id'] as String)
+          .toSet();
+
+      for (var map in response) {
+        map['is_liked'] = likedIds.contains(map['id']);
+        map['is_favorited'] = favoritedIds.contains(map['id']);
+      }
 
       AppLogger.info('User posts fetched with ${response.length} posts');
       return response.map((map) => PostModel.fromMap(map)).toList();
@@ -207,7 +274,10 @@ class PostsRemoteDataSource {
     }
   }
 
-  Future<PostModel> getPost(String postId) async {
+  Future<PostModel> getPost({
+    required String postId,
+    required String currentUserId,
+  }) async {
     try {
       AppLogger.info('Fetching post: $postId');
       final response = await client
@@ -215,6 +285,25 @@ class PostsRemoteDataSource {
           .select('*, profiles ( username, profile_image_url )')
           .eq('id', postId)
           .single();
+
+      final likeCheck = await client
+          .from('likes')
+          .select('id')
+          .eq('post_id', postId)
+          .eq('user_id', currentUserId)
+          .maybeSingle();
+      final isLiked = likeCheck != null;
+
+      final favCheck = await client
+          .from('favorites')
+          .select('id')
+          .eq('post_id', postId)
+          .eq('user_id', currentUserId)
+          .maybeSingle();
+      final isFavorited = favCheck != null;
+
+      response['is_liked'] = isLiked;
+      response['is_favorited'] = isFavorited;
 
       AppLogger.info('Post fetched: ${response['id']}');
       return PostModel.fromMap(response);
@@ -245,6 +334,17 @@ class PostsRemoteDataSource {
           .select('*, profiles ( username, profile_image_url )')
           .inFilter('id', postIds)
           .order('created_at', ascending: false);
+
+      final likedResponse = await client
+          .from('likes')
+          .select('post_id')
+          .eq('user_id', userId);
+      final likedIds = likedResponse.map((e) => e['post_id'] as String).toSet();
+
+      for (var map in postsResponse) {
+        map['is_favorited'] = true;
+        map['is_liked'] = likedIds.contains(map['id']);
+      }
 
       AppLogger.info('Favorites fetched with ${postsResponse.length} posts');
       return postsResponse.map((map) => PostModel.fromMap(map)).toList();
@@ -312,26 +412,23 @@ class PostsRemoteDataSource {
     }
   }
 
+  // ==================== RPC for Atomic Share Count ====================
+
+  /// Shares a post and uses the `increment_post_shares` RPC to atomically update the share count.
   Future<void> sharePost({required String postId}) async {
     try {
       AppLogger.info('Attempting to share post: $postId');
+
       final shareUrl = 'Check this post: https://myapp.com/post/$postId';
       await Share.share(shareUrl);
 
-      final readResponse = await client
-          .from('posts')
-          .select('shares_count')
-          .eq('id', postId)
-          .single();
+      // RPC call is atomic and safe
+      await client.rpc(
+        'increment_post_shares',
+        params: {'post_id_param': postId},
+      );
 
-      final currentCount = (readResponse['shares_count'] as int?) ?? 0;
-
-      await client
-          .from('posts')
-          .update({'shares_count': currentCount + 1})
-          .eq('id', postId);
-
-      AppLogger.info('Post shared and count updated successfully');
+      AppLogger.info('Post shared and count updated successfully via RPC');
     } catch (e) {
       AppLogger.error('Error sharing post: $e', error: e);
       throw ServerException(e.toString());
@@ -362,9 +459,11 @@ class PostsRemoteDataSource {
 
   // ==================== REAL-TIME STREAMS ====================
 
-  /// Stream for new posts being created
+  // ==================== RPC for Real-Time Data Enrichment ====================
+
+  /// Stream for new posts being created. Uses the `get_post_with_profile` RPC function.
   Stream<PostModel> streamNewPosts() {
-    AppLogger.info('Setting up real-time stream for new posts');
+    AppLogger.info('Setting up real-time stream for new posts (using RPC)');
 
     return client
         .from('posts')
@@ -374,17 +473,29 @@ class PostsRemoteDataSource {
           if (data.isEmpty) return null;
 
           final latestPost = data.first;
+          final postId = latestPost['id'] as String;
 
           try {
-            final completePost = await client
-                .from('posts')
-                .select('*, profiles ( username, profile_image_url )')
-                .eq('id', latestPost['id'])
-                .single();
+            // Use the Postgres function to fetch the complete data
+            final response = await client.rpc(
+              'get_post_with_profile',
+              params: {'post_id': postId},
+            );
 
-            return PostModel.fromMap(completePost);
+            if (response is List && response.isNotEmpty) {
+              // Model handles the flat RPC structure directly now
+              return PostModel.fromMap(response.first);
+            }
+
+            AppLogger.warning(
+              'RPC get_post_with_profile returned no data for $postId',
+            );
+            return null;
           } catch (e) {
-            AppLogger.error('Error fetching complete post data: $e', error: e);
+            AppLogger.error(
+              'Error fetching complete post data via RPC: $e',
+              error: e,
+            );
             return null;
           }
         })

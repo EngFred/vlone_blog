@@ -1,3 +1,4 @@
+// lib/features/profile/presentation/pages/profile_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -350,7 +351,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   context.read<PostsBloc>().add(
                     GetUserPostsEvent(
                       profileUserId: widget.userId,
-                      viewerUserId: _userId,
+                      currentUserId: _userId!,
                     ),
                   );
                   if (mounted) {
@@ -387,7 +388,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           context.read<PostsBloc>().add(
                             GetUserPostsEvent(
                               profileUserId: widget.userId,
-                              viewerUserId: _userId,
+                              currentUserId: _userId!,
                             ),
                           );
                         },

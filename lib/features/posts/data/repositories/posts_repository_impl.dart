@@ -37,9 +37,13 @@ class PostsRepositoryImpl implements PostsRepository {
   }
 
   @override
-  Future<Either<Failure, List<PostEntity>>> getFeed() async {
+  Future<Either<Failure, List<PostEntity>>> getFeed({
+    required String currentUserId,
+  }) async {
     try {
-      final postModels = await remoteDataSource.getFeed();
+      final postModels = await remoteDataSource.getFeed(
+        currentUserId: currentUserId,
+      );
       return Right(postModels.map((model) => model.toEntity()).toList());
     } on ServerException catch (e) {
       AppLogger.error(
@@ -51,9 +55,13 @@ class PostsRepositoryImpl implements PostsRepository {
   }
 
   @override
-  Future<Either<Failure, List<PostEntity>>> getReels() async {
+  Future<Either<Failure, List<PostEntity>>> getReels({
+    required String currentUserId,
+  }) async {
     try {
-      final postModels = await remoteDataSource.getReels();
+      final postModels = await remoteDataSource.getReels(
+        currentUserId: currentUserId,
+      );
       return Right(postModels.map((model) => model.toEntity()).toList());
     } on ServerException catch (e) {
       AppLogger.error(
@@ -65,9 +73,15 @@ class PostsRepositoryImpl implements PostsRepository {
   }
 
   @override
-  Future<Either<Failure, List<PostEntity>>> getUserPosts(String userId) async {
+  Future<Either<Failure, List<PostEntity>>> getUserPosts({
+    required String profileUserId,
+    required String currentUserId,
+  }) async {
     try {
-      final postModels = await remoteDataSource.getUserPosts(userId: userId);
+      final postModels = await remoteDataSource.getUserPosts(
+        profileUserId: profileUserId,
+        currentUserId: currentUserId,
+      );
       return Right(postModels.map((model) => model.toEntity()).toList());
     } on ServerException catch (e) {
       AppLogger.error(
@@ -137,9 +151,15 @@ class PostsRepositoryImpl implements PostsRepository {
   }
 
   @override
-  Future<Either<Failure, PostEntity>> getPost(String postId) async {
+  Future<Either<Failure, PostEntity>> getPost({
+    required String postId,
+    required String currentUserId,
+  }) async {
     try {
-      final postModel = await remoteDataSource.getPost(postId);
+      final postModel = await remoteDataSource.getPost(
+        postId: postId,
+        currentUserId: currentUserId,
+      );
       return Right(postModel.toEntity());
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));

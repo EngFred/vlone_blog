@@ -1,9 +1,9 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:vlone_blog_app/core/utils/crop_utils.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
@@ -23,7 +23,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final _usernameController = TextEditingController();
   final _bioController = TextEditingController();
 
-  XFile? _pickedImage;
+  // Changed from XFile? to File? to hold the post-crop file.
+  File? _profileImageFile;
   bool _isSubmitting = false;
 
   ProfileEntity? _initialProfile;
@@ -60,21 +61,35 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   Future<void> _pickImage() async {
-    if (_isSubmitting) return; // Prevent picking while submitting
+    if (_isSubmitting) return;
 
     try {
       final picker = ImagePicker();
-      final picked = await picker.pickImage(
+      final pickedXFile = await picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 85,
       );
-      if (picked != null) {
-        setState(() {
-          _pickedImage = picked;
-        });
+
+      if (pickedXFile != null) {
+        final imageFile = File(pickedXFile.path);
+
+        // Use the centralized cropping utility
+        final croppedFile = await cropImageFile(
+          context,
+          imageFile,
+          lockSquare: true,
+        );
+
+        if (croppedFile != null) {
+          // If cropping was successful, update the state with the File
+          setState(() {
+            _profileImageFile = croppedFile;
+          });
+        }
       }
     } catch (e) {
-      SnackbarUtils.showError(context, 'Failed to pick image.');
+      SnackbarUtils.showError(context, 'Failed to pick or load image.');
+      debugPrint('Error picking or loading image: $e');
     }
   }
 
@@ -91,7 +106,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
         _initialProfile == null || newUsername != _initialProfile!.username;
     final bioChanged =
         _initialProfile == null || newBio != _initialProfile!.bio;
-    final hasImage = _pickedImage != null;
+
+    // Check for image change using the new File field
+    final hasImage = _profileImageFile != null;
 
     if (!usernameChanged && !bioChanged && !hasImage) {
       SnackbarUtils.showInfo(context, 'No changes detected.');
@@ -105,7 +122,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
         userId: widget.userId,
         username: usernameChanged ? newUsername : null,
         bio: bioChanged ? newBio : null,
-        profileImage: _pickedImage,
+        // Pass the File object to the BLoC by converting it back to XFile
+        // (assuming the BLoC still expects XFile for profileImage).
+        profileImage: hasImage ? XFile(_profileImageFile!.path) : null,
       ),
     );
   }
@@ -205,16 +224,17 @@ class _EditProfilePageState extends State<EditProfilePage> {
                         CircleAvatar(
                           radius: 60,
                           backgroundColor: theme.colorScheme.surfaceVariant,
-                          backgroundImage: _pickedImage != null
-                              ? FileImage(File(_pickedImage!.path))
-                                    as ImageProvider
+                          backgroundImage:
+                              _profileImageFile !=
+                                  null // Use new File field
+                              ? FileImage(_profileImageFile!) as ImageProvider
                               : (_initialProfile?.profileImageUrl != null
                                     ? CachedNetworkImageProvider(
                                         _initialProfile!.profileImageUrl!,
                                       )
                                     : null),
                           child:
-                              _pickedImage == null &&
+                              _profileImageFile == null && // Use new File field
                                   (_initialProfile?.profileImageUrl == null)
                               ? Icon(
                                   Icons.person,
@@ -270,8 +290,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     onPressed: _isSubmitting ? null : _pickImage,
                     icon: const Icon(Icons.photo_library),
                     label: Text(
-                      _pickedImage != null
-                          ? 'Image Selected (Tap to Change)'
+                      _profileImageFile !=
+                              null // Use new File field
+                          ? 'Image Selected (Tap to Change/Crop)'
                           : 'Change Profile Photo',
                     ),
                   ),

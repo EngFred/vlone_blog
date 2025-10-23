@@ -76,7 +76,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   void _fetchPost() {
     if (_userId != null) {
       context.read<PostsBloc>().add(
-        GetPostEvent(widget.postId, viewerUserId: _userId),
+        GetPostEvent(postId: widget.postId, currentUserId: _userId!),
       );
     } else {
       AppLogger.error('Cannot fetch post: _userId is null.');

@@ -1,3 +1,4 @@
+// lib/features/posts/presentation/bloc/posts_bloc.dart
 import 'dart:async';
 import 'dart:io';
 import 'package:bloc/bloc.dart';
@@ -67,7 +68,7 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     required this.streamCommentsUseCase,
     required this.streamFavoritesUseCase,
     required this.streamPostDeletionsUseCase,
-  }) : super(PostsInitial()) {
+  }) : super(const PostsInitial()) {
     on<CreatePostEvent>(_onCreatePost);
     on<GetFeedEvent>(_onGetFeed);
     on<GetReelsEvent>(_onGetReels);
@@ -94,7 +95,7 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     Emitter<PostsState> emit,
   ) async {
     AppLogger.info('CreatePostEvent triggered for user: ${event.userId}');
-    emit(PostsLoading());
+    emit(const PostsLoading());
 
     final result = await createPostUseCase(
       CreatePostParams(
@@ -120,9 +121,11 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
   Future<void> _onGetFeed(GetFeedEvent event, Emitter<PostsState> emit) async {
     AppLogger.info('GetFeedEvent triggered');
-    emit(PostsLoading());
+    emit(const PostsLoading());
 
-    final result = await getFeedUseCase(NoParams());
+    final result = await getFeedUseCase(
+      GetFeedParams(currentUserId: event.userId),
+    );
 
     result.fold(
       (failure) {
@@ -142,9 +145,11 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     Emitter<PostsState> emit,
   ) async {
     AppLogger.info('GetReelsEvent triggered');
-    emit(PostsLoading());
+    emit(const PostsLoading());
 
-    final result = await getReelsUseCase(NoParams());
+    final result = await getReelsUseCase(
+      GetReelsParams(currentUserId: event.userId),
+    );
 
     result.fold(
       (failure) {
@@ -166,10 +171,13 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     AppLogger.info(
       'GetUserPostsEvent triggered for user: ${event.profileUserId}',
     );
-    emit(UserPostsLoading());
+    emit(const UserPostsLoading());
 
     final result = await getUserPostsUseCase(
-      GetUserPostsParams(userId: event.profileUserId),
+      GetUserPostsParams(
+        profileUserId: event.profileUserId,
+        currentUserId: event.currentUserId,
+      ),
     );
 
     result.fold(
@@ -188,7 +196,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   Future<void> _onGetPost(GetPostEvent event, Emitter<PostsState> emit) async {
     AppLogger.info('GetPostEvent for post: ${event.postId}');
 
-    final result = await getPostUseCase(event.postId);
+    final result = await getPostUseCase(
+      GetPostParams(postId: event.postId, currentUserId: event.currentUserId),
+    );
 
     result.fold(
       (failure) {
@@ -344,7 +354,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
               'Real-time: Post update received for: ${updateData['id']}',
             );
 
-            // ================== FIX 1 START ==================
             // Helper function to safely parse values that should be integers
             // This handles nulls, ints, doubles (e.g., 10.0), and strings (e.g., "10")
             int? safeParseInt(dynamic value) {
@@ -364,7 +373,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
                 sharesCount: safeParseInt(updateData['shares_count']),
               ),
             );
-            // ================== FIX 1 END ==================
           },
         );
       },
@@ -444,7 +452,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
       },
     );
 
-    // ================== FIX 2 START ==================
     // Subscribe to post deletions
     _postDeletionsSubscription = streamPostDeletionsUseCase(NoParams()).listen(
       (either) {
@@ -463,7 +470,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
         AppLogger.error('Post deletions stream error: $error', error: error);
       },
     );
-    // ================== FIX 2 END ==================
 
     AppLogger.info('Real-time listeners started successfully');
 

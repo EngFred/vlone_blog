@@ -15,6 +15,8 @@ class PostModel {
   final DateTime? updatedAt;
   final bool isPublic;
   final int viewsCount;
+  final bool isLiked;
+  final bool isFavorited;
   final String? username;
   final String? avatarUrl;
 
@@ -33,11 +35,22 @@ class PostModel {
     this.updatedAt,
     this.isPublic = true,
     this.viewsCount = 0,
+    this.isLiked = false,
+    this.isFavorited = false,
     this.username,
     this.avatarUrl,
   });
 
   factory PostModel.fromMap(Map<String, dynamic> map) {
+    // 💡 FIX: Determine the source of profile data.
+    // Check if it's the flat RPC structure (username at top level)
+    final isRpcFlat = map.containsKey('username');
+
+    // Assign the map source: either the entire map (RPC) or the nested 'profiles' sub-map (standard select)
+    final profileSource = isRpcFlat
+        ? map
+        : (map['profiles'] as Map<String, dynamic>?);
+
     return PostModel(
       id: map['id'] as String,
       userId: map['user_id'] as String,
@@ -55,8 +68,14 @@ class PostModel {
           : null,
       isPublic: map['is_public'] as bool? ?? true,
       viewsCount: map['views_count'] as int? ?? 0,
-      username: map['profiles']?['username'] as String?,
-      avatarUrl: map['profiles']?['profile_image_url'] as String?,
+
+      // These fields are returned by the RPC as top-level keys, but are safe to check here
+      isLiked: map['is_liked'] as bool? ?? false,
+      isFavorited: map['is_favorited'] as bool? ?? false,
+
+      // Extract profile data from the determined source
+      username: profileSource?['username'] as String?,
+      avatarUrl: profileSource?['profile_image_url'] as String?,
     );
   }
 
@@ -76,6 +95,8 @@ class PostModel {
       updatedAt: updatedAt,
       isPublic: isPublic,
       viewsCount: viewsCount,
+      isLiked: isLiked,
+      isFavorited: isFavorited,
       username: username,
       avatarUrl: avatarUrl,
     );

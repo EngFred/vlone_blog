@@ -4,11 +4,19 @@ import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
 
-class GetReelsUseCase implements UseCase<List<PostEntity>, NoParams> {
+class GetReelsParams {
+  final String currentUserId;
+
+  const GetReelsParams({required this.currentUserId});
+}
+
+class GetReelsUseCase implements UseCase<List<PostEntity>, GetReelsParams> {
   final PostsRepository repository;
-  GetReelsUseCase(this.repository);
+
+  const GetReelsUseCase(this.repository);
+
   @override
-  Future<Either<Failure, List<PostEntity>>> call(NoParams params) {
-    return repository.getReels();
+  Future<Either<Failure, List<PostEntity>>> call(GetReelsParams params) {
+    return repository.getReels(currentUserId: params.currentUserId);
   }
 }
