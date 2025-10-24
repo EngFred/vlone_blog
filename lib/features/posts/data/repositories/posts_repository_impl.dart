@@ -93,50 +93,6 @@ class PostsRepositoryImpl implements PostsRepository {
   }
 
   @override
-  Future<Either<Failure, Unit>> likePost({
-    required String postId,
-    required String userId,
-    required bool isLiked,
-  }) async {
-    try {
-      await remoteDataSource.likePost(
-        postId: postId,
-        userId: userId,
-        isLiked: isLiked,
-      );
-      return const Right(unit);
-    } on ServerException catch (e) {
-      AppLogger.error(
-        'ServerException in likePost repo: ${e.message}',
-        error: e,
-      );
-      return Left(ServerFailure(e.message));
-    }
-  }
-
-  @override
-  Future<Either<Failure, Unit>> favoritePost({
-    required String postId,
-    required String userId,
-    required bool isFavorited,
-  }) async {
-    try {
-      await remoteDataSource.favoritePost(
-        postId: postId,
-        userId: userId,
-        isFavorited: isFavorited,
-      );
-      return const Right(unit);
-    } on ServerException catch (e) {
-      AppLogger.error(
-        'ServerException in favoritePost repo: ${e.message}',
-        error: e,
-      );
-      return Left(ServerFailure(e.message));
-    }
-  }
-
-  @override
   Future<Either<Failure, Unit>> sharePost({required String postId}) async {
     try {
       await remoteDataSource.sharePost(postId: postId);
@@ -162,22 +118,6 @@ class PostsRepositoryImpl implements PostsRepository {
       );
       return Right(postModel.toEntity());
     } on ServerException catch (e) {
-      return Left(ServerFailure(e.message));
-    }
-  }
-
-  @override
-  Future<Either<Failure, List<PostEntity>>> getFavorites({
-    required String userId,
-  }) async {
-    try {
-      final postModels = await remoteDataSource.getFavorites(userId: userId);
-      return Right(postModels.map((model) => model.toEntity()).toList());
-    } on ServerException catch (e) {
-      AppLogger.error(
-        'ServerException in getFavorites repo: ${e.message}',
-        error: e,
-      );
       return Left(ServerFailure(e.message));
     }
   }
@@ -242,77 +182,7 @@ class PostsRepositoryImpl implements PostsRepository {
     }
   }
 
-  @override
-  Stream<Either<Failure, Map<String, dynamic>>> streamLikes() {
-    try {
-      AppLogger.info('Repository: Setting up likes stream');
-
-      return remoteDataSource
-          .streamLikes()
-          .map((likeEvent) => Right<Failure, Map<String, dynamic>>(likeEvent))
-          .handleError((error) {
-            AppLogger.error('Error in streamLikes repo: $error', error: error);
-            return Left<Failure, Map<String, dynamic>>(
-              ServerFailure(error.toString()),
-            );
-          });
-    } catch (e) {
-      AppLogger.error('Exception setting up streamLikes: $e', error: e);
-      return Stream.value(Left(ServerFailure(e.toString())));
-    }
-  }
-
-  @override
-  Stream<Either<Failure, Map<String, dynamic>>> streamComments() {
-    try {
-      AppLogger.info('Repository: Setting up comments stream');
-
-      return remoteDataSource
-          .streamComments()
-          .map(
-            (commentEvent) =>
-                Right<Failure, Map<String, dynamic>>(commentEvent),
-          )
-          .handleError((error) {
-            AppLogger.error(
-              'Error in streamComments repo: $error',
-              error: error,
-            );
-            return Left<Failure, Map<String, dynamic>>(
-              ServerFailure(error.toString()),
-            );
-          });
-    } catch (e) {
-      AppLogger.error('Exception setting up streamComments: $e', error: e);
-      return Stream.value(Left(ServerFailure(e.toString())));
-    }
-  }
-
-  @override
-  Stream<Either<Failure, Map<String, dynamic>>> streamFavorites() {
-    try {
-      AppLogger.info('Repository: Setting up favorites stream');
-
-      return remoteDataSource
-          .streamFavorites()
-          .map(
-            (favoriteEvent) =>
-                Right<Failure, Map<String, dynamic>>(favoriteEvent),
-          )
-          .handleError((error) {
-            AppLogger.error(
-              'Error in streamFavorites repo: $error',
-              error: error,
-            );
-            return Left<Failure, Map<String, dynamic>>(
-              ServerFailure(error.toString()),
-            );
-          });
-    } catch (e) {
-      AppLogger.error('Exception setting up streamFavorites: $e', error: e);
-      return Stream.value(Left(ServerFailure(e.toString())));
-    }
-  }
+  // 🔥 REMOVED: streamComments (Moved to CommentsRepository)
 
   @override
   Stream<Either<Failure, String>> streamPostDeletions() {

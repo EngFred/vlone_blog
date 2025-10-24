@@ -9,9 +9,10 @@ import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_us
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/create_post_page.dart';
-import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart';
+// REMOVED: Unused imports for FeedPage/ReelsPage
+// import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/post_details_page.dart';
-import 'package:vlone_blog_app/features/posts/presentation/pages/reels_page.dart';
+// import 'package:vlone_blog_app/features/posts/presentation/pages/reels_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/edit_profile_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:vlone_blog_app/core/pages/main_page.dart';
@@ -70,23 +71,34 @@ final GoRouter appRouter = GoRouter(
     ),
     ShellRoute(
       builder: (context, state, child) {
+        // This correctly builds MainPage, which in turn
+        // builds its own IndexedStack with the correct pages.
         return const MainPage();
       },
       routes: [
         GoRoute(
           path: Constants.feedRoute,
-          builder: (context, state) => const FeedPage(),
+          // UPDATED: This builder is now a placeholder.
+          // The real FeedPage is built inside MainPage's IndexedStack.
+          // We use SizedBox.shrink() to fix the compile error caused by
+          // the FeedPage(userId: ...) constructor change.
+          builder: (context, state) => const SizedBox.shrink(),
         ),
         GoRoute(
           path: Constants.reelsRoute,
-          builder: (context, state) => const ReelsPage(),
+          // UPDATED: Same as FeedPage, this is a placeholder.
+          // The real ReelsPage is built inside MainPage.
+          builder: (context, state) => const SizedBox.shrink(),
         ),
         GoRoute(
           path: Constants.usersRoute,
+          // This page still has a const constructor, so it's fine.
           builder: (context, state) => const UsersPage(),
         ),
         GoRoute(
           path: Constants.profileRoute + '/:userId',
+          // This builder is valid, but be aware your MainPage logic
+          // might be overriding this to only show the current user's profile.
           builder: (context, state) =>
               ProfilePage(userId: state.pathParameters['userId']!),
         ),

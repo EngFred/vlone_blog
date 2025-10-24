@@ -2,12 +2,12 @@ import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 import 'package:vlone_blog_app/core/error/failures.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
+import 'package:vlone_blog_app/features/favorites/domain/repository/favorites_repository.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
 
 class GetFavoritesUseCase
     implements UseCase<List<PostEntity>, GetFavoritesParams> {
-  final PostsRepository repository;
+  final FavoritesRepository repository;
 
   GetFavoritesUseCase(this.repository);
 

@@ -12,6 +12,11 @@ class ProfileRemoteDataSource {
   final SupabaseClient client;
   ProfileRemoteDataSource(this.client);
 
+  // Cached controllers & subscriptions keyed by userId
+  final Map<String, StreamController<Map<String, dynamic>>>
+  _profileControllers = {};
+  final Map<String, RealtimeChannel> _profileChannels = {};
+
   Future<ProfileModel> getProfile(String userId) async {
     AppLogger.info('Fetching profile for user: $userId');
     try {
@@ -33,6 +38,7 @@ class ProfileRemoteDataSource {
   }
 
   /// Updates bio, username and/or profile image. Any parameter that is null is skipped.
+  /// Returns the fresh ProfileModel using an atomic update + select.
   Future<ProfileModel> updateProfile({
     required String userId,
     String? username,
@@ -67,15 +73,21 @@ class ProfileRemoteDataSource {
 
       if (updates.isNotEmpty) {
         AppLogger.info('Applying profile updates for $userId: $updates');
-        await client.from('profiles').update(updates).eq('id', userId);
+        // Return updated row in one roundtrip
+        final updated = await client
+            .from('profiles')
+            .update(updates)
+            .eq('id', userId)
+            .select()
+            .single();
+
         AppLogger.info('Profile data updated successfully for user: $userId');
+        return ProfileModel.fromMap(updated);
       } else {
         AppLogger.warning('No profile updates provided for user: $userId');
+        // Just return current profile if nothing to update
+        return await getProfile(userId);
       }
-
-      // Return the fresh profile
-      AppLogger.info('Fetching updated profile for user: $userId');
-      return await getProfile(userId);
     } catch (e, stackTrace) {
       AppLogger.error(
         'Failed to update profile for user: $userId, error: $e',
@@ -86,63 +98,125 @@ class ProfileRemoteDataSource {
     }
   }
 
-  // ==================== REAL-TIME STREAMS ====================
-
   /// Stream for profile updates (username, bio, profile_image_url, counts etc.)
-  /// Emits map with updated fields for the specific user
+  /// Returns a cached broadcast stream per userId.
   Stream<Map<String, dynamic>> streamProfileUpdates(String userId) {
-    AppLogger.info(
-      'Setting up real-time stream for profile updates for user: $userId',
-    );
+    AppLogger.info('Requesting profile updates stream for user: $userId');
 
-    // Clean up existing channel and controller if needed
-    // For simplicity, assuming one per datasource, but can make map if multiple
-    RealtimeChannel? _profileChannel;
-    StreamController<Map<String, dynamic>>? _profileController;
+    // Return cached controller if present
+    if (_profileControllers.containsKey(userId)) {
+      AppLogger.info(
+        'Returning existing profile updates stream for user: $userId',
+      );
+      return _profileControllers[userId]!.stream;
+    }
 
-    _profileController = StreamController<Map<String, dynamic>>.broadcast();
+    // FIX: Declare 'controller' first using 'late final' to allow self-reference in callbacks.
+    late final StreamController<Map<String, dynamic>> controller;
 
-    final channel = client.channel(
-      'profile_updates_${userId}_${DateTime.now().millisecondsSinceEpoch}',
-    );
-
-    _profileChannel = channel
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'profiles',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'id',
-            value: userId,
-          ),
-          callback: (payload) {
-            AppLogger.info('Profile update received for user: $userId');
-
-            final data = payload.newRecord;
-
-            if (!(_profileController?.isClosed ?? true)) {
-              _profileController!.add(data);
-            }
-          },
-        )
-        .subscribe();
-
-    // Cleanup when stream is done
-    _profileController.stream.listen(
-      null,
-      onError: (error) {
-        AppLogger.error(
-          'Error in profile updates stream: $error',
-          error: error,
-        );
+    controller = StreamController<Map<String, dynamic>>.broadcast(
+      onListen: () async {
+        AppLogger.info('Listener attached to profile stream for user: $userId');
+        // Seed with current profile
+        try {
+          final profile = await getProfile(userId);
+          if (!controller.isClosed) controller.add(profile.toMap());
+        } catch (e, st) {
+          AppLogger.error(
+            'Failed to seed profile stream for user: $userId, error: $e',
+            error: e,
+            stackTrace: st,
+          );
+          if (!controller.isClosed)
+            controller.addError(ServerException(e.toString()));
+        }
       },
-      onDone: () {
-        _profileChannel?.unsubscribe();
-        _profileController?.close();
+      onCancel: () async {
+        // Delay slightly and cleanup if no listeners
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!controller.hasListener) {
+          AppLogger.info(
+            'No listeners remain for profile stream, cleaning up for user: $userId',
+          );
+          final channel = _profileChannels.remove(userId);
+          try {
+            await channel?.unsubscribe();
+          } catch (_) {}
+          _profileControllers.remove(userId);
+          if (!controller.isClosed) await controller.close();
+        } else {
+          AppLogger.info(
+            'Profile stream still has listeners, skipping cleanup for user: $userId',
+          );
+        }
       },
     );
 
-    return _profileController.stream;
+    // Setup realtime channel using Supabase Realtime "onPostgresChanges" for profile id filter
+    try {
+      final channel = client.channel(
+        'profile_updates_${userId}_${DateTime.now().millisecondsSinceEpoch}',
+      );
+
+      final subscribed = channel
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: 'profiles',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'id',
+              value: userId,
+            ),
+            callback: (payload) {
+              try {
+                AppLogger.info('Profile update received for user: $userId');
+                final data = payload.newRecord;
+                if (!controller.isClosed) {
+                  controller.add(data);
+                }
+              } catch (e, st) {
+                AppLogger.error(
+                  'Failed to process profile update payload for user: $userId, error: $e',
+                  error: e,
+                  stackTrace: st,
+                );
+                if (!controller.isClosed)
+                  controller.addError(ServerException(e.toString()));
+              }
+            },
+          )
+          .subscribe();
+
+      _profileChannels[userId] = subscribed;
+      _profileControllers[userId] = controller;
+
+      return controller.stream;
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Failed to subscribe to profile updates for user: $userId, error: $e',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return Stream.error(ServerException(e.toString()));
+    }
+  }
+
+  /// Global cleanup helper (call on app dispose if needed)
+  Future<void> disposeAllProfileStreams() async {
+    AppLogger.info('Disposing all profile streams');
+    for (final channel in _profileChannels.values) {
+      try {
+        await channel.unsubscribe();
+      } catch (_) {}
+    }
+    _profileChannels.clear();
+
+    for (final ctrl in _profileControllers.values) {
+      try {
+        if (!ctrl.isClosed) await ctrl.close();
+      } catch (_) {}
+    }
+    _profileControllers.clear();
   }
 }

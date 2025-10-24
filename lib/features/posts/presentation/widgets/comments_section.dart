@@ -100,7 +100,7 @@ class CommentsSection extends StatelessWidget {
         }
 
         if (state is CommentsLoaded) {
-          final commentList = state.rootComments;
+          final commentList = state.comments;
 
           if (commentList.isEmpty) {
             final emptyWidget = const EmptyStateWidget(

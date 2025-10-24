@@ -1,4 +1,3 @@
-// lib/features/posts/presentation/pages/feed_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -8,13 +7,15 @@ import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
-import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
+import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/feed_list.dart';
 
 class FeedPage extends StatefulWidget {
-  const FeedPage({super.key});
+  final String userId;
+  const FeedPage({super.key, required this.userId});
 
   @override
   State<FeedPage> createState() => _FeedPageState();
@@ -22,29 +23,19 @@ class FeedPage extends StatefulWidget {
 
 class _FeedPageState extends State<FeedPage> {
   final List<PostEntity> _posts = [];
-  String? _userId;
   bool _realtimeStarted = false;
+  bool _hasLoadedOnce = false;
 
   @override
   void initState() {
     super.initState();
-    AppLogger.info('Initializing FeedPage');
-    //No auto-load here. MainPage dispatches GetFeedEvent when tab selected (initially for Feed).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final authState = context.read<AuthBloc>().state;
-      if (authState is AuthAuthenticated && mounted) {
-        setState(() => _userId = authState.user.id);
-        AppLogger.info('Current user from AuthBloc: $_userId');
-      }
-    });
+    AppLogger.info('Initializing FeedPage for user: ${widget.userId}');
   }
 
   void _startRealtimeListeners() {
-    if (!_realtimeStarted && _userId != null && mounted) {
+    if (!_realtimeStarted && mounted) {
       AppLogger.info('Starting real-time listeners from FeedPage');
-      context.read<PostsBloc>().add(
-        StartRealtimeListenersEvent(userId: _userId!),
-      );
+      context.read<PostsBloc>().add(StartRealtimeListenersEvent(widget.userId));
       _realtimeStarted = true;
     }
   }
@@ -79,32 +70,51 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
+  void _applyPostUpdate(
+    String postId, {
+    int? likesDelta,
+    bool? isLiked,
+    int? favoritesDelta,
+    bool? isFavorited,
+  }) {
+    final index = _posts.indexWhere((p) => p.id == postId);
+    if (index == -1 || !mounted) return;
+
+    final old = _posts[index];
+    final updated = old.copyWith(
+      likesCount:
+          (likesDelta != null ? (old.likesCount + likesDelta) : old.likesCount)
+              .clamp(0, double.infinity)
+              .toInt(),
+      isLiked: isLiked ?? old.isLiked,
+      favoritesCount:
+          (favoritesDelta != null
+                  ? (old.favoritesCount + favoritesDelta)
+                  : old.favoritesCount)
+              .clamp(0, double.infinity)
+              .toInt(),
+      isFavorited: isFavorited ?? old.isFavorited,
+    );
+    setState(() => _posts[index] = updated);
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_userId == null) {
-      return const LoadingIndicator();
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Feed'),
         centerTitle: false,
         backgroundColor: Theme.of(context).colorScheme.surface,
         actions: [
-          // This is the new Notification Icon button
           IconButton(
             icon: Icon(
               Icons.notifications_none,
               color: Theme.of(context).colorScheme.onSurface,
             ),
             onPressed: () {
-              // Navigate to the new NotificationsPage
               context.push(Constants.notificationsRoute);
             },
           ),
-
-          // The old 'dot' logic is kept but moved to a trailing icon,
-          // which is a common pattern to show real-time status.
           if (_realtimeStarted)
             Padding(
               padding: const EdgeInsets.only(right: 16.0),
@@ -128,143 +138,182 @@ class _FeedPageState extends State<FeedPage> {
             ),
         ],
       ),
-      body: BlocListener<PostsBloc, PostsState>(
-        listener: (context, state) {
-          if (state is FeedLoaded) {
-            AppLogger.info(
-              'Feed loaded with ${state.posts.length} posts for user: $_userId',
-            );
-            if (mounted) {
-              _updatePosts(state.posts);
-              if (!_realtimeStarted && !state.isRealtimeActive) {
-                _startRealtimeListeners();
+      body: MultiBlocListener(
+        listeners: [
+          BlocListener<PostsBloc, PostsState>(
+            listener: (context, state) {
+              if (state is FeedLoaded) {
+                AppLogger.info(
+                  'Feed loaded with ${state.posts.length} posts for user: ${widget.userId}',
+                );
+                if (mounted) {
+                  _updatePosts(state.posts);
+                  _hasLoadedOnce = true;
+                  if (!_realtimeStarted && !state.isRealtimeActive) {
+                    _startRealtimeListeners();
+                  }
+                }
+              } else if (state is PostCreated) {
+                AppLogger.info('New post created: ${state.post.id}');
+                if (mounted) {
+                  SnackbarUtils.showSuccess(
+                    context,
+                    'Post created successfully!',
+                  );
+                }
+              } else if (state is RealtimePostUpdate) {
+                final index = _posts.indexWhere((p) => p.id == state.postId);
+                if (index != -1 && mounted) {
+                  final post = _posts[index];
+                  final updatedPost = post.copyWith(
+                    likesCount: (state.likesCount ?? post.likesCount)
+                        .clamp(0, double.infinity)
+                        .toInt(),
+                    commentsCount: (state.commentsCount ?? post.commentsCount)
+                        .clamp(0, double.infinity)
+                        .toInt(),
+                    favoritesCount:
+                        (state.favoritesCount ?? post.favoritesCount)
+                            .clamp(0, double.infinity)
+                            .toInt(),
+                    sharesCount: (state.sharesCount ?? post.sharesCount)
+                        .clamp(0, double.infinity)
+                        .toInt(),
+                  );
+                  setState(() => _posts[index] = updatedPost);
+                }
+              } else if (state is PostDeleted) {
+                final index = _posts.indexWhere((p) => p.id == state.postId);
+                if (index != -1 && mounted) {
+                  setState(() => _posts.removeAt(index));
+                }
+              } else if (state is PostsError) {
+                if (!state.message.contains('update action') &&
+                    !state.message.contains('like') &&
+                    !state.message.contains('favorite') &&
+                    !state.message.contains('share')) {
+                  if (mounted) {
+                    SnackbarUtils.showError(context, state.message);
+                  }
+                }
+                AppLogger.error('PostsError in FeedPage: ${state.message}');
               }
-            }
-          } else if (state is PostCreated) {
-            AppLogger.info('New post created: ${state.post.id}');
-            if (mounted) {
-              SnackbarUtils.showSuccess(context, 'Post created successfully!');
-            }
-          } else if (state is PostLiked) {
-            final index = _posts.indexWhere((p) => p.id == state.postId);
-            if (index != -1 && mounted) {
-              //Clamp to prevent negative counts
-              final delta = state.isLiked ? 1 : -1;
-              final newCount = (_posts[index].likesCount + delta)
-                  .clamp(0, double.infinity)
-                  .toInt();
-              final updatedPost = _posts[index].copyWith(
-                likesCount: newCount,
-                isLiked: state.isLiked,
-              );
-              setState(() => _posts[index] = updatedPost);
-            }
-          } else if (state is PostFavorited) {
-            final index = _posts.indexWhere((p) => p.id == state.postId);
-            if (index != -1 && mounted) {
-              // Clamp to prevent negative counts
-              final delta = state.isFavorited ? 1 : -1;
-              final newCount = (_posts[index].favoritesCount + delta)
-                  .clamp(0, double.infinity)
-                  .toInt();
-              final updatedPost = _posts[index].copyWith(
-                favoritesCount: newCount,
-                isFavorited: state.isFavorited,
-              );
-              setState(() => _posts[index] = updatedPost);
-            }
-          } else if (state is RealtimePostUpdate) {
-            final index = _posts.indexWhere((p) => p.id == state.postId);
-            if (index != -1 && mounted) {
-              final post = _posts[index];
-              //Clamp to prevent negative counts from real-time updates
-              final updatedPost = post.copyWith(
-                likesCount: (state.likesCount ?? post.likesCount)
-                    .clamp(0, double.infinity)
-                    .toInt(),
-                commentsCount: (state.commentsCount ?? post.commentsCount)
-                    .clamp(0, double.infinity)
-                    .toInt(),
-                favoritesCount: (state.favoritesCount ?? post.favoritesCount)
-                    .clamp(0, double.infinity)
-                    .toInt(),
-                sharesCount: (state.sharesCount ?? post.sharesCount)
-                    .clamp(0, double.infinity)
-                    .toInt(),
-              );
-              setState(() => _posts[index] = updatedPost);
-            }
-          } else if (state is PostDeleted) {
-            final index = _posts.indexWhere((p) => p.id == state.postId);
-            if (index != -1 && mounted) {
-              setState(() => _posts.removeAt(index));
-            }
-          } else if (state is PostsError) {
-            //Only show errors for non-interaction failures (e.g., load/create). Log interaction errors silently.
-            if (!state.message.contains('update action') &&
-                !state.message.contains('like') &&
-                !state.message.contains('favorite') &&
-                !state.message.contains('share')) {
-              if (mounted) {
+            },
+          ),
+          BlocListener<LikesBloc, LikesState>(
+            listener: (context, state) {
+              if (state is LikeUpdated) {
+                final delta = state.isLiked ? 1 : -1;
+                _applyPostUpdate(
+                  state.postId,
+                  likesDelta: delta,
+                  isLiked: state.isLiked,
+                );
+              } else if (state is LikeSuccess) {
+                // nothing extra to do
+              } else if (state is LikeError) {
+                if (state.shouldRevert) {
+                  final index = _posts.indexWhere((p) => p.id == state.postId);
+                  if (index != -1 && mounted) {
+                    final old = _posts[index];
+                    setState(
+                      () => _posts[index] = old.copyWith(
+                        isLiked: state.previousState,
+                      ),
+                    );
+                    final correctedCount = state.previousState
+                        ? (old.likesCount + 1)
+                        : (old.likesCount - 1);
+                    setState(
+                      () => _posts[index] = _posts[index].copyWith(
+                        likesCount: correctedCount
+                            .clamp(0, double.infinity)
+                            .toInt(),
+                      ),
+                    );
+                  }
+                }
                 SnackbarUtils.showError(context, state.message);
               }
-            }
-            AppLogger.error('PostsError in FeedPage: ${state.message}');
-          }
-        },
+            },
+          ),
+          BlocListener<FavoritesBloc, FavoritesState>(
+            listener: (context, state) {
+              if (state is FavoriteUpdated) {
+                final delta = state.isFavorited ? 1 : -1;
+                _applyPostUpdate(
+                  state.postId,
+                  favoritesDelta: delta,
+                  isFavorited: state.isFavorited,
+                );
+              } else if (state is FavoriteSuccess) {
+                // already applied optimistically
+              } else if (state is FavoriteError) {
+                if (state.shouldRevert) {
+                  final index = _posts.indexWhere((p) => p.id == state.postId);
+                  if (index != -1 && mounted) {
+                    final old = _posts[index];
+                    setState(
+                      () => _posts[index] = old.copyWith(
+                        isFavorited: state.previousState,
+                      ),
+                    );
+                    final correctedCount = state.previousState
+                        ? (old.favoritesCount + 1)
+                        : (old.favoritesCount - 1);
+                    setState(
+                      () => _posts[index] = _posts[index].copyWith(
+                        favoritesCount: correctedCount
+                            .clamp(0, double.infinity)
+                            .toInt(),
+                      ),
+                    );
+                  }
+                }
+                SnackbarUtils.showError(context, state.message);
+              }
+            },
+          ),
+        ],
         child: RefreshIndicator(
           onRefresh: () async {
-            AppLogger.info('Refreshing feed for user: $_userId');
-
-            // Stop real-time temporarily during refresh
+            AppLogger.info('Refreshing feed for user: ${widget.userId}');
             _stopRealtimeListeners();
 
             final bloc = context.read<PostsBloc>();
-            bloc.add(GetFeedEvent(userId: _userId!));
+            bloc.add(GetFeedEvent(widget.userId));
 
-            // Await the BLoC to finish loading or erroring
             await bloc.stream.firstWhere(
               (state) => state is FeedLoaded || state is PostsError,
             );
 
-            // Restart real-time after refresh
             _startRealtimeListeners();
           },
           child: Builder(
             builder: (context) {
               final postsState = context.watch<PostsBloc>().state;
 
-              // If we have posts, show them
-              if (_posts.isNotEmpty) {
-                return FeedList(posts: _posts, userId: _userId!);
-              }
-
-              // Loading State
-              if (postsState is PostsLoading || postsState is PostsInitial) {
-                return const LoadingIndicator();
-              }
-
-              // Error State
-              if (postsState is PostsError) {
-                return CustomErrorWidget(
-                  message: postsState.message,
-                  onRetry: () => context.read<PostsBloc>().add(
-                    GetFeedEvent(userId: _userId!),
-                  ),
-                );
-              }
-
-              // Loaded State
-              if (postsState is FeedLoaded) {
-                if (postsState.posts.isEmpty) {
+              if (_hasLoadedOnce) {
+                if (_posts.isEmpty) {
                   return const EmptyStateWidget(
                     message: 'No posts yet. Create one to get started!',
                     icon: Icons.post_add,
                   );
-                } else {
-                  // Transient state - loader while _posts updates
-                  return const LoadingIndicator();
                 }
+                return FeedList(posts: _posts, userId: widget.userId);
+              }
+
+              if (postsState is PostsLoading || postsState is PostsInitial) {
+                return const LoadingIndicator();
+              }
+
+              if (postsState is PostsError) {
+                return CustomErrorWidget(
+                  message: postsState.message,
+                  onRetry: () => context.read<PostsBloc>().add(
+                    GetFeedEvent(widget.userId),
+                  ),
+                );
               }
 
               return const LoadingIndicator();

@@ -1,6 +1,8 @@
 import 'package:get_it/get_it.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
+
+// Auth
 import 'package:vlone_blog_app/features/auth/data/datasources/auth_remote_datasource.dart';
 import 'package:vlone_blog_app/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:vlone_blog_app/features/auth/domain/repositories/auth_repository.dart';
@@ -9,43 +11,68 @@ import 'package:vlone_blog_app/features/auth/domain/usecases/login_usecase.dart'
 import 'package:vlone_blog_app/features/auth/domain/usecases/logout_usecase.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/signup_usecase.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
-import 'package:vlone_blog_app/features/followers/domain/usecases/get_follow_status_usecase.dart';
-import 'package:vlone_blog_app/features/posts/data/datasources/posts_remote_datasource.dart';
-import 'package:vlone_blog_app/features/posts/data/repositories/posts_repository_impl.dart';
-import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/create_post_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/delete_post_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/favorite_post_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/get_favorites_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/get_feed_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/get_reels_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/like_post_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/stream_post_deletions_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/stream_posts_usecase.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
-import 'package:vlone_blog_app/features/profile/data/datasources/profile_remote_datasource.dart';
-import 'package:vlone_blog_app/features/profile/data/repositories/profile_repository_impl.dart';
-import 'package:vlone_blog_app/features/profile/domain/repositories/profile_repository.dart';
-import 'package:vlone_blog_app/features/profile/domain/usecases/get_profile_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/get_user_posts_usecase.dart';
-import 'package:vlone_blog_app/features/profile/domain/usecases/stream_profile_updates_usecase.dart';
-import 'package:vlone_blog_app/features/profile/domain/usecases/update_profile_usecase.dart';
-import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
+
+// Comments
 import 'package:vlone_blog_app/features/comments/data/datasources/comments_remote_datasource.dart';
 import 'package:vlone_blog_app/features/comments/data/repositories/comments_repository_impl.dart';
 import 'package:vlone_blog_app/features/comments/domain/repositories/comments_repository.dart';
 import 'package:vlone_blog_app/features/comments/domain/usecases/add_comment_usecase.dart';
 import 'package:vlone_blog_app/features/comments/domain/usecases/get_comments_usecase.dart';
+import 'package:vlone_blog_app/features/comments/domain/usecases/stream_comments_usecase.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
+
+// Favorites
+import 'package:vlone_blog_app/features/favorites/data/datasources/favorites_data_source.dart';
+import 'package:vlone_blog_app/features/favorites/data/repository/favorites_repository_impl.dart';
+import 'package:vlone_blog_app/features/favorites/domain/repository/favorites_repository.dart';
+import 'package:vlone_blog_app/features/favorites/domain/usecases/favorite_post_usecase.dart';
+import 'package:vlone_blog_app/features/favorites/domain/usecases/get_favorites_usecase.dart';
+import 'package:vlone_blog_app/features/favorites/domain/usecases/stream_favorites_usecase.dart';
+import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
+
+// Followers
 import 'package:vlone_blog_app/features/followers/data/datasources/followers_remote_datasource.dart';
 import 'package:vlone_blog_app/features/followers/data/repositories/followers_repository_impl.dart';
 import 'package:vlone_blog_app/features/followers/domain/repositories/followers_repository.dart';
 import 'package:vlone_blog_app/features/followers/domain/usecases/follow_user_usecase.dart';
 import 'package:vlone_blog_app/features/followers/domain/usecases/get_followers_usecase.dart';
 import 'package:vlone_blog_app/features/followers/domain/usecases/get_following_usecase.dart';
+import 'package:vlone_blog_app/features/followers/domain/usecases/get_follow_status_usecase.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
+
+// Likes
+import 'package:vlone_blog_app/features/likes/data/datasources/likes_remote_data_source.dart';
+import 'package:vlone_blog_app/features/likes/data/repository/likes_repository_impl.dart';
+import 'package:vlone_blog_app/features/likes/domain/repository/likes_repository.dart';
+import 'package:vlone_blog_app/features/likes/domain/usecases/like_post_usecase.dart';
+import 'package:vlone_blog_app/features/likes/domain/usecases/stream_likes_usecase.dart';
+import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
+
+// Posts
+import 'package:vlone_blog_app/features/posts/data/datasources/posts_remote_datasource.dart';
+import 'package:vlone_blog_app/features/posts/data/repositories/posts_repository_impl.dart';
+import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/create_post_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/delete_post_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_feed_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_reels_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_user_posts_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/stream_post_deletions_usecase.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/stream_posts_usecase.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+
+// Profile
+import 'package:vlone_blog_app/features/profile/data/datasources/profile_remote_datasource.dart';
+import 'package:vlone_blog_app/features/profile/data/repositories/profile_repository_impl.dart';
+import 'package:vlone_blog_app/features/profile/domain/repositories/profile_repository.dart';
+import 'package:vlone_blog_app/features/profile/domain/usecases/get_profile_usecase.dart';
+import 'package:vlone_blog_app/features/profile/domain/usecases/stream_profile_updates_usecase.dart';
+import 'package:vlone_blog_app/features/profile/domain/usecases/update_profile_usecase.dart';
+import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
+
+// Users
 import 'package:vlone_blog_app/features/users/data/datasources/users_remote_datasource.dart';
 import 'package:vlone_blog_app/features/users/data/repository/users_repository_impl.dart';
 import 'package:vlone_blog_app/features/users/domain/repository/users_repository.dart';
@@ -64,7 +91,9 @@ Future<void> init() async {
     return Supabase.instance.client;
   });
 
+  // -------------------
   // Auth Feature
+  // -------------------
   sl.registerLazySingleton<AuthRemoteDataSource>(
     () => AuthRemoteDataSource(sl<SupabaseClient>()),
   );
@@ -93,31 +122,9 @@ Future<void> init() async {
     ),
   );
 
-  // Profile Feature
-  sl.registerLazySingleton<ProfileRemoteDataSource>(
-    () => ProfileRemoteDataSource(sl<SupabaseClient>()),
-  );
-  sl.registerLazySingleton<ProfileRepository>(
-    () => ProfileRepositoryImpl(sl<ProfileRemoteDataSource>()),
-  );
-  sl.registerLazySingleton<GetProfileUseCase>(
-    () => GetProfileUseCase(sl<ProfileRepository>()),
-  );
-  sl.registerLazySingleton<UpdateProfileUseCase>(
-    () => UpdateProfileUseCase(sl<ProfileRepository>()),
-  );
-  sl.registerLazySingleton(
-    () => StreamProfileUpdatesUseCase(sl<ProfileRepository>()),
-  );
-  sl.registerFactory<ProfileBloc>(
-    () => ProfileBloc(
-      getProfileUseCase: sl<GetProfileUseCase>(),
-      updateProfileUseCase: sl<UpdateProfileUseCase>(),
-      streamProfileUpdatesUseCase: sl<StreamProfileUpdatesUseCase>(),
-    ),
-  );
-
+  // -------------------
   // Posts Feature
+  // -------------------
   sl.registerLazySingleton<PostsRemoteDataSource>(
     () => PostsRemoteDataSource(sl<SupabaseClient>()),
   );
@@ -136,53 +143,94 @@ Future<void> init() async {
   sl.registerLazySingleton<GetPostUseCase>(
     () => GetPostUseCase(sl<PostsRepository>()),
   );
-  sl.registerLazySingleton<LikePostUseCase>(
-    () => LikePostUseCase(sl<PostsRepository>()),
-  );
   sl.registerLazySingleton<SharePostUseCase>(
     () => SharePostUseCase(sl<PostsRepository>()),
   );
   sl.registerLazySingleton<GetReelsUseCase>(
     () => GetReelsUseCase(sl<PostsRepository>()),
   );
-  sl.registerLazySingleton(() => FavoritePostUseCase(sl<PostsRepository>()));
-
-  //get favorites
-  sl.registerLazySingleton(() => GetFavoritesUseCase(sl<PostsRepository>()));
-
   sl.registerLazySingleton<DeletePostUseCase>(
     () => DeletePostUseCase(sl<PostsRepository>()),
   );
 
-  // Real-time use cases
-  sl.registerLazySingleton(() => StreamNewPostsUseCase(sl()));
-  sl.registerLazySingleton(() => StreamPostUpdatesUseCase(sl()));
-  sl.registerLazySingleton(() => StreamLikesUseCase(sl()));
-  sl.registerLazySingleton(() => StreamCommentsUseCase(sl()));
-  sl.registerLazySingleton(() => StreamFavoritesUseCase(sl()));
-  sl.registerLazySingleton(() => StreamPostDeletionsUseCase(sl()));
+  // -------------------
+  // Likes Feature
+  // -------------------
+  sl.registerLazySingleton<LikesRemoteDataSource>(
+    () => LikesRemoteDataSource(sl<SupabaseClient>()),
+  );
+  sl.registerLazySingleton<LikesRepository>(
+    () => LikesRepositoryImpl(sl<LikesRemoteDataSource>()),
+  );
+  sl.registerLazySingleton<LikePostUseCase>(
+    () => LikePostUseCase(sl<LikesRepository>()),
+  );
+  sl.registerLazySingleton<StreamLikesUseCase>(
+    () => StreamLikesUseCase(sl<LikesRepository>()),
+  );
+  sl.registerFactory<LikesBloc>(
+    () => LikesBloc(
+      likePostUseCase: sl<LikePostUseCase>(),
+      streamLikesUseCase: sl<StreamLikesUseCase>(),
+    ),
+  );
+
+  // -------------------
+  // Favorites Feature
+  // -------------------
+  sl.registerLazySingleton<FavoritesRemoteDataSource>(
+    () => FavoritesRemoteDataSource(sl<SupabaseClient>()),
+  );
+  sl.registerLazySingleton<FavoritesRepository>(
+    () => FavoritesRepositoryImpl(sl<FavoritesRemoteDataSource>()),
+  );
+  sl.registerLazySingleton<FavoritePostUseCase>(
+    () => FavoritePostUseCase(sl<FavoritesRepository>()),
+  );
+  sl.registerLazySingleton<GetFavoritesUseCase>(
+    () => GetFavoritesUseCase(sl<FavoritesRepository>()),
+  );
+  sl.registerLazySingleton<StreamFavoritesUseCase>(
+    () => StreamFavoritesUseCase(sl<FavoritesRepository>()),
+  );
+  sl.registerFactory<FavoritesBloc>(
+    () => FavoritesBloc(
+      favoritePostUseCase: sl<FavoritePostUseCase>(),
+      streamFavoritesUseCase: sl<StreamFavoritesUseCase>(),
+    ),
+  );
+
+  // -------------------
+  // Real-time post streams used in PostsBloc
+  // -------------------
+  sl.registerLazySingleton<StreamNewPostsUseCase>(
+    () => StreamNewPostsUseCase(sl<PostsRepository>()),
+  );
+  sl.registerLazySingleton<StreamPostUpdatesUseCase>(
+    () => StreamPostUpdatesUseCase(sl<PostsRepository>()),
+  );
+  sl.registerLazySingleton<StreamPostDeletionsUseCase>(
+    () => StreamPostDeletionsUseCase(sl<PostsRepository>()),
+  );
 
   sl.registerFactory<PostsBloc>(
     () => PostsBloc(
       createPostUseCase: sl<CreatePostUseCase>(),
       getFeedUseCase: sl<GetFeedUseCase>(),
-      likePostUseCase: sl<LikePostUseCase>(),
-      favoritePostUseCase: sl<FavoritePostUseCase>(),
       getReelsUseCase: sl<GetReelsUseCase>(),
+      getUserPostsUseCase: sl<GetUserPostsUseCase>(),
       sharePostUseCase: sl<SharePostUseCase>(),
       getPostUseCase: sl<GetPostUseCase>(),
       deletePostUseCase: sl<DeletePostUseCase>(),
-      getUserPostsUseCase: sl<GetUserPostsUseCase>(),
-      streamNewPostsUseCase: sl(),
-      streamPostUpdatesUseCase: sl(),
-      streamLikesUseCase: sl(),
-      streamCommentsUseCase: sl(),
-      streamFavoritesUseCase: sl(),
-      streamPostDeletionsUseCase: sl(),
+      streamNewPostsUseCase: sl<StreamNewPostsUseCase>(),
+      streamPostUpdatesUseCase: sl<StreamPostUpdatesUseCase>(),
+      streamPostDeletionsUseCase: sl<StreamPostDeletionsUseCase>(),
     ),
   );
 
+  // -------------------
   // Comments Feature
+  // -------------------
   sl.registerLazySingleton<CommentsRemoteDataSource>(
     () => CommentsRemoteDataSource(sl<SupabaseClient>()),
   );
@@ -195,15 +243,47 @@ Future<void> init() async {
   sl.registerLazySingleton<GetCommentsUseCase>(
     () => GetCommentsUseCase(sl<CommentsRepository>()),
   );
+  sl.registerLazySingleton<StreamCommentsUseCase>(
+    () => StreamCommentsUseCase(sl<CommentsRepository>()),
+  );
   sl.registerFactory<CommentsBloc>(
     () => CommentsBloc(
       addCommentUseCase: sl<AddCommentUseCase>(),
       getCommentsUseCase: sl<GetCommentsUseCase>(),
+      streamCommentsUseCase: sl<StreamCommentsUseCase>(),
       repository: sl<CommentsRepository>(),
     ),
   );
 
+  // -------------------
+  // Profile Feature
+  // -------------------
+  sl.registerLazySingleton<ProfileRemoteDataSource>(
+    () => ProfileRemoteDataSource(sl<SupabaseClient>()),
+  );
+  sl.registerLazySingleton<ProfileRepository>(
+    () => ProfileRepositoryImpl(sl<ProfileRemoteDataSource>()),
+  );
+  sl.registerLazySingleton<GetProfileUseCase>(
+    () => GetProfileUseCase(sl<ProfileRepository>()),
+  );
+  sl.registerLazySingleton<UpdateProfileUseCase>(
+    () => UpdateProfileUseCase(sl<ProfileRepository>()),
+  );
+  sl.registerLazySingleton<StreamProfileUpdatesUseCase>(
+    () => StreamProfileUpdatesUseCase(sl<ProfileRepository>()),
+  );
+  sl.registerFactory<ProfileBloc>(
+    () => ProfileBloc(
+      getProfileUseCase: sl<GetProfileUseCase>(),
+      updateProfileUseCase: sl<UpdateProfileUseCase>(),
+      streamProfileUpdatesUseCase: sl<StreamProfileUpdatesUseCase>(),
+    ),
+  );
+
+  // -------------------
   // Followers Feature
+  // -------------------
   sl.registerLazySingleton<FollowersRemoteDataSource>(
     () => FollowersRemoteDataSource(sl<SupabaseClient>()),
   );
@@ -219,7 +299,6 @@ Future<void> init() async {
   sl.registerLazySingleton<GetFollowingUseCase>(
     () => GetFollowingUseCase(sl<FollowersRepository>()),
   );
-  //get follow status
   sl.registerLazySingleton<GetFollowStatusUseCase>(
     () => GetFollowStatusUseCase(sl<FollowersRepository>()),
   );
@@ -232,11 +311,15 @@ Future<void> init() async {
     ),
   );
 
-  //users
+  // -------------------
+  // Users Feature
+  // -------------------
   sl.registerLazySingleton<UsersRemoteDataSource>(
-    () => UsersRemoteDataSource(sl()),
+    () => UsersRemoteDataSource(sl<SupabaseClient>()),
   );
-  sl.registerLazySingleton<UsersRepository>(() => UsersRepositoryImpl(sl()));
-  sl.registerLazySingleton(() => GetAllUsersUseCase(sl()));
+  sl.registerLazySingleton<UsersRepository>(
+    () => UsersRepositoryImpl(sl<UsersRemoteDataSource>()),
+  );
+  sl.registerLazySingleton(() => GetAllUsersUseCase(sl<UsersRepository>()));
   sl.registerFactory(() => UsersBloc(getAllUsersUseCase: sl()));
 }

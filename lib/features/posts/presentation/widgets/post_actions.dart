@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
+import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
+import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
-import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 
 class PostActions extends StatelessWidget {
@@ -30,7 +32,8 @@ class PostActions extends StatelessWidget {
 
     _debounceTimers[actionKey] = Timer(_debounceDuration, () {
       final newLiked = !post.isLiked;
-      context.read<PostsBloc>().add(
+      // Send to LikesBloc now
+      context.read<LikesBloc>().add(
         LikePostEvent(postId: postId, userId: userId, isLiked: newLiked),
       );
       _debounceTimers.remove(actionKey);
@@ -45,7 +48,8 @@ class PostActions extends StatelessWidget {
 
     _debounceTimers[actionKey] = Timer(_debounceDuration, () {
       final newFav = !post.isFavorited;
-      context.read<PostsBloc>().add(
+      // Send to FavoritesBloc now
+      context.read<FavoritesBloc>().add(
         FavoritePostEvent(postId: postId, userId: userId, isFavorited: newFav),
       );
       _debounceTimers.remove(actionKey);
@@ -59,7 +63,9 @@ class PostActions extends StatelessWidget {
     _debounceTimers[actionKey]?.cancel();
 
     _debounceTimers[actionKey] = Timer(_debounceDuration, () {
-      context.read<PostsBloc>().add(SharePostEvent(postId: postId));
+      // Shares remain handled by PostsBloc (if that's where SharePostEvent is)
+      // If you moved sharing to another bloc, switch accordingly.
+      context.read<PostsBloc>().add(SharePostEvent(postId));
       _debounceTimers.remove(actionKey);
     });
   }
@@ -94,8 +100,7 @@ class PostActions extends StatelessWidget {
 
               // Comment
               _actionButton(
-                icon: Icons
-                    .comment_outlined, // Switched to outlined for clean look
+                icon: Icons.comment_outlined,
                 label: post.commentsCount.toString(),
                 onTap: () => _handleComment(context),
                 isPrimary: false,

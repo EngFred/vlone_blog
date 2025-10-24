@@ -1,3 +1,6 @@
+// Location: features/comments/data/repositories/comments_repository_impl.dart
+
+import 'dart:async';
 import 'package:dartz/dartz.dart';
 import 'package:vlone_blog_app/core/error/exceptions.dart';
 import 'package:vlone_blog_app/core/error/failures.dart';
@@ -50,6 +53,33 @@ class CommentsRepositoryImpl implements CommentsRepository {
       final entities = models.map((m) => m.toEntity()).toList();
       return _buildCommentTree(entities);
     });
+  }
+
+  @override
+  Stream<Either<Failure, Map<String, dynamic>>> streamCommentEvents() {
+    try {
+      AppLogger.info('Repository: Setting up global comment events stream');
+
+      // streamCommentEvents is the method name in CommentsRemoteDataSource
+      return remoteDataSource
+          .streamCommentEvents()
+          .map(
+            (commentEvent) =>
+                Right<Failure, Map<String, dynamic>>(commentEvent),
+          )
+          .handleError((error) {
+            AppLogger.error(
+              'Error in streamCommentEvents repo: $error',
+              error: error,
+            );
+            return Left<Failure, Map<String, dynamic>>(
+              ServerFailure(error.toString()),
+            );
+          });
+    } catch (e) {
+      AppLogger.error('Exception setting up streamCommentEvents: $e', error: e);
+      return Stream.value(Left(ServerFailure(e.toString())));
+    }
   }
 
   /// Builds a nested comment tree immutably and bottom-up.

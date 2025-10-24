@@ -1,3 +1,4 @@
+// lib/features/posts/presentation/bloc/posts_state.dart
 part of 'posts_bloc.dart';
 
 abstract class PostsState extends Equatable {
@@ -7,7 +8,6 @@ abstract class PostsState extends Equatable {
   List<Object?> get props => [];
 }
 
-// ==================== INITIAL/LOADING/ERROR ====================
 class PostsInitial extends PostsState {
   const PostsInitial();
 }
@@ -25,7 +25,15 @@ class PostsError extends PostsState {
   List<Object?> get props => [message];
 }
 
-// ==================== FEED ====================
+class PostCreated extends PostsState {
+  final PostEntity post;
+
+  const PostCreated(this.post);
+
+  @override
+  List<Object?> get props => [post];
+}
+
 class FeedLoaded extends PostsState {
   final List<PostEntity> posts;
   final bool isRealtimeActive;
@@ -34,16 +42,8 @@ class FeedLoaded extends PostsState {
 
   @override
   List<Object?> get props => [posts, isRealtimeActive];
-
-  FeedLoaded copyWith({List<PostEntity>? posts, bool? isRealtimeActive}) {
-    return FeedLoaded(
-      posts ?? this.posts,
-      isRealtimeActive: isRealtimeActive ?? this.isRealtimeActive,
-    );
-  }
 }
 
-// ==================== REELS ====================
 class ReelsLoaded extends PostsState {
   final List<PostEntity> posts;
   final bool isRealtimeActive;
@@ -52,16 +52,8 @@ class ReelsLoaded extends PostsState {
 
   @override
   List<Object?> get props => [posts, isRealtimeActive];
-
-  ReelsLoaded copyWith({List<PostEntity>? posts, bool? isRealtimeActive}) {
-    return ReelsLoaded(
-      posts ?? this.posts,
-      isRealtimeActive: isRealtimeActive ?? this.isRealtimeActive,
-    );
-  }
 }
 
-// ==================== USER POSTS ====================
 class UserPostsLoading extends PostsState {
   const UserPostsLoading();
 }
@@ -84,7 +76,6 @@ class UserPostsError extends PostsState {
   List<Object?> get props => [message];
 }
 
-// ==================== SINGLE POST ====================
 class PostLoaded extends PostsState {
   final PostEntity post;
 
@@ -94,21 +85,19 @@ class PostLoaded extends PostsState {
   List<Object?> get props => [post];
 }
 
-// ==================== CREATE POST ====================
-class PostCreated extends PostsState {
-  final PostEntity post;
-
-  const PostCreated(this.post);
-
-  @override
-  List<Object?> get props => [post];
-}
-
-// ==================== DELETE POST ====================
 class PostDeleting extends PostsState {
   final String postId;
 
   const PostDeleting(this.postId);
+
+  @override
+  List<Object?> get props => [postId];
+}
+
+class PostDeleted extends PostsState {
+  final String postId;
+
+  const PostDeleted(this.postId);
 
   @override
   List<Object?> get props => [postId];
@@ -124,26 +113,6 @@ class PostDeleteError extends PostsState {
   List<Object?> get props => [postId, message];
 }
 
-class PostDeleted extends PostsState {
-  final String postId;
-
-  const PostDeleted(this.postId);
-
-  @override
-  List<Object?> get props => [postId];
-}
-
-// ==================== INTERACTIONS ====================
-class PostLiked extends PostsState {
-  final String postId;
-  final bool isLiked;
-
-  const PostLiked(this.postId, this.isLiked);
-
-  @override
-  List<Object?> get props => [postId, isLiked];
-}
-
 class PostShared extends PostsState {
   final String postId;
 
@@ -153,17 +122,17 @@ class PostShared extends PostsState {
   List<Object?> get props => [postId];
 }
 
-class PostFavorited extends PostsState {
+class PostShareError extends PostsState {
   final String postId;
-  final bool isFavorited;
+  final String message;
 
-  const PostFavorited(this.postId, this.isFavorited);
+  const PostShareError(this.postId, this.message);
 
   @override
-  List<Object?> get props => [postId, isFavorited];
+  List<Object?> get props => [postId, message];
 }
 
-// ==================== REAL-TIME UPDATES ====================
+// Real-time update notification state
 class RealtimePostUpdate extends PostsState {
   final String postId;
   final int? likesCount;

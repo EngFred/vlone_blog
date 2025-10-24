@@ -117,10 +117,10 @@ class _MainPageState extends State<MainPage> {
     AppLogger.info('Loading data for tab index: $index (user: $_userId)');
     switch (index) {
       case 0:
-        context.read<PostsBloc>().add(GetFeedEvent(userId: _userId!));
+        context.read<PostsBloc>().add(GetFeedEvent(_userId!));
         break;
       case 1:
-        context.read<PostsBloc>().add(GetReelsEvent(userId: _userId!));
+        context.read<PostsBloc>().add(GetReelsEvent(_userId!));
         break;
       case 2:
         context.read<UsersBloc>().add(GetAllUsersEvent(_userId!));
@@ -179,31 +179,27 @@ class _MainPageState extends State<MainPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    // Build pages dynamically with visibility state
+    // <-- CHANGED: Pass _userId! to FeedPage and ReelsPage
     final pages = [
-      const FeedPage(key: PageStorageKey('feed_page')),
+      FeedPage(key: const PageStorageKey('feed_page'), userId: _userId!),
       ReelsPage(
         key: const PageStorageKey('reels_page'),
-        isVisible: _selectedIndex == 1, //visibility state
+        isVisible: _selectedIndex == 1,
+        userId: _userId!,
       ),
       const UsersPage(key: PageStorageKey('users_page')),
       ProfilePage(key: const PageStorageKey('profile_page'), userId: _userId!),
     ];
 
-    // Determine if the current page is Reels (index 1)
     final bool isReelsPage = _selectedIndex == 1;
 
-    // Define colors based on the page state
     final Color barBackgroundColor = isReelsPage
-        ? Colors
-              .black // Forced dark background for Reels
-        : Theme.of(context).scaffoldBackgroundColor; // Default theme background
+        ? Colors.black
+        : Theme.of(context).scaffoldBackgroundColor;
 
     final Color unselectedColor = isReelsPage
-        ? Colors.white.withOpacity(0.6) // Light unselected items for dark bar
-        : Theme.of(
-            context,
-          ).colorScheme.onSurface.withOpacity(0.6); // Default theme color
+        ? Colors.white.withOpacity(0.6)
+        : Theme.of(context).colorScheme.onSurface.withOpacity(0.6);
 
     return Scaffold(
       body: IndexedStack(index: _selectedIndex, children: pages),
@@ -219,7 +215,6 @@ class _MainPageState extends State<MainPage> {
         ],
         currentIndex: _selectedIndex,
         selectedItemColor: Constants.primaryColor,
-        // Apply the conditional colors here
         unselectedItemColor: unselectedColor,
         backgroundColor: barBackgroundColor,
         type: BottomNavigationBarType.fixed,

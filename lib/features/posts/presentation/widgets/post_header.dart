@@ -31,17 +31,13 @@ class PostHeader extends StatelessWidget {
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
       subtitle: Text(post.formattedCreatedAt),
-      trailing:
-          isOwner // Conditional: Only show delete for owner
+      trailing: isOwner
           ? IconButton(
-              icon: const Icon(
-                Icons.more_vert,
-              ), // Or Icons.delete_outline for trash
+              icon: const Icon(Icons.more_vert),
               onPressed: () => _showDeleteDialog(context),
               tooltip: 'Delete Post',
             )
           : null,
-      // onTap: () => context.push('/profile/${post.userId}'), <-- Removed the navigation
     );
   }
 
@@ -61,7 +57,8 @@ class PostHeader extends StatelessWidget {
           TextButton(
             onPressed: () {
               Navigator.pop(context); // Close dialog
-              context.read<PostsBloc>().add(DeletePostEvent(postId: post.id));
+              // Post deletion still handled by PostsBloc
+              context.read<PostsBloc>().add(DeletePostEvent(post.id));
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),

@@ -11,6 +11,8 @@ import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bl
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
+import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
+import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'router.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -103,6 +105,8 @@ class MyApp extends StatelessWidget {
         BlocProvider<CommentsBloc>(create: (_) => di.sl<CommentsBloc>()),
         BlocProvider<FollowersBloc>(create: (_) => di.sl<FollowersBloc>()),
         BlocProvider<UsersBloc>(create: (_) => di.sl<UsersBloc>()),
+        BlocProvider<LikesBloc>(create: (_) => di.sl<LikesBloc>()),
+        BlocProvider<FavoritesBloc>(create: (_) => di.sl<FavoritesBloc>()),
       ],
       child: BlocListener<AuthBloc, AuthState>(
         listener: (context, state) {
@@ -110,7 +114,6 @@ class MyApp extends StatelessWidget {
           try {
             ScaffoldMessenger.of(context).clearSnackBars();
           } catch (e) {
-            // Defensive: if the messenger isn't available for any reason, log and continue.
             AppLogger.warning(
               'Failed to clear snackbars before auth navigation: $e',
             );
@@ -123,14 +126,11 @@ class MyApp extends StatelessWidget {
 
             // Navigate to feed/main area
             appRouter.go(Constants.feedRoute);
-
-            //We intentionally do NOT remove the splash here; MainPage will handle it.
           } else if (state is AuthUnauthenticated) {
             AppLogger.info(
               'AuthBloc: User unauthenticated, navigating to login',
             );
 
-            // Ensure no snackbars remain visible, then navigate to login.
             appRouter.go(Constants.loginRoute);
 
             // ONLY remove splash here for the unauthenticated case (fixes stuck splash on fresh install).

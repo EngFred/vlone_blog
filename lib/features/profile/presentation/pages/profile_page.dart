@@ -1,4 +1,3 @@
-// lib/features/profile/presentation/pages/profile_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -14,6 +13,8 @@ import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart'
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_posts_list.dart';
+import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
+import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 
 enum ProfileMenuOption { edit, logout }
 
@@ -38,7 +39,6 @@ class _ProfilePageState extends State<ProfilePage> {
   void initState() {
     super.initState();
     // MainPage dispatches GetProfileDataEvent, StartProfileRealtimeEvent, and GetUserPostsEvent when tab selected.
-    // Set own profile flags since this is always the current user's profile in the bottom nav.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         setState(() {
@@ -52,7 +52,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   void dispose() {
-    // Note: Realtime stop is handled in Bloc or MainPage dispose; no per-page stop needed with IndexedStack.
     super.dispose();
   }
 
@@ -60,7 +59,6 @@ class _ProfilePageState extends State<ProfilePage> {
     final index = _userPosts.indexWhere((p) => p.id == state.postId);
     if (index != -1 && mounted) {
       final post = _userPosts[index];
-      // Clamp to prevent negative counts from real-time updates
       final updatedPost = post.copyWith(
         likesCount: (state.likesCount ?? post.likesCount)
             .clamp(0, double.infinity)
@@ -149,6 +147,63 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  // Helper to apply optimistic like/favorite updates in the list
+  void _applyLikeUpdate(String postId, bool isLiked) {
+    final index = _userPosts.indexWhere((p) => p.id == postId);
+    if (index == -1 || !mounted) return;
+    final old = _userPosts[index];
+    final delta = isLiked ? 1 : -1;
+    final updated = old.copyWith(
+      likesCount: (old.likesCount + delta).clamp(0, double.infinity).toInt(),
+      isLiked: isLiked,
+    );
+    setState(() => _userPosts[index] = updated);
+  }
+
+  void _revertLike(String postId, bool previousState) {
+    final index = _userPosts.indexWhere((p) => p.id == postId);
+    if (index == -1 || !mounted) return;
+    final old = _userPosts[index];
+    final correctedCount = previousState
+        ? (old.likesCount + 1)
+        : (old.likesCount - 1);
+    setState(
+      () => _userPosts[index] = old.copyWith(
+        isLiked: previousState,
+        likesCount: correctedCount.clamp(0, double.infinity).toInt(),
+      ),
+    );
+  }
+
+  void _applyFavoriteUpdate(String postId, bool isFavorited) {
+    final index = _userPosts.indexWhere((p) => p.id == postId);
+    if (index == -1 || !mounted) return;
+    final old = _userPosts[index];
+    final delta = isFavorited ? 1 : -1;
+    final updated = old.copyWith(
+      favoritesCount: (old.favoritesCount + delta)
+          .clamp(0, double.infinity)
+          .toInt(),
+      isFavorited: isFavorited,
+    );
+    setState(() => _userPosts[index] = updated);
+  }
+
+  void _revertFavorite(String postId, bool previousState) {
+    final index = _userPosts.indexWhere((p) => p.id == postId);
+    if (index == -1 || !mounted) return;
+    final old = _userPosts[index];
+    final correctedCount = previousState
+        ? (old.favoritesCount + 1)
+        : (old.favoritesCount - 1);
+    setState(
+      () => _userPosts[index] = old.copyWith(
+        isFavorited: previousState,
+        favoritesCount: correctedCount.clamp(0, double.infinity).toInt(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -210,9 +265,10 @@ class _ProfilePageState extends State<ProfilePage> {
           BlocListener<ProfileBloc, ProfileState>(
             listener: (context, state) {
               // Real-time updates are handled automatically via the stream
-              // No manual actions needed here
             },
           ),
+
+          // PostsBloc: load user posts / realtime updates / deletion / errors
           BlocListener<PostsBloc, PostsState>(
             listener: (context, state) {
               if (state is UserPostsLoading) {
@@ -250,36 +306,6 @@ class _ProfilePageState extends State<ProfilePage> {
                     _isUserPostsLoading = false;
                   });
                 }
-              } else if (state is PostLiked) {
-                final index = _userPosts.indexWhere(
-                  (p) => p.id == state.postId,
-                );
-                if (index != -1 && mounted) {
-                  final delta = state.isLiked ? 1 : -1;
-                  final newCount = (_userPosts[index].likesCount + delta)
-                      .clamp(0, double.infinity)
-                      .toInt();
-                  final updatedPost = _userPosts[index].copyWith(
-                    likesCount: newCount,
-                    isLiked: state.isLiked,
-                  );
-                  setState(() => _userPosts[index] = updatedPost);
-                }
-              } else if (state is PostFavorited) {
-                final index = _userPosts.indexWhere(
-                  (p) => p.id == state.postId,
-                );
-                if (index != -1 && mounted) {
-                  final delta = state.isFavorited ? 1 : -1;
-                  final newCount = (_userPosts[index].favoritesCount + delta)
-                      .clamp(0, double.infinity)
-                      .toInt();
-                  final updatedPost = _userPosts[index].copyWith(
-                    favoritesCount: newCount,
-                    isFavorited: state.isFavorited,
-                  );
-                  setState(() => _userPosts[index] = updatedPost);
-                }
               } else if (state is RealtimePostUpdate) {
                 _handleRealtimePostUpdate(state);
               } else if (state is PostDeleted) {
@@ -294,6 +320,33 @@ class _ProfilePageState extends State<ProfilePage> {
               }
             },
           ),
+
+          // LikesBloc: optimistic like updates / errors
+          BlocListener<LikesBloc, LikesState>(
+            listener: (context, state) {
+              if (state is LikeUpdated) {
+                _applyLikeUpdate(state.postId, state.isLiked);
+              } else if (state is LikeError) {
+                // revert if necessary
+                _revertLike(state.postId, state.previousState);
+                SnackbarUtils.showError(context, state.message);
+              }
+            },
+          ),
+
+          // FavoritesBloc: optimistic favorite updates / errors
+          BlocListener<FavoritesBloc, FavoritesState>(
+            listener: (context, state) {
+              if (state is FavoriteUpdated) {
+                _applyFavoriteUpdate(state.postId, state.isFavorited);
+              } else if (state is FavoriteError) {
+                _revertFavorite(state.postId, state.previousState);
+                SnackbarUtils.showError(context, state.message);
+              }
+            },
+          ),
+
+          // FollowersBloc: follow/unfollow results
           BlocListener<FollowersBloc, FollowersState>(
             listener: (context, state) {
               if (state is FollowStatusLoaded &&
@@ -308,7 +361,6 @@ class _ProfilePageState extends State<ProfilePage> {
                     _isFollowing = state.isFollowing;
                     _isProcessingFollow = false;
                   });
-                  // Profile counts will be updated automatically via real-time stream
                   AppLogger.info(
                     'Follow action completed. Profile counts will update via real-time stream.',
                   );

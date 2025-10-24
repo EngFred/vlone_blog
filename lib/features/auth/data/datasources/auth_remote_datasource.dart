@@ -29,20 +29,30 @@ class AuthRemoteDataSource {
 
       if (authResponse.session == null || authResponse.user == null) {
         AppLogger.warning('Signup response has no session or user');
+        // Check for specific error message if available, otherwise general failure
         throw const ServerException(
           'Signup failed unexpectedly. Please try again.',
         );
       }
 
       final userId = authResponse.user!.id;
-      AppLogger.info('Inserting profile for user ID: $userId');
-      await client.from('profiles').insert({
-        'id': userId,
-        'email': email,
-        'username': username,
-      });
 
-      final userModel = UserModel(id: userId, email: email, username: username);
+      // *** START: CRITICAL UPDATE DUE TO DB TRIGGER ***
+      // The client-side insertion into 'profiles' is REMOVED.
+      // The database trigger 'on_auth_user_created' automatically creates
+      // the profile row. We now fetch that guaranteed profile immediately.
+      AppLogger.info(
+        'Profile created by DB trigger. Fetching guaranteed profile for ID: $userId',
+      );
+
+      final profileData = await client
+          .from('profiles')
+          .select()
+          .eq('id', userId)
+          .single();
+      // *** END: CRITICAL UPDATE ***
+
+      final userModel = UserModel.fromMap(profileData);
 
       // Cache the user profile
       await _cacheUserProfile(userModel);

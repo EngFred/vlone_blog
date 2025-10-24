@@ -1,4 +1,3 @@
-// lib/features/posts/presentation/bloc/posts_bloc.dart
 import 'dart:async';
 import 'dart:io';
 import 'package:bloc/bloc.dart';
@@ -9,12 +8,10 @@ import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/create_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/delete_post_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/favorite_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_feed_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_reels_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_user_posts_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/like_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/stream_post_deletions_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/stream_posts_usecase.dart';
@@ -27,8 +24,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   final GetFeedUseCase getFeedUseCase;
   final GetReelsUseCase getReelsUseCase;
   final GetUserPostsUseCase getUserPostsUseCase;
-  final LikePostUseCase likePostUseCase;
-  final FavoritePostUseCase favoritePostUseCase;
   final SharePostUseCase sharePostUseCase;
   final GetPostUseCase getPostUseCase;
   final DeletePostUseCase deletePostUseCase;
@@ -36,37 +31,23 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   // Real-time use cases
   final StreamNewPostsUseCase streamNewPostsUseCase;
   final StreamPostUpdatesUseCase streamPostUpdatesUseCase;
-  final StreamLikesUseCase streamLikesUseCase;
-  final StreamCommentsUseCase streamCommentsUseCase;
-  final StreamFavoritesUseCase streamFavoritesUseCase;
   final StreamPostDeletionsUseCase streamPostDeletionsUseCase;
 
   // Stream subscriptions for cleanup
   StreamSubscription? _newPostsSubscription;
   StreamSubscription? _postUpdatesSubscription;
-  StreamSubscription? _likesSubscription;
-  StreamSubscription? _commentsSubscription;
-  StreamSubscription? _favoritesSubscription;
   StreamSubscription? _postDeletionsSubscription;
-
-  // Track current user for real-time filtering
-  String? _currentUserId;
 
   PostsBloc({
     required this.createPostUseCase,
     required this.getFeedUseCase,
     required this.getReelsUseCase,
     required this.getUserPostsUseCase,
-    required this.likePostUseCase,
-    required this.favoritePostUseCase,
     required this.sharePostUseCase,
     required this.getPostUseCase,
     required this.deletePostUseCase,
     required this.streamNewPostsUseCase,
     required this.streamPostUpdatesUseCase,
-    required this.streamLikesUseCase,
-    required this.streamCommentsUseCase,
-    required this.streamFavoritesUseCase,
     required this.streamPostDeletionsUseCase,
   }) : super(const PostsInitial()) {
     on<CreatePostEvent>(_onCreatePost);
@@ -75,18 +56,13 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     on<GetUserPostsEvent>(_onGetUserPosts);
     on<GetPostEvent>(_onGetPost);
     on<DeletePostEvent>(_onDeletePost);
-    on<LikePostEvent>(_onLikePost);
     on<SharePostEvent>(_onSharePost);
-    on<FavoritePostEvent>(_onFavoritePost);
 
     // Real-time event handlers
     on<StartRealtimeListenersEvent>(_onStartRealtimeListeners);
     on<StopRealtimeListenersEvent>(_onStopRealtimeListeners);
     on<_RealtimePostReceivedEvent>(_onRealtimePostReceived);
     on<_RealtimePostUpdatedEvent>(_onRealtimePostUpdated);
-    on<_RealtimeLikeEvent>(_onRealtimeLike);
-    on<_RealtimeCommentEvent>(_onRealtimeComment);
-    on<_RealtimeFavoriteEvent>(_onRealtimeFavorite);
     on<_RealtimePostDeletedEvent>(_onRealtimePostDeleted);
   }
 
@@ -237,33 +213,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     );
   }
 
-  Future<void> _onLikePost(
-    LikePostEvent event,
-    Emitter<PostsState> emit,
-  ) async {
-    AppLogger.info(
-      'LikePostEvent triggered for post: ${event.postId}, like: ${event.isLiked}',
-    );
-
-    final result = await likePostUseCase(
-      LikePostParams(
-        postId: event.postId,
-        userId: event.userId,
-        isLiked: event.isLiked,
-      ),
-    );
-
-    result.fold(
-      (failure) {
-        AppLogger.error('Like post failed: ${failure.message}');
-      },
-      (_) {
-        AppLogger.info('Post liked/unliked successfully');
-        emit(PostLiked(event.postId, event.isLiked));
-      },
-    );
-  }
-
   Future<void> _onSharePost(
     SharePostEvent event,
     Emitter<PostsState> emit,
@@ -277,37 +226,11 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     result.fold(
       (failure) {
         AppLogger.error('Share post failed: ${failure.message}');
+        emit(PostShareError(event.postId, failure.message));
       },
       (_) {
         AppLogger.info('Post shared successfully');
         emit(PostShared(event.postId));
-      },
-    );
-  }
-
-  Future<void> _onFavoritePost(
-    FavoritePostEvent event,
-    Emitter<PostsState> emit,
-  ) async {
-    AppLogger.info(
-      'FavoritePostEvent triggered for post: ${event.postId}, favorite: ${event.isFavorited}',
-    );
-
-    final result = await favoritePostUseCase(
-      FavoritePostParams(
-        postId: event.postId,
-        userId: event.userId,
-        isFavorited: event.isFavorited,
-      ),
-    );
-
-    result.fold(
-      (failure) {
-        AppLogger.error('Favorite post failed: ${failure.message}');
-      },
-      (_) {
-        AppLogger.info('Post favorited/unfavorited successfully');
-        emit(PostFavorited(event.postId, event.isFavorited));
       },
     );
   }
@@ -319,8 +242,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     Emitter<PostsState> emit,
   ) async {
     AppLogger.info('Starting real-time listeners');
-
-    _currentUserId = event.userId;
 
     // Cancel existing subscriptions
     await _cancelAllSubscriptions();
@@ -355,18 +276,15 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
             );
 
             // Helper function to safely parse values that should be integers
-            // This handles nulls, ints, doubles (e.g., 10.0), and strings (e.g., "10")
             int? safeParseInt(dynamic value) {
               if (value == null) return null;
               if (value is int) return value;
-              // Handle doubles and strings
               return int.tryParse(value.toString().split('.').first);
             }
 
             add(
               _RealtimePostUpdatedEvent(
                 postId: updateData['id'] as String,
-                // Use the safe parser for all count fields
                 likesCount: safeParseInt(updateData['likes_count']),
                 commentsCount: safeParseInt(updateData['comments_count']),
                 favoritesCount: safeParseInt(updateData['favorites_count']),
@@ -381,77 +299,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
       },
     );
 
-    // Subscribe to likes
-    _likesSubscription = streamLikesUseCase(NoParams()).listen(
-      (either) {
-        either.fold(
-          (failure) =>
-              AppLogger.error('Real-time like error: ${failure.message}'),
-          (likeData) {
-            final isLiked = likeData['event'] == 'INSERT';
-            AppLogger.info(
-              'Real-time: Like ${isLiked ? 'added' : 'removed'} on post: ${likeData['post_id']}',
-            );
-            add(
-              _RealtimeLikeEvent(
-                postId: likeData['post_id'] as String,
-                userId: likeData['user_id'] as String,
-                isLiked: isLiked,
-              ),
-            );
-          },
-        );
-      },
-      onError: (error) {
-        AppLogger.error('Likes stream error: $error', error: error);
-      },
-    );
-
-    // Subscribe to comments
-    _commentsSubscription = streamCommentsUseCase(NoParams()).listen(
-      (either) {
-        either.fold(
-          (failure) =>
-              AppLogger.error('Real-time comment error: ${failure.message}'),
-          (commentData) {
-            AppLogger.info(
-              'Real-time: Comment added to post: ${commentData['post_id']}',
-            );
-            add(_RealtimeCommentEvent(commentData['post_id'] as String));
-          },
-        );
-      },
-      onError: (error) {
-        AppLogger.error('Comments stream error: $error', error: error);
-      },
-    );
-
-    // Subscribe to favorites
-    _favoritesSubscription = streamFavoritesUseCase(NoParams()).listen(
-      (either) {
-        either.fold(
-          (failure) =>
-              AppLogger.error('Real-time favorite error: ${failure.message}'),
-          (favoriteData) {
-            final isFavorited = favoriteData['event'] == 'INSERT';
-            AppLogger.info(
-              'Real-time: Favorite ${isFavorited ? 'added' : 'removed'} on post: ${favoriteData['post_id']}',
-            );
-            add(
-              _RealtimeFavoriteEvent(
-                postId: favoriteData['post_id'] as String,
-                userId: favoriteData['user_id'] as String,
-                isFavorited: isFavorited,
-              ),
-            );
-          },
-        );
-      },
-      onError: (error) {
-        AppLogger.error('Favorites stream error: $error', error: error);
-      },
-    );
-
     // Subscribe to post deletions
     _postDeletionsSubscription = streamPostDeletionsUseCase(NoParams()).listen(
       (either) {
@@ -459,10 +306,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
           (failure) => AppLogger.error(
             'Real-time post deletion error: ${failure.message}',
           ),
-          // The data from this stream is just the String postId, not a Map.
           (postId) {
             AppLogger.info('Real-time: Post deleted: $postId');
-            add(_RealtimePostDeletedEvent(postId)); // Pass the string directly
+            add(_RealtimePostDeletedEvent(postId));
           },
         );
       },
@@ -487,7 +333,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   ) async {
     AppLogger.info('Stopping real-time listeners');
     await _cancelAllSubscriptions();
-    _currentUserId = null;
 
     // Re-emit current state with real-time inactive flag
     if (state is FeedLoaded) {
@@ -503,9 +348,8 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   ) async {
     final currentState = state;
 
-    // Add new post to feed if we're in FeedLoaded state (with default interaction states)
+    // Add new post to feed if we're in FeedLoaded state
     if (currentState is FeedLoaded) {
-      // Avoid duplicates
       final exists = currentState.posts.any((p) => p.id == event.post.id);
       if (!exists) {
         final updatedPosts = [event.post, ...currentState.posts];
@@ -625,129 +469,13 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     }
   }
 
-  void _onRealtimeLike(_RealtimeLikeEvent event, Emitter<PostsState> emit) {
-    final currentState = state;
-
-    // Only update if this like is from the current user
-    if (event.userId == _currentUserId) {
-      if (currentState is FeedLoaded) {
-        final updatedPosts = currentState.posts.map((post) {
-          if (post.id == event.postId) {
-            return post.copyWith(isLiked: event.isLiked);
-          }
-          return post;
-        }).toList();
-
-        emit(FeedLoaded(updatedPosts, isRealtimeActive: true));
-        AppLogger.info(
-          'Like state updated for current user on post: ${event.postId}',
-        );
-      }
-
-      if (currentState is ReelsLoaded) {
-        final updatedPosts = currentState.posts.map((post) {
-          if (post.id == event.postId) {
-            return post.copyWith(isLiked: event.isLiked);
-          }
-          return post;
-        }).toList();
-
-        emit(ReelsLoaded(updatedPosts, isRealtimeActive: true));
-        AppLogger.info(
-          'Like state updated for current user on reel: ${event.postId}',
-        );
-      }
-
-      if (currentState is UserPostsLoaded) {
-        final updatedPosts = currentState.posts.map((post) {
-          if (post.id == event.postId) {
-            return post.copyWith(isLiked: event.isLiked);
-          }
-          return post;
-        }).toList();
-
-        emit(UserPostsLoaded(updatedPosts));
-        AppLogger.info(
-          'Like state updated for current user on user post: ${event.postId}',
-        );
-      }
-    }
-  }
-
-  void _onRealtimeComment(
-    _RealtimeCommentEvent event,
-    Emitter<PostsState> emit,
-  ) {
-    // Comment count updates are handled by _onRealtimePostUpdated
-    // This is just for logging/notifications if needed
-    AppLogger.info('Real-time comment event processed for: ${event.postId}');
-  }
-
-  void _onRealtimeFavorite(
-    _RealtimeFavoriteEvent event,
-    Emitter<PostsState> emit,
-  ) {
-    final currentState = state;
-
-    // Only update if this favorite is from the current user
-    if (event.userId == _currentUserId) {
-      if (currentState is FeedLoaded) {
-        final updatedPosts = currentState.posts.map((post) {
-          if (post.id == event.postId) {
-            return post.copyWith(isFavorited: event.isFavorited);
-          }
-          return post;
-        }).toList();
-
-        emit(FeedLoaded(updatedPosts, isRealtimeActive: true));
-        AppLogger.info(
-          'Favorite state updated for current user on post: ${event.postId}',
-        );
-      }
-
-      if (currentState is ReelsLoaded) {
-        final updatedPosts = currentState.posts.map((post) {
-          if (post.id == event.postId) {
-            return post.copyWith(isFavorited: event.isFavorited);
-          }
-          return post;
-        }).toList();
-
-        emit(ReelsLoaded(updatedPosts, isRealtimeActive: true));
-        AppLogger.info(
-          'Favorite state updated for current user on reel: ${event.postId}',
-        );
-      }
-
-      if (currentState is UserPostsLoaded) {
-        final updatedPosts = currentState.posts.map((post) {
-          if (post.id == event.postId) {
-            return post.copyWith(isFavorited: event.isFavorited);
-          }
-          return post;
-        }).toList();
-
-        emit(UserPostsLoaded(updatedPosts));
-        AppLogger.info(
-          'Favorite state updated for current user on user post: ${event.postId}',
-        );
-      }
-    }
-  }
-
   Future<void> _cancelAllSubscriptions() async {
     await _newPostsSubscription?.cancel();
     await _postUpdatesSubscription?.cancel();
-    await _likesSubscription?.cancel();
-    await _commentsSubscription?.cancel();
-    await _favoritesSubscription?.cancel();
     await _postDeletionsSubscription?.cancel();
 
     _newPostsSubscription = null;
     _postUpdatesSubscription = null;
-    _likesSubscription = null;
-    _commentsSubscription = null;
-    _favoritesSubscription = null;
     _postDeletionsSubscription = null;
   }
 

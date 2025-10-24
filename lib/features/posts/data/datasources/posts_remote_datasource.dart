@@ -17,16 +17,10 @@ class PostsRemoteDataSource {
 
   // Store channel references for cleanup
   RealtimeChannel? _postsChannel;
-  RealtimeChannel? _likesChannel;
-  RealtimeChannel? _commentsChannel;
-  RealtimeChannel? _favoritesChannel;
   RealtimeChannel? _postDeletionsChannel;
 
-  // Stream controllers for manual stream management
+  // Stream controllers for manual stream management (lazily initialized)
   StreamController<Map<String, dynamic>>? _postsController;
-  StreamController<Map<String, dynamic>>? _likesController;
-  StreamController<Map<String, dynamic>>? _commentsController;
-  StreamController<Map<String, dynamic>>? _favoritesController;
   StreamController<String>? _postDeletionsController;
 
   PostsRemoteDataSource(this.client);
@@ -97,7 +91,12 @@ class PostsRemoteDataSource {
           .single();
 
       AppLogger.info('Post created successfully with ID: ${response['id']}');
-      return PostModel.fromMap(response);
+
+      // Inject default status fields since this is a new post without user context check
+      final postMap = response;
+      postMap['is_liked'] = false;
+      postMap['is_favorited'] = false;
+      return PostModel.fromMap(postMap);
     } catch (e) {
       AppLogger.error('Error creating post: $e', error: e);
       throw ServerException(e.toString());
@@ -182,235 +181,107 @@ class PostsRemoteDataSource {
       );
 
       // Model handles the flat RPC structure directly now
-      return (response as List).map((map) => PostModel.fromMap(map)).toList();
+      return (response).map((map) => PostModel.fromMap(map)).toList();
     } catch (e) {
       AppLogger.error('Error fetching feed via RPC: $e', error: e);
       throw ServerException(e.toString());
     }
   }
 
-  // Sticking to original select/join method for Reels and UserPosts
+  /// Fetches Reels (video posts) using the optimized `get_posts_with_user_status` RPC.
   Future<List<PostModel>> getReels({required String currentUserId}) async {
     try {
-      AppLogger.info('Fetching reels (video posts)');
+      AppLogger.info('Fetching reels (video posts) via RPC');
 
-      final response = await client
-          .from('posts')
-          .select('*, profiles ( username, profile_image_url )')
-          .eq('media_type', 'video')
-          .order('created_at', ascending: false);
+      // Call the consolidated Postgres function for reels (media_type = 'video')
+      final response = await client.rpc(
+        'get_posts_with_user_status',
+        params: {'p_current_user_id': currentUserId, 'p_media_type': 'video'},
+      );
 
-      if (response.isEmpty) {
+      if (response is List && response.isEmpty) {
         return [];
       }
 
-      final likedResponse = await client
-          .from('likes')
-          .select('post_id')
-          .eq('user_id', currentUserId);
-      final likedIds = likedResponse.map((e) => e['post_id'] as String).toSet();
+      AppLogger.info(
+        'Reels fetched with ${(response as List).length} posts via RPC',
+      );
 
-      final favoritedResponse = await client
-          .from('favorites')
-          .select('post_id')
-          .eq('user_id', currentUserId);
-      final favoritedIds = favoritedResponse
-          .map((e) => e['post_id'] as String)
-          .toSet();
-
-      for (var map in response) {
-        map['is_liked'] = likedIds.contains(map['id']);
-        map['is_favorited'] = favoritedIds.contains(map['id']);
-      }
-
-      AppLogger.info('Reels fetched with ${response.length} posts');
-      return response.map((map) => PostModel.fromMap(map)).toList();
+      // Model handles the flat RPC structure directly now
+      return (response).map((map) => PostModel.fromMap(map)).toList();
     } catch (e) {
-      AppLogger.error('Error fetching reels: $e', error: e);
+      AppLogger.error('Error fetching reels via RPC: $e', error: e);
       throw ServerException(e.toString());
     }
   }
 
+  /// Fetches posts for a specific user profile using the optimized `get_posts_with_user_status` RPC.
   Future<List<PostModel>> getUserPosts({
     required String profileUserId,
     required String currentUserId,
   }) async {
     try {
-      AppLogger.info('Fetching user posts for $profileUserId');
-      final response = await client
-          .from('posts')
-          .select('*, profiles ( username, profile_image_url )')
-          .eq('user_id', profileUserId)
-          .order('created_at', ascending: false);
+      AppLogger.info('Fetching user posts for $profileUserId via RPC');
 
-      if (response.isEmpty) {
+      // Call the consolidated Postgres function filtering by user ID
+      final response = await client.rpc(
+        'get_posts_with_user_status',
+        params: {
+          'p_current_user_id': currentUserId,
+          'p_post_user_id': profileUserId,
+        },
+      );
+
+      if (response is List && response.isEmpty) {
         return [];
       }
 
-      final likedResponse = await client
-          .from('likes')
-          .select('post_id')
-          .eq('user_id', currentUserId);
-      final likedIds = likedResponse.map((e) => e['post_id'] as String).toSet();
+      AppLogger.info(
+        'User posts fetched with ${(response as List).length} posts via RPC',
+      );
 
-      final favoritedResponse = await client
-          .from('favorites')
-          .select('post_id')
-          .eq('user_id', currentUserId);
-      final favoritedIds = favoritedResponse
-          .map((e) => e['post_id'] as String)
-          .toSet();
-
-      for (var map in response) {
-        map['is_liked'] = likedIds.contains(map['id']);
-        map['is_favorited'] = favoritedIds.contains(map['id']);
-      }
-
-      AppLogger.info('User posts fetched with ${response.length} posts');
-      return response.map((map) => PostModel.fromMap(map)).toList();
+      return (response).map((map) => PostModel.fromMap(map)).toList();
     } catch (e) {
-      AppLogger.error('Error fetching user posts: $e', error: e);
+      AppLogger.error('Error fetching user posts via RPC: $e', error: e);
       throw ServerException(e.toString());
     }
   }
 
+  /// Fetches a single post using the **new, efficient two-parameter** `get_post_with_profile` RPC.
   Future<PostModel> getPost({
     required String postId,
     required String currentUserId,
   }) async {
     try {
-      AppLogger.info('Fetching post: $postId');
-      final response = await client
-          .from('posts')
-          .select('*, profiles ( username, profile_image_url )')
-          .eq('id', postId)
-          .single();
+      AppLogger.info(
+        'Fetching post: $postId using updated get_post_with_profile RPC',
+      );
 
-      final likeCheck = await client
-          .from('likes')
-          .select('id')
-          .eq('post_id', postId)
-          .eq('user_id', currentUserId)
-          .maybeSingle();
-      final isLiked = likeCheck != null;
+      //Use the new 2-parameter overloaded function signature for efficiency.
+      final response = await client.rpc(
+        'get_post_with_profile',
+        params: {
+          // Parameters match the new function signature in SQL
+          'p_post_id': postId,
+          'p_current_user_id': currentUserId,
+        },
+      );
 
-      final favCheck = await client
-          .from('favorites')
-          .select('id')
-          .eq('post_id', postId)
-          .eq('user_id', currentUserId)
-          .maybeSingle();
-      final isFavorited = favCheck != null;
-
-      response['is_liked'] = isLiked;
-      response['is_favorited'] = isFavorited;
-
-      AppLogger.info('Post fetched: ${response['id']}');
-      return PostModel.fromMap(response);
+      // The RPC returns a list (even if it's just one item).
+      if (response is List && response.isNotEmpty) {
+        AppLogger.info('Post fetched successfully: ${response.first['id']}');
+        return PostModel.fromMap(response.first as Map<String, dynamic>);
+      } else {
+        AppLogger.error('No post found for ID: $postId');
+        throw const ServerException('Post not found or unauthorized');
+      }
     } catch (e) {
       AppLogger.error('Error fetching post $postId: $e', error: e);
       throw ServerException(e.toString());
     }
   }
 
-  Future<List<PostModel>> getFavorites({required String userId}) async {
-    try {
-      AppLogger.info('Fetching favorites for user: $userId');
-      final response = await client
-          .from('favorites')
-          .select('post_id')
-          .eq('user_id', userId)
-          .order('created_at', ascending: false);
-
-      final postIds = response.map((fav) => fav['post_id'] as String).toList();
-
-      if (postIds.isEmpty) {
-        AppLogger.info('No favorites found for user: $userId');
-        return [];
-      }
-
-      final postsResponse = await client
-          .from('posts')
-          .select('*, profiles ( username, profile_image_url )')
-          .inFilter('id', postIds)
-          .order('created_at', ascending: false);
-
-      final likedResponse = await client
-          .from('likes')
-          .select('post_id')
-          .eq('user_id', userId);
-      final likedIds = likedResponse.map((e) => e['post_id'] as String).toSet();
-
-      for (var map in postsResponse) {
-        map['is_favorited'] = true;
-        map['is_liked'] = likedIds.contains(map['id']);
-      }
-
-      AppLogger.info('Favorites fetched with ${postsResponse.length} posts');
-      return postsResponse.map((map) => PostModel.fromMap(map)).toList();
-    } catch (e) {
-      AppLogger.error('Error fetching favorites: $e', error: e);
-      throw ServerException(e.toString());
-    }
-  }
-
-  Future<void> likePost({
-    required String postId,
-    required String userId,
-    required bool isLiked,
-  }) async {
-    try {
-      AppLogger.info(
-        'Attempting to ${isLiked ? 'like' : 'unlike'} post: $postId by user: $userId',
-      );
-
-      if (isLiked) {
-        await client.from('likes').insert({
-          'post_id': postId,
-          'user_id': userId,
-        });
-      } else {
-        await client.from('likes').delete().match({
-          'post_id': postId,
-          'user_id': userId,
-        });
-      }
-
-      AppLogger.info('Like/unlike successful for post: $postId');
-    } catch (e) {
-      AppLogger.error('Error liking post: $e', error: e);
-      throw ServerException(e.toString());
-    }
-  }
-
-  Future<void> favoritePost({
-    required String postId,
-    required String userId,
-    required bool isFavorited,
-  }) async {
-    try {
-      AppLogger.info(
-        'Attempting to ${isFavorited ? 'favorite' : 'unfavorite'} post: $postId by user: $userId',
-      );
-
-      if (isFavorited) {
-        await client.from('favorites').insert({
-          'post_id': postId,
-          'user_id': userId,
-        });
-        AppLogger.info('Post favorited successfully: $postId');
-      } else {
-        await client.from('favorites').delete().match({
-          'post_id': postId,
-          'user_id': userId,
-        });
-        AppLogger.info('Post unfavorited successfully: $postId');
-      }
-    } catch (e) {
-      AppLogger.error('Error favoriting post: $e', error: e);
-      throw ServerException(e.toString());
-    }
-  }
+  // NOTE: getFavorites method has been removed and moved to FavoritesRemoteDataSource.
 
   // ==================== RPC for Atomic Share Count ====================
 
@@ -459,11 +330,11 @@ class PostsRemoteDataSource {
 
   // ==================== REAL-TIME STREAMS ====================
 
-  // ==================== RPC for Real-Time Data Enrichment ====================
-
-  /// Stream for new posts being created. Uses the `get_post_with_profile` RPC function.
+  /// Stream for new posts being created. Uses the **original one-parameter** `get_post_with_profile` RPC.
   Stream<PostModel> streamNewPosts() {
-    AppLogger.info('Setting up real-time stream for new posts (using RPC)');
+    AppLogger.info(
+      'Setting up real-time stream for new posts (using 1-param RPC)',
+    );
 
     return client
         .from('posts')
@@ -476,15 +347,18 @@ class PostsRemoteDataSource {
           final postId = latestPost['id'] as String;
 
           try {
-            // Use the Postgres function to fetch the complete data
+            //The stream uses the original 1-parameter function signature.
             final response = await client.rpc(
               'get_post_with_profile',
               params: {'post_id': postId},
             );
 
             if (response is List && response.isNotEmpty) {
-              // Model handles the flat RPC structure directly now
-              return PostModel.fromMap(response.first);
+              final postMap = response.first as Map<String, dynamic>;
+              // Manually inject default status fields for the model to work
+              postMap['is_liked'] = false;
+              postMap['is_favorited'] = false;
+              return PostModel.fromMap(postMap);
             }
 
             AppLogger.warning(
@@ -510,11 +384,16 @@ class PostsRemoteDataSource {
   Stream<Map<String, dynamic>> streamPostUpdates() {
     AppLogger.info('Setting up real-time stream for post updates');
 
-    _postsChannel?.unsubscribe();
-    _postsController?.close();
+    // If already created, return existing stream
+    if (_postsController != null && !_postsController!.isClosed) {
+      AppLogger.info('Returning existing posts updates stream');
+      return _postsController!.stream;
+    }
 
+    // Create the controller before subscribing so callbacks can reference it safely
     _postsController = StreamController<Map<String, dynamic>>.broadcast();
 
+    // Create channel and subscribe
     final channel = client.channel(
       'posts_updates_${DateTime.now().millisecondsSinceEpoch}',
     );
@@ -525,160 +404,68 @@ class PostsRemoteDataSource {
           schema: 'public',
           table: 'posts',
           callback: (payload) {
-            AppLogger.info('Post update received: ${payload.newRecord['id']}');
+            try {
+              AppLogger.info(
+                'Post update received: ${payload.newRecord['id']}',
+              );
 
-            final data = {
-              'id': payload.newRecord['id'],
-              'likes_count': payload.newRecord['likes_count'],
-              'comments_count': payload.newRecord['comments_count'],
-              'favorites_count': payload.newRecord['favorites_count'],
-              'shares_count': payload.newRecord['shares_count'],
-            };
+              final data = {
+                'id': payload.newRecord['id'],
+                'likes_count': payload.newRecord['likes_count'],
+                'comments_count': payload.newRecord['comments_count'],
+                'favorites_count': payload.newRecord['favorites_count'],
+                'shares_count': payload.newRecord['shares_count'],
+              };
 
-            if (!(_postsController?.isClosed ?? true)) {
-              _postsController!.add(data);
+              if (!(_postsController?.isClosed ?? true)) {
+                _postsController!.add(data);
+              }
+            } catch (e, st) {
+              AppLogger.error(
+                'Error handling post update payload: $e',
+                error: e,
+                stackTrace: st,
+              );
+              if (!(_postsController?.isClosed ?? true)) {
+                _postsController!.addError(ServerException(e.toString()));
+              }
             }
           },
         )
         .subscribe();
+
+    // Cleanup when last listener cancels: cancel channel & close controller
+    _postsController!.onCancel = () async {
+      await Future.delayed(const Duration(milliseconds: 50));
+      if (!(_postsController?.hasListener ?? false)) {
+        try {
+          await _postsChannel?.unsubscribe();
+        } catch (_) {}
+        try {
+          if (!(_postsController?.isClosed ?? true)) {
+            await _postsController?.close();
+          }
+        } catch (_) {}
+        _postsChannel = null;
+        _postsController = null;
+        AppLogger.info('Posts updates stream cancelled and cleaned up');
+      }
+    };
 
     return _postsController!.stream;
-  }
-
-  /// Stream for likes on specific posts
-  Stream<Map<String, dynamic>> streamLikes() {
-    AppLogger.info('Setting up real-time stream for likes');
-
-    _likesChannel?.unsubscribe();
-    _likesController?.close();
-
-    _likesController = StreamController<Map<String, dynamic>>.broadcast();
-
-    final channel = client.channel(
-      'likes_updates_${DateTime.now().millisecondsSinceEpoch}',
-    );
-
-    _likesChannel = channel
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'likes',
-          callback: (payload) {
-            AppLogger.info('Like event received: ${payload.eventType}');
-
-            final record = payload.eventType == PostgresChangeEvent.delete
-                ? payload.oldRecord
-                : payload.newRecord;
-
-            final data = {
-              'event': payload.eventType.name,
-              'post_id': record['post_id'],
-              'user_id': record['user_id'],
-            };
-
-            if (!(_likesController?.isClosed ?? true)) {
-              _likesController!.add(data);
-            }
-          },
-        )
-        .subscribe();
-
-    return _likesController!.stream.handleError((error) {
-      AppLogger.error('Error in likes stream: $error', error: error);
-    });
-  }
-
-  /// Stream for comments on posts
-  Stream<Map<String, dynamic>> streamComments() {
-    AppLogger.info('Setting up real-time stream for comments');
-
-    _commentsChannel?.unsubscribe();
-    _commentsController?.close();
-
-    _commentsController = StreamController<Map<String, dynamic>>.broadcast();
-
-    final channel = client.channel(
-      'comments_updates_${DateTime.now().millisecondsSinceEpoch}',
-    );
-
-    _commentsChannel = channel
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'comments',
-          callback: (payload) {
-            AppLogger.info(
-              'Comment event received on post: ${payload.newRecord['post_id']}',
-            );
-
-            final data = {
-              'event': 'INSERT',
-              'post_id': payload.newRecord['post_id'],
-              'user_id': payload.newRecord['user_id'],
-              'comment_id': payload.newRecord['id'],
-            };
-
-            if (!(_commentsController?.isClosed ?? true)) {
-              _commentsController!.add(data);
-            }
-          },
-        )
-        .subscribe();
-
-    return _commentsController!.stream.handleError((error) {
-      AppLogger.error('Error in comments stream: $error', error: error);
-    });
-  }
-
-  /// Stream for favorites
-  Stream<Map<String, dynamic>> streamFavorites() {
-    AppLogger.info('Setting up real-time stream for favorites');
-
-    _favoritesChannel?.unsubscribe();
-    _favoritesController?.close();
-
-    _favoritesController = StreamController<Map<String, dynamic>>.broadcast();
-
-    final channel = client.channel(
-      'favorites_updates_${DateTime.now().millisecondsSinceEpoch}',
-    );
-
-    _favoritesChannel = channel
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'favorites',
-          callback: (payload) {
-            AppLogger.info('Favorite event received: ${payload.eventType}');
-
-            final record = payload.eventType == PostgresChangeEvent.delete
-                ? payload.oldRecord
-                : payload.newRecord;
-
-            final data = {
-              'event': payload.eventType.name,
-              'post_id': record['post_id'],
-              'user_id': record['user_id'],
-            };
-
-            if (!(_favoritesController?.isClosed ?? true)) {
-              _favoritesController!.add(data);
-            }
-          },
-        )
-        .subscribe();
-
-    return _favoritesController!.stream.handleError((error) {
-      AppLogger.error('Error in favorites stream: $error', error: error);
-    });
   }
 
   /// Stream for post deletions
   Stream<String> streamPostDeletions() {
     AppLogger.info('Setting up real-time stream for post deletions');
 
-    _postDeletionsChannel?.unsubscribe();
-    _postDeletionsController?.close();
+    if (_postDeletionsController != null &&
+        !_postDeletionsController!.isClosed) {
+      AppLogger.info('Returning existing post deletions stream');
+      return _postDeletionsController!.stream.handleError((error) {
+        AppLogger.error('Error in post deletions stream: $error', error: error);
+      });
+    }
 
     _postDeletionsController = StreamController<String>.broadcast();
 
@@ -692,15 +479,45 @@ class PostsRemoteDataSource {
           schema: 'public',
           table: 'posts',
           callback: (payload) {
-            final deletedPostId = payload.oldRecord['id'] as String;
-            AppLogger.info('Post deletion detected: $deletedPostId');
+            try {
+              final deletedPostId = payload.oldRecord['id'] as String;
+              AppLogger.info('Post deletion detected: $deletedPostId');
 
-            if (!(_postDeletionsController?.isClosed ?? true)) {
-              _postDeletionsController!.add(deletedPostId);
+              if (!(_postDeletionsController?.isClosed ?? true)) {
+                _postDeletionsController!.add(deletedPostId);
+              }
+            } catch (e, st) {
+              AppLogger.error(
+                'Error handling post deletion payload: $e',
+                error: e,
+                stackTrace: st,
+              );
+              if (!(_postDeletionsController?.isClosed ?? true)) {
+                _postDeletionsController!.addError(
+                  ServerException(e.toString()),
+                );
+              }
             }
           },
         )
         .subscribe();
+
+    _postDeletionsController!.onCancel = () async {
+      await Future.delayed(const Duration(milliseconds: 50));
+      if (!(_postDeletionsController?.hasListener ?? false)) {
+        try {
+          await _postDeletionsChannel?.unsubscribe();
+        } catch (_) {}
+        try {
+          if (!(_postDeletionsController?.isClosed ?? true)) {
+            await _postDeletionsController?.close();
+          }
+        } catch (_) {}
+        _postDeletionsChannel = null;
+        _postDeletionsController = null;
+        AppLogger.info('Post deletions stream cancelled and cleaned up');
+      }
+    };
 
     return _postDeletionsController!.stream.handleError((error) {
       AppLogger.error('Error in post deletions stream: $error', error: error);
@@ -710,16 +527,18 @@ class PostsRemoteDataSource {
   /// Cleanup method to unsubscribe from all channels
   void dispose() {
     AppLogger.info('Disposing PostsRemoteDataSource - cleaning up channels');
-    _postsChannel?.unsubscribe();
-    _likesChannel?.unsubscribe();
-    _commentsChannel?.unsubscribe();
-    _favoritesChannel?.unsubscribe();
-    _postDeletionsChannel?.unsubscribe();
+    try {
+      _postsChannel?.unsubscribe();
+    } catch (_) {}
+    try {
+      _postDeletionsChannel?.unsubscribe();
+    } catch (_) {}
 
-    _postsController?.close();
-    _likesController?.close();
-    _commentsController?.close();
-    _favoritesController?.close();
-    _postDeletionsController?.close();
+    try {
+      _postsController?.close();
+    } catch (_) {}
+    try {
+      _postDeletionsController?.close();
+    } catch (_) {}
   }
 }

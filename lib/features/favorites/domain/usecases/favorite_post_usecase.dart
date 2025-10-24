@@ -2,10 +2,10 @@ import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 import 'package:vlone_blog_app/core/error/failures.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
+import 'package:vlone_blog_app/features/favorites/domain/repository/favorites_repository.dart';
 
 class FavoritePostUseCase implements UseCase<Unit, FavoritePostParams> {
-  final PostsRepository repository;
+  final FavoritesRepository repository;
 
   FavoritePostUseCase(this.repository);
 

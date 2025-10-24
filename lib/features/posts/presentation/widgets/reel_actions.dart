@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
+import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
+import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/reels_comments_overlay.dart';
 
@@ -14,14 +16,11 @@ class ReelActions extends StatelessWidget {
   void _showCommentsOverlay(BuildContext context) {
     AppLogger.info('Opening comments overlay for post: ${post.id}');
 
-    // ✅ FIX: Use showModalBottomSheet instead of Navigator.push
-    // This prevents navigation state conflicts
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (modalContext) {
-        // ✅ CRITICAL: Provide the BLoC from the parent context
         return BlocProvider.value(
           value: context.read<PostsBloc>(),
           child: ReelsCommentsOverlay(post: post, userId: userId),
@@ -43,7 +42,7 @@ class ReelActions extends StatelessWidget {
             size: 32,
           ),
           onPressed: () {
-            context.read<PostsBloc>().add(
+            context.read<LikesBloc>().add(
               LikePostEvent(
                 postId: post.id,
                 userId: userId,
@@ -101,7 +100,7 @@ class ReelActions extends StatelessWidget {
             size: 32,
           ),
           onPressed: () {
-            context.read<PostsBloc>().add(
+            context.read<FavoritesBloc>().add(
               FavoritePostEvent(
                 postId: post.id,
                 userId: userId,
@@ -130,8 +129,9 @@ class ReelActions extends StatelessWidget {
         IconButton(
           icon: const Icon(Icons.share, color: Colors.white, size: 32),
           onPressed: () {
-            // Implement share functionality
             AppLogger.info('Share button tapped for post: ${post.id}');
+            // Share handled by PostsBloc (or move if you've refactored it)
+            context.read<PostsBloc>().add(SharePostEvent(post.id));
           },
         ),
       ],

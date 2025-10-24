@@ -9,6 +9,8 @@ class FollowersRemoteDataSource {
 
   FollowersRemoteDataSource(this.client);
 
+  /// Follow/unfollow a user. Returns the created follower row on follow,
+  /// and a placeholder FollowerModel on unfollow to keep the same method shape.
   Future<FollowerModel> followUser({
     required String followerId,
     required String followingId,
@@ -38,6 +40,7 @@ class FollowersRemoteDataSource {
           'following_id': followingId,
         });
         AppLogger.info('Follow relationship deleted successfully');
+        // Return a placeholder to keep contract (caller should typically refetch lists)
         return FollowerModel(
           id: '',
           followerId: followerId,
@@ -67,7 +70,10 @@ class FollowersRemoteDataSource {
           'target_user_id': userId,
         },
       );
-      final followers = response
+
+      if (response == null) return <UserListModel>[];
+
+      final followers = (response as List)
           .map<UserListModel>(
             (map) => UserListModel.fromMap(map as Map<String, dynamic>),
           )
@@ -97,7 +103,10 @@ class FollowersRemoteDataSource {
           'target_user_id': userId,
         },
       );
-      final following = response
+
+      if (response == null) return <UserListModel>[];
+
+      final following = (response as List)
           .map<UserListModel>(
             (map) => UserListModel.fromMap(map as Map<String, dynamic>),
           )

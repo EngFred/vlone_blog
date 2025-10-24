@@ -30,12 +30,30 @@ class ProfileModel {
       username: map['username'] as String,
       bio: map['bio'] as String?,
       profileImageUrl: map['profile_image_url'] as String?,
-      followersCount: map['followers_count'] as int? ?? 0,
-      followingCount: map['following_count'] as int? ?? 0,
-      postsCount: map['posts_count'] as int? ?? 0,
-      totalLikes: map['total_likes'] as int? ?? 0,
+      followersCount: (map['followers_count'] as num?)?.toInt() ?? 0,
+      followingCount: (map['following_count'] as num?)?.toInt() ?? 0,
+      postsCount: (map['posts_count'] as num?)?.toInt() ?? 0,
+      totalLikes: (map['total_likes'] as num?)?.toInt() ?? 0,
     );
   }
+
+  /// Convert model to a Map matching the DB shape used elsewhere in the code.
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'email': email,
+      'username': username,
+      'bio': bio,
+      'profile_image_url': profileImageUrl,
+      'followers_count': followersCount,
+      'following_count': followingCount,
+      'posts_count': postsCount,
+      'total_likes': totalLikes,
+    };
+  }
+
+  /// JSON alias
+  Map<String, dynamic> toJson() => toMap();
 
   ProfileEntity toEntity() {
     return ProfileEntity(
@@ -48,6 +66,30 @@ class ProfileModel {
       followingCount: followingCount,
       postsCount: postsCount,
       totalLikes: totalLikes,
+    );
+  }
+
+  ProfileModel copyWith({
+    String? id,
+    String? email,
+    String? username,
+    String? bio,
+    String? profileImageUrl,
+    int? followersCount,
+    int? followingCount,
+    int? postsCount,
+    int? totalLikes,
+  }) {
+    return ProfileModel(
+      id: id ?? this.id,
+      email: email ?? this.email,
+      username: username ?? this.username,
+      bio: bio ?? this.bio,
+      profileImageUrl: profileImageUrl ?? this.profileImageUrl,
+      followersCount: followersCount ?? this.followersCount,
+      followingCount: followingCount ?? this.followingCount,
+      postsCount: postsCount ?? this.postsCount,
+      totalLikes: totalLikes ?? this.totalLikes,
     );
   }
 }
