@@ -38,10 +38,15 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    // MainPage dispatches GetProfileDataEvent, StartProfileRealtimeEvent, and GetUserPostsEvent when tab selected.
+    // Assuming MainPage or a parent handles initial data fetching for the profile tab
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        // TODO: If this page can be navigated to for *other* users, this logic is incomplete.
+        // For a tab bar, setting it as own profile is likely correct.
         setState(() {
+          // This should ideally compare widget.userId (profile being viewed)
+          // with the authenticated user's ID from AuthBloc, but based on the
+          // init logic, we assume this is the authenticated user's profile tab.
           _isOwnProfile = true;
           _userId = widget.userId; // Same as current user ID
         });
@@ -298,6 +303,19 @@ class _ProfilePageState extends State<ProfilePage> {
                     );
                     _isUserPostsLoading = false;
                   });
+                }
+              } else if (state is PostCreated) {
+                // Optimistically add the new post
+                // This ensures the post shows up immediately on the profile page
+                // if the user just created it and returned to their own profile.
+                if (_isOwnProfile && mounted) {
+                  final exists = _userPosts.any((p) => p.id == state.post.id);
+                  if (!exists) {
+                    setState(() {
+                      // Add the new post to the top of the user's post list
+                      _userPosts.insert(0, state.post);
+                    });
+                  }
                 }
               } else if (state is UserPostsError) {
                 if (mounted) {

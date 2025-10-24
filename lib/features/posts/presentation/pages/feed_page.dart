@@ -62,6 +62,9 @@ class _FeedPageState extends State<FeedPage> {
       });
     } else {
       if (!mounted) return;
+      AppLogger.info(
+        'Updating posts list. Old: ${oldIds.length}, New: ${newIds.length}',
+      );
       setState(() {
         _posts
           ..clear()
@@ -147,6 +150,8 @@ class _FeedPageState extends State<FeedPage> {
                   'Feed loaded with ${state.posts.length} posts for user: ${widget.userId}',
                 );
                 if (mounted) {
+                  // This will now be called by the real-time event
+                  // and will gracefully update the list.
                   _updatePosts(state.posts);
                   _hasLoadedOnce = true;
                   if (!_realtimeStarted && !state.isRealtimeActive) {
@@ -154,8 +159,19 @@ class _FeedPageState extends State<FeedPage> {
                   }
                 }
               } else if (state is PostCreated) {
-                AppLogger.info('New post created: ${state.post.id}');
+                // Optimistically add the new post to the UI immediately
+                AppLogger.info(
+                  'New post created (from PostCreated state): ${state.post.id}',
+                );
                 if (mounted) {
+                  // Check if the post isn't already in the list (from real-time)
+                  final exists = _posts.any((p) => p.id == state.post.id);
+                  if (!exists) {
+                    setState(() {
+                      // Add the new post to the top of the list
+                      _posts.insert(0, state.post);
+                    });
+                  }
                   SnackbarUtils.showSuccess(
                     context,
                     'Post created successfully!',
@@ -209,8 +225,6 @@ class _FeedPageState extends State<FeedPage> {
                   likesDelta: delta,
                   isLiked: state.isLiked,
                 );
-              } else if (state is LikeSuccess) {
-                // nothing extra to do
               } else if (state is LikeError) {
                 if (state.shouldRevert) {
                   final index = _posts.indexWhere((p) => p.id == state.postId);
@@ -246,8 +260,6 @@ class _FeedPageState extends State<FeedPage> {
                   favoritesDelta: delta,
                   isFavorited: state.isFavorited,
                 );
-              } else if (state is FavoriteSuccess) {
-                // already applied optimistically
               } else if (state is FavoriteError) {
                 if (state.shouldRevert) {
                   final index = _posts.indexWhere((p) => p.id == state.postId);
@@ -322,7 +334,9 @@ class _FeedPageState extends State<FeedPage> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push(Constants.createPostRoute),
+        onPressed: () => context.push(
+          Constants.createPostRoute.replaceAll(':userId', widget.userId),
+        ),
         child: const Icon(Icons.add),
       ),
     );

@@ -46,8 +46,12 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(
+      // 🚀 FIX: Use the single constant with the path parameter
       path: Constants.createPostRoute,
-      builder: (context, state) => const CreatePostPage(),
+      builder: (context, state) {
+        final userId = state.pathParameters['userId']!;
+        return CreatePostPage(userId: userId);
+      },
     ),
     GoRoute(
       path: '${Constants.postDetailsRoute}/:postId',

@@ -21,7 +21,7 @@ class Constants {
   static const String favoritesRoute = '/favorites';
   static const String followersRoute = '/followers';
   static const String followingRoute = '/following';
-  static const String createPostRoute = '/create-post';
+  static const String createPostRoute = '/create-post/:userId';
   static const String postDetailsRoute = '/post';
   static const String usersRoute = '/users';
   static const String notificationsRoute = '/notifications';

@@ -40,8 +40,6 @@ class _ReelsPageState extends State<ReelsPage>
     _pageController = PageController(initialPage: 0, viewportFraction: 1.0);
 
     WidgetsBinding.instance.addObserver(this);
-
-    // <-- REMOVED: All logic trying to get user from AuthBloc
   }
 
   @override
@@ -179,7 +177,22 @@ class _ReelsPageState extends State<ReelsPage>
                 }
               } else if (state is PostCreated &&
                   state.post.mediaType == 'video') {
-                AppLogger.info('New video post created: ${state.post.id}');
+                // Optimistically add the new video post (reel) to the UI immediately
+                AppLogger.info(
+                  'New video post created (from PostCreated state): ${state.post.id}',
+                );
+                if (mounted) {
+                  // Check if the post isn't already in the list (from real-time)
+                  final exists = _posts.any((p) => p.id == state.post.id);
+                  if (!exists) {
+                    setState(() {
+                      // Add the new video post to the top of the list
+                      _posts.insert(0, state.post);
+                    });
+                  }
+                  // Assuming SnackbarUtils is defined elsewhere and used for feedback
+                  // SnackbarUtils.showSuccess(context, 'Reel created successfully!');
+                }
               } else if (state is RealtimePostUpdate) {
                 final index = _posts.indexWhere((p) => p.id == state.postId);
                 if (index != -1 && mounted) {
