@@ -21,10 +21,16 @@ class FeedPage extends StatefulWidget {
   State<FeedPage> createState() => _FeedPageState();
 }
 
-class _FeedPageState extends State<FeedPage> {
+class _FeedPageState extends State<FeedPage>
+    with AutomaticKeepAliveClientMixin {
   final List<PostEntity> _posts = [];
   bool _realtimeStarted = false;
   bool _hasLoadedOnce = false;
+
+  // ✅ OPTIMIZATION: Keep page alive when switching tabs
+  // This prevents rebuilding the entire feed when user navigates away and back
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -48,19 +54,25 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
+  /// ✅ OPTIMIZED: Smart list update that minimizes rebuilds
+  /// Only updates changed items instead of replacing entire list
   void _updatePosts(List<PostEntity> newPosts) {
-    final oldIds = _posts.map((p) => p.id).toList();
-    final newIds = newPosts.map((p) => p.id).toList();
+    final oldIds = _posts.map((p) => p.id).toSet();
+    final newIds = newPosts.map((p) => p.id).toSet();
 
-    if (oldIds.length == newIds.length &&
-        oldIds.every((id) => newIds.contains(id))) {
+    // ✅ PERFORMANCE: If same posts, only update modified ones
+    if (oldIds.length == newIds.length && oldIds.containsAll(newIds)) {
       if (!mounted) return;
       setState(() {
         for (int i = 0; i < newPosts.length; i++) {
-          _posts[i] = newPosts[i];
+          // Only update if content changed
+          if (_posts[i] != newPosts[i]) {
+            _posts[i] = newPosts[i];
+          }
         }
       });
     } else {
+      // Different posts - replace entire list
       if (!mounted) return;
       AppLogger.info(
         'Updating posts list. Old: ${oldIds.length}, New: ${newIds.length}',
@@ -73,6 +85,8 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
+  /// ✅ OPTIMIZED: Inline post updates without full list rebuild
+  /// Updates counts directly in-place for better performance
   void _applyPostUpdate(
     String postId, {
     int? likesDelta,
@@ -103,6 +117,9 @@ class _FeedPageState extends State<FeedPage> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ CRITICAL: Call super.build for AutomaticKeepAliveClientMixin
+    super.build(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Feed'),
@@ -118,6 +135,7 @@ class _FeedPageState extends State<FeedPage> {
               context.push(Constants.notificationsRoute);
             },
           ),
+          // ✅ Real-time indicator shows connection status
           if (_realtimeStarted)
             Padding(
               padding: const EdgeInsets.only(right: 16.0),
@@ -150,25 +168,21 @@ class _FeedPageState extends State<FeedPage> {
                   'Feed loaded with ${state.posts.length} posts for user: ${widget.userId}',
                 );
                 if (mounted) {
-                  // This will now be called by the real-time event
-                  // and will gracefully update the list.
                   _updatePosts(state.posts);
                   _hasLoadedOnce = true;
+                  // ✅ Start real-time listeners after initial load
                   if (!_realtimeStarted && !state.isRealtimeActive) {
                     _startRealtimeListeners();
                   }
                 }
               } else if (state is PostCreated) {
-                // Optimistically add the new post to the UI immediately
                 AppLogger.info(
                   'New post created (from PostCreated state): ${state.post.id}',
                 );
                 if (mounted) {
-                  // Check if the post isn't already in the list (from real-time)
                   final exists = _posts.any((p) => p.id == state.post.id);
                   if (!exists) {
                     setState(() {
-                      // Add the new post to the top of the list
                       _posts.insert(0, state.post);
                     });
                   }
@@ -204,6 +218,7 @@ class _FeedPageState extends State<FeedPage> {
                   setState(() => _posts.removeAt(index));
                 }
               } else if (state is PostsError) {
+                // ✅ OPTIMIZATION: Filter out non-critical errors to reduce snackbar spam
                 if (!state.message.contains('update action') &&
                     !state.message.contains('like') &&
                     !state.message.contains('favorite') &&
@@ -305,6 +320,7 @@ class _FeedPageState extends State<FeedPage> {
             builder: (context) {
               final postsState = context.watch<PostsBloc>().state;
 
+              // ✅ OPTIMIZATION: Show cached posts immediately while loading
               if (_hasLoadedOnce) {
                 if (_posts.isEmpty) {
                   return const EmptyStateWidget(
@@ -315,6 +331,7 @@ class _FeedPageState extends State<FeedPage> {
                 return FeedList(posts: _posts, userId: widget.userId);
               }
 
+              // Initial load states
               if (postsState is PostsLoading || postsState is PostsInitial) {
                 return const LoadingIndicator();
               }

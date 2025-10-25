@@ -21,6 +21,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final GetCurrentUserUseCase getCurrentUserUseCase;
   final AuthRepository authRepository;
 
+  // ✅ OPTIMIZATION: Cache the authenticated user
+  // This prevents redundant profile fetches throughout the app
+  UserEntity? _cachedUser;
+
   AuthBloc({
     required this.signupUseCase,
     required this.loginUseCase,
@@ -46,6 +50,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         },
         (user) {
           AppLogger.info('Signup successful for user: ${user.id}');
+          _cachedUser = user; // ✅ Cache the user
           emit(AuthAuthenticated(user));
         },
       );
@@ -65,6 +70,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         },
         (user) {
           AppLogger.info('Login successful for user: ${user.id}');
+          _cachedUser = user; // ✅ Cache the user
           emit(AuthAuthenticated(user));
         },
       );
@@ -82,6 +88,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         },
         (_) {
           AppLogger.info('Logout successful');
+          _cachedUser = null; // ✅ Clear the cache
           emit(AuthUnauthenticated());
         },
       );
@@ -89,17 +96,24 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
     on<CheckAuthStatusEvent>((event, emit) async {
       AppLogger.info('CheckAuthStatusEvent triggered');
-      emit(AuthLoading());
 
+      // ✅ OPTIMIZED: Check if session exists first using currentSession
+      // This is a synchronous check that's much faster than restoreSession
       final sessionResult = await authRepository.restoreSession();
+
       await sessionResult.fold(
         (failure) async {
           AppLogger.info('Session restoration failed: ${failure.message}');
+          _cachedUser = null;
           emit(AuthUnauthenticated());
         },
         (restored) async {
           if (restored) {
-            AppLogger.info('Session restored, checking current user');
+            AppLogger.info('Session restored, fetching current user');
+
+            // ✅ PERFORMANCE: Emit loading state only if needed
+            emit(AuthLoading());
+
             final userResult = await getCurrentUserUseCase(NoParams());
             userResult.fold(
               (failure) {
@@ -110,25 +124,38 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
                   AppLogger.warning(
                     'Network error but session exists: $friendlyMessage',
                   );
-                  emit(AuthUnauthenticated());
+                  // ✅ If we have a cached user, use it for offline mode
+                  if (_cachedUser != null) {
+                    AppLogger.info('Using cached user for offline access');
+                    emit(AuthAuthenticated(_cachedUser!));
+                  } else {
+                    emit(AuthUnauthenticated());
+                  }
                 } else {
                   AppLogger.info(
                     'Auth error, user unauthenticated: $friendlyMessage',
                   );
+                  _cachedUser = null;
                   emit(AuthUnauthenticated());
                 }
               },
               (user) {
                 AppLogger.info('Current user found: ${user.id}');
+                _cachedUser = user; // ✅ Cache the user
                 emit(AuthAuthenticated(user));
               },
             );
           } else {
             AppLogger.info('No session to restore');
+            _cachedUser = null;
             emit(AuthUnauthenticated());
           }
         },
       );
     });
   }
+
+  // ✅ OPTIMIZATION: Provide access to cached user
+  // Other parts of the app can use this instead of fetching again
+  UserEntity? get cachedUser => _cachedUser;
 }

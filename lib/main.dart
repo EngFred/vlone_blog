@@ -13,10 +13,10 @@ import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.d
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
-import 'router.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'router.dart';
 
 @pragma('vm:entry-point')
 void backgroundCallbackDispatcher() {
@@ -27,20 +27,19 @@ void backgroundCallbackDispatcher() {
 }
 
 void main() async {
-  // Preserve the splash screen until we are ready to remove it.
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
   AppLogger.info('Initializing app dependencies');
 
-  // Initialize Supabase with flutter_secure_storage
   await Supabase.initialize(
     url: Constants.supabaseUrl,
     anonKey: Constants.supabaseAnonKey,
     authOptions: FlutterAuthClientOptions(localStorage: SecureStorage()),
   );
 
-  await di.init();
+  await di.init(supabaseClient: Supabase.instance.client);
+
   AppLogger.info('Initializing Workmanager');
   await Workmanager().initialize(
     backgroundCallbackDispatcher,
@@ -51,7 +50,6 @@ void main() async {
   runApp(const MyApp());
 }
 
-// Custom secure storage implementation for Supabase
 class SecureStorage implements LocalStorage {
   final _storage = const FlutterSecureStorage();
 
@@ -62,14 +60,14 @@ class SecureStorage implements LocalStorage {
 
   @override
   Future<bool> hasAccessToken() async {
-    final token = await _storage.read(key: 'supabase_access_token');
+    final token = await _storage.read(key: 'supabase_persisted_session');
     AppLogger.info('Checking access token in secure storage: ${token != null}');
     return token != null;
   }
 
   @override
   Future<String?> accessToken() async {
-    final token = await _storage.read(key: 'supabase_access_token');
+    final token = await _storage.read(key: 'supabase_persisted_session');
     AppLogger.info('Retrieved access token from secure storage');
     return token;
   }
@@ -78,7 +76,7 @@ class SecureStorage implements LocalStorage {
   Future<void> persistSession(String persistSessionString) async {
     AppLogger.info('Persisting session to secure storage');
     await _storage.write(
-      key: 'supabase_access_token',
+      key: 'supabase_persisted_session',
       value: persistSessionString,
     );
   }
@@ -86,7 +84,7 @@ class SecureStorage implements LocalStorage {
   @override
   Future<void> removePersistedSession() async {
     AppLogger.info('Removing persisted session from secure storage');
-    await _storage.delete(key: 'supabase_access_token');
+    await _storage.delete(key: 'supabase_persisted_session');
   }
 }
 
@@ -108,85 +106,80 @@ class MyApp extends StatelessWidget {
         BlocProvider<LikesBloc>(create: (_) => di.sl<LikesBloc>()),
         BlocProvider<FavoritesBloc>(create: (_) => di.sl<FavoritesBloc>()),
       ],
-      child: BlocListener<AuthBloc, AuthState>(
-        listener: (context, state) {
-          // Clear any snackbars first to avoid leftover UI after navigation
-          try {
-            ScaffoldMessenger.of(context).clearSnackBars();
-          } catch (e) {
-            AppLogger.warning(
-              'Failed to clear snackbars before auth navigation: $e',
-            );
-          }
-
-          if (state is AuthAuthenticated) {
-            AppLogger.info(
-              'AuthBloc: User authenticated, navigating to main page',
-            );
-
-            // Navigate to feed/main area
-            appRouter.go(Constants.feedRoute);
-          } else if (state is AuthUnauthenticated) {
-            AppLogger.info(
-              'AuthBloc: User unauthenticated, navigating to login',
-            );
-
-            appRouter.go(Constants.loginRoute);
-
-            // ONLY remove splash here for the unauthenticated case (fixes stuck splash on fresh install).
-            FlutterNativeSplash.remove();
-          }
-        },
-        child: MaterialApp.router(
-          title: Constants.appName,
-          theme: appTheme(),
-          darkTheme: ThemeData.dark().copyWith(
-            primaryColor: Constants.primaryColor,
-            colorScheme: ColorScheme.fromSwatch(
-              primarySwatch: Colors.blue,
-              accentColor: Constants.accentColor,
-              brightness: Brightness.dark,
+      child: MaterialApp.router(
+        title: Constants.appName,
+        theme: appTheme(),
+        darkTheme: ThemeData.dark().copyWith(
+          primaryColor: Constants.primaryColor,
+          colorScheme: ColorScheme.fromSwatch(
+            primarySwatch: Colors.blue,
+            accentColor: Constants.accentColor,
+            brightness: Brightness.dark,
+          ),
+          scaffoldBackgroundColor: Colors.grey[900],
+          textTheme: const TextTheme(
+            headlineMedium: TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w600,
             ),
-            scaffoldBackgroundColor: Colors.grey[900],
-            textTheme: const TextTheme(
-              headlineMedium: TextStyle(
-                color: Colors.white70,
-                fontWeight: FontWeight.w600,
-              ),
-              bodyLarge: TextStyle(color: Colors.white70),
-              bodyMedium: TextStyle(color: Colors.white60),
+            bodyLarge: TextStyle(color: Colors.white70),
+            bodyMedium: TextStyle(color: Colors.white60),
+          ),
+          inputDecorationTheme: InputDecorationTheme(
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Constants.primaryColor, width: 2),
             ),
-            inputDecorationTheme: InputDecorationTheme(
-              border: OutlineInputBorder(
+            fillColor: Colors.grey[800],
+            filled: true,
+          ),
+          elevatedButtonTheme: ElevatedButtonThemeData(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Constants.primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Constants.primaryColor, width: 2),
-              ),
-              fillColor: Colors.grey[800],
-              filled: true,
-            ),
-            elevatedButtonTheme: ElevatedButtonThemeData(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Constants.primaryColor,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-            bottomNavigationBarTheme: BottomNavigationBarThemeData(
-              backgroundColor: Colors.grey[900],
-              selectedItemColor: Constants.primaryColor,
-              unselectedItemColor: Colors.white60,
-              showUnselectedLabels: true,
             ),
           ),
-          themeMode: ThemeMode.system,
-          routerConfig: appRouter,
-          debugShowCheckedModeBanner: false,
+          bottomNavigationBarTheme: BottomNavigationBarThemeData(
+            backgroundColor: Colors.grey[900],
+            selectedItemColor: Constants.primaryColor,
+            unselectedItemColor: Colors.white60,
+            showUnselectedLabels: true,
+          ),
         ),
+        themeMode: ThemeMode.system,
+        routerConfig: appRouter,
+        debugShowCheckedModeBanner: false,
+        builder: (context, child) {
+          return BlocListener<AuthBloc, AuthState>(
+            listener: (context, state) {
+              try {
+                ScaffoldMessenger.of(context).clearSnackBars();
+              } catch (e) {
+                AppLogger.warning(
+                  'Failed to clear snackbars before auth navigation: $e',
+                );
+              }
+
+              if (state is AuthAuthenticated) {
+                AppLogger.info(
+                  'AuthBloc: User authenticated, navigating to main page',
+                );
+                appRouter.go(Constants.feedRoute);
+              } else if (state is AuthUnauthenticated) {
+                AppLogger.info(
+                  'AuthBloc: User unauthenticated, navigating to login',
+                );
+                appRouter.go(Constants.loginRoute);
+                FlutterNativeSplash.remove();
+              }
+            },
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
       ),
     );
   }

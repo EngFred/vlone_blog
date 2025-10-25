@@ -3,16 +3,10 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
-import 'package:vlone_blog_app/core/error/failures.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
-import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';
-import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/create_post_page.dart';
-// REMOVED: Unused imports for FeedPage/ReelsPage
-// import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/post_details_page.dart';
-// import 'package:vlone_blog_app/features/posts/presentation/pages/reels_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/edit_profile_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:vlone_blog_app/core/pages/main_page.dart';
@@ -46,7 +40,6 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(
-      // 🚀 FIX: Use the single constant with the path parameter
       path: Constants.createPostRoute,
       builder: (context, state) {
         final userId = state.pathParameters['userId']!;
@@ -75,34 +68,23 @@ final GoRouter appRouter = GoRouter(
     ),
     ShellRoute(
       builder: (context, state, child) {
-        // This correctly builds MainPage, which in turn
-        // builds its own IndexedStack with the correct pages.
         return const MainPage();
       },
       routes: [
         GoRoute(
           path: Constants.feedRoute,
-          // UPDATED: This builder is now a placeholder.
-          // The real FeedPage is built inside MainPage's IndexedStack.
-          // We use SizedBox.shrink() to fix the compile error caused by
-          // the FeedPage(userId: ...) constructor change.
           builder: (context, state) => const SizedBox.shrink(),
         ),
         GoRoute(
           path: Constants.reelsRoute,
-          // UPDATED: Same as FeedPage, this is a placeholder.
-          // The real ReelsPage is built inside MainPage.
           builder: (context, state) => const SizedBox.shrink(),
         ),
         GoRoute(
           path: Constants.usersRoute,
-          // This page still has a const constructor, so it's fine.
           builder: (context, state) => const UsersPage(),
         ),
         GoRoute(
           path: Constants.profileRoute + '/:userId',
-          // This builder is valid, but be aware your MainPage logic
-          // might be overriding this to only show the current user's profile.
           builder: (context, state) =>
               ProfilePage(userId: state.pathParameters['userId']!),
         ),
@@ -128,6 +110,10 @@ final GoRouter appRouter = GoRouter(
         state.uri.path == Constants.loginRoute ||
         state.uri.path == Constants.signupRoute;
 
+    // ✅ OPTIMIZED: Simplified redirect logic
+    // No longer fetches user profile here - AuthBloc already did that
+    // This eliminates one redundant profile fetch during startup
+
     // If no session and trying to access protected route, go to login
     if (!isLoggedIn && !isAuthRoute) {
       AppLogger.warning('No session found, redirecting to login');
@@ -135,43 +121,11 @@ final GoRouter appRouter = GoRouter(
     }
 
     // If has session and trying to access auth pages, redirect to feed
+    // ✅ PERFORMANCE: Trust the session - don't re-fetch user profile
+    // AuthBloc already validated the user during CheckAuthStatusEvent
     if (isLoggedIn && isAuthRoute) {
-      AppLogger.info('User has session, checking profile access');
-      try {
-        final result = await sl<GetCurrentUserUseCase>()(NoParams());
-        return result.fold(
-          (failure) {
-            // CRITICAL: Check if it's a network failure
-            if (failure is NetworkFailure) {
-              AppLogger.warning(
-                'Network error during redirect, but session exists. Allowing access to feed: ${failure.message}',
-              );
-              // User has valid session but no internet - let them access the app
-              return Constants.feedRoute;
-            }
-
-            // Actual auth failure - redirect to login
-            AppLogger.error('Auth failure during redirect: ${failure.message}');
-            return Constants.loginRoute;
-          },
-          (user) {
-            AppLogger.info('Redirecting authenticated user ${user.id} to feed');
-            return Constants.feedRoute;
-          },
-        );
-      } catch (e, stackTrace) {
-        AppLogger.error(
-          'Unexpected error during redirect: $e',
-          error: e,
-          stackTrace: stackTrace,
-        );
-        // If we have a session, let user proceed despite error
-        if (isLoggedIn) {
-          AppLogger.info('Session exists despite error, allowing access');
-          return Constants.feedRoute;
-        }
-        return Constants.loginRoute;
-      }
+      AppLogger.info('User has valid session, redirecting to feed');
+      return Constants.feedRoute;
     }
 
     AppLogger.info('No redirect needed for path: ${state.uri.path}');

@@ -29,7 +29,6 @@ class AuthRemoteDataSource {
 
       if (authResponse.session == null || authResponse.user == null) {
         AppLogger.warning('Signup response has no session or user');
-        // Check for specific error message if available, otherwise general failure
         throw const ServerException(
           'Signup failed unexpectedly. Please try again.',
         );
@@ -37,12 +36,10 @@ class AuthRemoteDataSource {
 
       final userId = authResponse.user!.id;
 
-      // *** START: CRITICAL UPDATE DUE TO DB TRIGGER ***
-      // The client-side insertion into 'profiles' is REMOVED.
-      // The database trigger 'on_auth_user_created' automatically creates
-      // the profile row. We now fetch that guaranteed profile immediately.
+      // ✅ OPTIMIZED: Database trigger creates profile, we just fetch it
+      // Removed client-side profile insertion for reliability
       AppLogger.info(
-        'Profile created by DB trigger. Fetching guaranteed profile for ID: $userId',
+        'Profile created by DB trigger. Fetching profile for ID: $userId',
       );
 
       final profileData = await client
@@ -50,11 +47,10 @@ class AuthRemoteDataSource {
           .select()
           .eq('id', userId)
           .single();
-      // *** END: CRITICAL UPDATE ***
 
       final userModel = UserModel.fromMap(profileData);
 
-      // Cache the user profile
+      // ✅ Cache immediately for offline access
       await _cacheUserProfile(userModel);
 
       AppLogger.info('Signup successful for user ID: $userId');
@@ -102,7 +98,7 @@ class AuthRemoteDataSource {
 
       final userModel = UserModel.fromMap(profileData);
 
-      // Cache the user profile
+      // ✅ Cache immediately for offline access
       await _cacheUserProfile(userModel);
 
       AppLogger.info('Login successful for user ID: $userId');
@@ -128,6 +124,7 @@ class AuthRemoteDataSource {
     try {
       AppLogger.info('Attempting logout');
       await client.auth.signOut();
+      // ✅ Clear all cached data
       await _secureStorage.delete(key: 'supabase_persisted_session');
       await _secureStorage.delete(key: _cachedUserKey);
       AppLogger.info('Logout successful');
@@ -158,7 +155,7 @@ class AuthRemoteDataSource {
 
       final userModel = UserModel.fromMap(profileData);
 
-      // Cache the user profile for offline use
+      // ✅ Update cache with latest data
       await _cacheUserProfile(userModel);
 
       AppLogger.info('Current user fetched successfully for ID: $userId');
@@ -167,7 +164,7 @@ class AuthRemoteDataSource {
       AppLogger.warning(
         'Network error fetching user, trying cached profile: $e',
       );
-      // Try to get cached user when offline
+      // ✅ OPTIMIZATION: Return cached profile for offline mode
       final cachedUser = await _getCachedUserProfile();
       if (cachedUser != null) {
         AppLogger.info('Returning cached user profile for offline access');
@@ -179,7 +176,7 @@ class AuthRemoteDataSource {
     } catch (e) {
       AppLogger.error('Error fetching current user: $e');
 
-      // Check if it's a network-related error
+      // ✅ Check if it's a network-related error
       if (_isNetworkError(e)) {
         final cachedUser = await _getCachedUserProfile();
         if (cachedUser != null) {
@@ -195,24 +192,26 @@ class AuthRemoteDataSource {
     }
   }
 
-  /// Attempts to restore an existing persisted session.
-  /// Returns true if a session was successfully restored.
+  /// ✅ OPTIMIZED: Check existing session synchronously first
+  /// This avoids unnecessary async calls when session already exists
   Future<bool> restoreSession() async {
     try {
       AppLogger.info(
         'Attempting to restore session - checking currentSession first',
       );
-      // If supabase client already has a session, nothing to do
+
+      // ✅ PERFORMANCE: Quick synchronous check
       if (client.auth.currentSession != null &&
           client.auth.currentUser != null) {
         AppLogger.info('Session already present in Supabase client');
         return true;
       }
 
-      // Read persisted session JSON from secure storage
+      // ✅ Only try to recover if no session exists
       final persisted = await _secureStorage.read(
         key: 'supabase_persisted_session',
       );
+
       if (persisted == null || persisted.trim().isEmpty) {
         AppLogger.info('No persisted session found in secure storage');
         return false;
@@ -220,6 +219,7 @@ class AuthRemoteDataSource {
 
       AppLogger.info('Found persisted session, attempting recoverSession');
       await client.auth.recoverSession(persisted);
+
       final hasSession = client.auth.currentUser != null;
       AppLogger.info(
         'Session restoration ${hasSession ? 'successful' : 'failed'}',
@@ -235,7 +235,8 @@ class AuthRemoteDataSource {
     }
   }
 
-  // Helper method to cache user profile
+  /// ✅ OPTIMIZATION: Cache user profile for offline access
+  /// Stores essential user data in secure storage
   Future<void> _cacheUserProfile(UserModel user) async {
     try {
       final userJson = jsonEncode({
@@ -256,7 +257,7 @@ class AuthRemoteDataSource {
     }
   }
 
-  // Helper method to retrieve cached user profile
+  /// ✅ Retrieve cached user profile for offline mode
   Future<UserModel?> _getCachedUserProfile() async {
     try {
       final cachedJson = await _secureStorage.read(key: _cachedUserKey);
@@ -270,7 +271,7 @@ class AuthRemoteDataSource {
     }
   }
 
-  // Helper method to determine if error is network-related
+  /// ✅ Helper to detect network-related errors
   bool _isNetworkError(dynamic error) {
     final errorString = error.toString().toLowerCase();
     return errorString.contains('socketexception') ||

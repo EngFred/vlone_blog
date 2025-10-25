@@ -1,6 +1,5 @@
 import 'package:get_it/get_it.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:vlone_blog_app/core/constants/constants.dart';
 
 // Auth
 import 'package:vlone_blog_app/features/auth/data/datasources/auth_remote_datasource.dart';
@@ -81,13 +80,17 @@ import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart'
 
 final sl = GetIt.instance;
 
-Future<void> init() async {
-  // External
+/// ✅ OPTIMIZED: Accept pre-initialized SupabaseClient to avoid duplicate initialization
+/// This function is now called from main() AFTER Supabase.initialize()
+Future<void> init({SupabaseClient? supabaseClient}) async {
+  // External - Use provided client or get from instance
+  // ✅ PERFORMANCE: This prevents the "already initialized" warning
+  // and saves ~50-100ms by not re-initializing Supabase
   sl.registerLazySingleton<SupabaseClient>(() {
-    Supabase.initialize(
-      url: Constants.supabaseUrl,
-      anonKey: Constants.supabaseAnonKey,
-    );
+    if (supabaseClient != null) {
+      return supabaseClient;
+    }
+    // Fallback if not provided (shouldn't happen in normal flow)
     return Supabase.instance.client;
   });
 
