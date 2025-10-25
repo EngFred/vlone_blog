@@ -38,25 +38,32 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    // Assuming MainPage or a parent handles initial data fetching for the profile tab
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        // TODO: If this page can be navigated to for *other* users, this logic is incomplete.
-        // For a tab bar, setting it as own profile is likely correct.
         setState(() {
-          // This should ideally compare widget.userId (profile being viewed)
-          // with the authenticated user's ID from AuthBloc, but based on the
-          // init logic, we assume this is the authenticated user's profile tab.
           _isOwnProfile = true;
-          _userId = widget.userId; // Same as current user ID
+          _userId = widget.userId;
         });
-        AppLogger.info('ProfilePage: Set as own profile, userId: $_userId');
+
+        // Start real-time profile updates stream
+        context.read<ProfileBloc>().add(
+          StartProfileRealtimeEvent(widget.userId),
+        );
+
+        // Fetch initial profile data
+        context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
+
+        AppLogger.info(
+          'ProfilePage: Started real-time updates for userId: $_userId',
+        );
       }
     });
   }
 
   @override
   void dispose() {
+    // Stop real-time updates when leaving the page
+    context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
     super.dispose();
   }
 
@@ -152,7 +159,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // Helper to apply optimistic like/favorite updates in the list
   void _applyLikeUpdate(String postId, bool isLiked) {
     final index = _userPosts.indexWhere((p) => p.id == postId);
     if (index == -1 || !mounted) return;
@@ -270,10 +276,15 @@ class _ProfilePageState extends State<ProfilePage> {
           BlocListener<ProfileBloc, ProfileState>(
             listener: (context, state) {
               // Real-time updates are handled automatically via the stream
+              // No need to manually refetch - the stream will push updates
+              if (state is ProfileDataLoaded) {
+                AppLogger.info(
+                  'Profile updated via real-time stream: ${state.profile.username}',
+                );
+              }
             },
           ),
 
-          // PostsBloc: load user posts / realtime updates / deletion / errors
           BlocListener<PostsBloc, PostsState>(
             listener: (context, state) {
               if (state is UserPostsLoading) {
@@ -305,14 +316,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   });
                 }
               } else if (state is PostCreated) {
-                // Optimistically add the new post
-                // This ensures the post shows up immediately on the profile page
-                // if the user just created it and returned to their own profile.
                 if (_isOwnProfile && mounted) {
                   final exists = _userPosts.any((p) => p.id == state.post.id);
                   if (!exists) {
                     setState(() {
-                      // Add the new post to the top of the user's post list
                       _userPosts.insert(0, state.post);
                     });
                   }
@@ -339,20 +346,17 @@ class _ProfilePageState extends State<ProfilePage> {
             },
           ),
 
-          // LikesBloc: optimistic like updates / errors
           BlocListener<LikesBloc, LikesState>(
             listener: (context, state) {
               if (state is LikeUpdated) {
                 _applyLikeUpdate(state.postId, state.isLiked);
               } else if (state is LikeError) {
-                // revert if necessary
                 _revertLike(state.postId, state.previousState);
                 SnackbarUtils.showError(context, state.message);
               }
             },
           ),
 
-          // FavoritesBloc: optimistic favorite updates / errors
           BlocListener<FavoritesBloc, FavoritesState>(
             listener: (context, state) {
               if (state is FavoriteUpdated) {
@@ -364,7 +368,6 @@ class _ProfilePageState extends State<ProfilePage> {
             },
           ),
 
-          // FollowersBloc: follow/unfollow results
           BlocListener<FollowersBloc, FollowersState>(
             listener: (context, state) {
               if (state is FollowStatusLoaded &&
@@ -415,9 +418,7 @@ class _ProfilePageState extends State<ProfilePage> {
             if (state is ProfileDataLoaded) {
               return RefreshIndicator(
                 onRefresh: () async {
-                  context.read<ProfileBloc>().add(
-                    GetProfileDataEvent(widget.userId),
-                  );
+                  // Only refetch posts, not profile (profile updates via stream)
                   context.read<PostsBloc>().add(
                     GetUserPostsEvent(
                       profileUserId: widget.userId,

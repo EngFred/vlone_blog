@@ -186,17 +186,19 @@ class _EditProfilePageState extends State<EditProfilePage> {
             setState(() => _isSubmitting = false);
             SnackbarUtils.showError(context, state.message);
           } else if (state is ProfileDataLoaded) {
-            // Success handler logic
+            // Success handler - just pop and show success
+            // NO manual refetch needed - real-time stream will update the profile!
             if (_isSubmitting) {
               setState(() => _isSubmitting = false);
               SnackbarUtils.showSuccess(
                 context,
                 'Profile updated successfully!',
               );
+              // Just pop - the ProfilePage's real-time stream will receive the update
               context.pop();
               return;
             }
-            // Initial load logic - initialize controllers if not already done
+            // Initial load logic
             if (!_hasInitializedControllers) {
               _initializeFromProfile(state.profile);
             }

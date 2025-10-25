@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 
 class AuthForm extends StatefulWidget {
@@ -17,7 +18,8 @@ class _AuthFormState extends State<AuthForm>
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _usernameController = TextEditingController();
+  // REMOVE: Removed the _usernameController
+  // final _usernameController = TextEditingController();
   bool _obscurePassword = true;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -39,7 +41,8 @@ class _AuthFormState extends State<AuthForm>
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
-    _usernameController.dispose();
+    // REMOVE: Dispose for _usernameController is removed
+    // _usernameController.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -64,7 +67,8 @@ class _AuthFormState extends State<AuthForm>
           SignupEvent(
             email: _emailController.text.trim(),
             password: _passwordController.text.trim(),
-            username: _usernameController.text.trim(),
+            // REMOVE: Removed the username parameter from SignupEvent
+            // username: _usernameController.text.trim(),
           ),
         );
       }
@@ -73,9 +77,9 @@ class _AuthFormState extends State<AuthForm>
 
   void _navigateToOtherAuth() {
     if (widget.isLogin) {
-      context.go('/signup'); // Adjust route path as per your router setup
+      context.go(Constants.signupRoute);
     } else {
-      context.go('/login'); // Adjust route path as per your router setup
+      context.go(Constants.loginRoute);
     }
   }
 
@@ -120,6 +124,8 @@ class _AuthFormState extends State<AuthForm>
                         absorbing: isLoading,
                         child: Column(
                           children: [
+                            // REMOVE: Removed the Username TextFormField and the SizedBox
+                            /*
                             if (!widget.isLogin)
                               TextFormField(
                                 controller: _usernameController,
@@ -137,6 +143,7 @@ class _AuthFormState extends State<AuthForm>
                                     value!.isEmpty ? 'Enter username' : null,
                               ),
                             if (!widget.isLogin) const SizedBox(height: 16),
+                            */
                             TextFormField(
                               controller: _emailController,
                               decoration: InputDecoration(
@@ -160,6 +167,8 @@ class _AuthFormState extends State<AuthForm>
                               },
                               keyboardType: TextInputType.emailAddress,
                             ),
+                            // NOTE: The SizedBox after the removed username field is also removed,
+                            // if it was there, but the next SizedBox after the email field remains.
                             const SizedBox(height: 16),
                             TextFormField(
                               controller: _passwordController,

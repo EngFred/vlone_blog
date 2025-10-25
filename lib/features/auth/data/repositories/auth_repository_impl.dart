@@ -16,13 +16,11 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<Either<Failure, UserEntity>> signUp({
     required String email,
     required String password,
-    required String username,
   }) async {
     try {
       final userModel = await remoteDataSource.signUp(
         email: email,
         password: password,
-        username: username,
       );
       return Right(userModel.toEntity());
     } on ServerException catch (e) {

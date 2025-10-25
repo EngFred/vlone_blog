@@ -36,11 +36,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       AppLogger.info('SignupEvent triggered for email: ${event.email}');
       emit(AuthLoading());
       final result = await signupUseCase(
-        SignupParams(
-          email: event.email,
-          password: event.password,
-          username: event.username,
-        ),
+        SignupParams(email: event.email, password: event.password),
       );
       result.fold(
         (failure) {

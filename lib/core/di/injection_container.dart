@@ -46,6 +46,14 @@ import 'package:vlone_blog_app/features/likes/domain/repository/likes_repository
 import 'package:vlone_blog_app/features/likes/domain/usecases/like_post_usecase.dart';
 import 'package:vlone_blog_app/features/likes/domain/usecases/stream_likes_usecase.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
+import 'package:vlone_blog_app/features/notifications/data/datasources/notifications_remote_datasource.dart';
+import 'package:vlone_blog_app/features/notifications/data/repository/notification_repository_impl.dart';
+import 'package:vlone_blog_app/features/notifications/domain/repository/notification_repository.dart';
+import 'package:vlone_blog_app/features/notifications/domain/usecases/get_notifications_stream_usecase.dart';
+import 'package:vlone_blog_app/features/notifications/domain/usecases/get_unread_count_stream_usecase.dart';
+import 'package:vlone_blog_app/features/notifications/domain/usecases/mark_all_as_read_usecase.dart';
+import 'package:vlone_blog_app/features/notifications/domain/usecases/mark_notification_as_read_usecase.dart';
+import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 
 // Posts
 import 'package:vlone_blog_app/features/posts/data/datasources/posts_remote_datasource.dart';
@@ -351,4 +359,36 @@ Future<void> initUsers() async {
   );
   sl.registerLazySingleton(() => GetAllUsersUseCase(sl<UsersRepository>()));
   sl.registerFactory(() => UsersBloc(getAllUsersUseCase: sl()));
+}
+
+// -------------------
+// Notifications Feature
+// -------------------
+Future<void> initNotifications() async {
+  sl.registerLazySingleton<NotificationsRemoteDataSource>(
+    () => NotificationsRemoteDataSource(sl<SupabaseClient>()),
+  );
+  sl.registerLazySingleton<NotificationsRepository>(
+    () => NotificationsRepositoryImpl(sl<NotificationsRemoteDataSource>()),
+  );
+  sl.registerLazySingleton<GetNotificationsStreamUseCase>(
+    () => GetNotificationsStreamUseCase(sl<NotificationsRepository>()),
+  );
+  sl.registerLazySingleton<MarkAsReadUseCase>(
+    () => MarkAsReadUseCase(sl<NotificationsRepository>()),
+  );
+  sl.registerLazySingleton<MarkAllAsReadUseCase>(
+    () => MarkAllAsReadUseCase(sl<NotificationsRepository>()),
+  );
+  sl.registerLazySingleton<GetUnreadCountStreamUseCase>(
+    () => GetUnreadCountStreamUseCase(sl<NotificationsRepository>()),
+  );
+  sl.registerFactory<NotificationsBloc>(
+    () => NotificationsBloc(
+      getNotificationsStreamUseCase: sl<GetNotificationsStreamUseCase>(),
+      markAsReadUseCase: sl<MarkAsReadUseCase>(),
+      markAllAsReadUseCase: sl<MarkAllAsReadUseCase>(),
+      getUnreadCountStreamUseCase: sl<GetUnreadCountStreamUseCase>(),
+    ),
+  );
 }

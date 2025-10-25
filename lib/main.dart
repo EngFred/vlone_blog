@@ -8,6 +8,7 @@ import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
+import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
@@ -55,6 +56,7 @@ void main() async {
     di.initProfile(),
     di.initFollowers(),
     di.initUsers(),
+    di.initNotifications(),
   ]);
 
   AppLogger.info('Starting app');
@@ -116,6 +118,9 @@ class MyApp extends StatelessWidget {
         BlocProvider<UsersBloc>(create: (_) => di.sl<UsersBloc>()),
         BlocProvider<LikesBloc>(create: (_) => di.sl<LikesBloc>()),
         BlocProvider<FavoritesBloc>(create: (_) => di.sl<FavoritesBloc>()),
+        BlocProvider<NotificationsBloc>(
+          create: (_) => di.sl<NotificationsBloc>(),
+        ),
       ],
       child: MaterialApp.router(
         title: Constants.appName,

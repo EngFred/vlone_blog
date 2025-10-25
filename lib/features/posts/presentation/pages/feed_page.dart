@@ -12,6 +12,8 @@ import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart'
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/feed_list.dart';
+import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/notification_icon_with_badge.dart';
 
 class FeedPage extends StatefulWidget {
   final String userId;
@@ -26,6 +28,9 @@ class _FeedPageState extends State<FeedPage>
   final List<PostEntity> _posts = [];
   bool _realtimeStarted = false;
 
+  // track notifications subscription dispatch so we don't dispatch repeatedly
+  bool _notificationsSubscribed = false;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -34,6 +39,24 @@ class _FeedPageState extends State<FeedPage>
     super.initState();
     AppLogger.info('Initializing FeedPage for user: ${widget.userId}');
     _startRealtimeListeners();
+    _subscribeNotifications();
+  }
+
+  void _subscribeNotifications() {
+    if (!_notificationsSubscribed && mounted) {
+      try {
+        context.read<NotificationsBloc>().add(NotificationsSubscribeStream());
+        _notificationsSubscribed = true;
+        AppLogger.info(
+          'Dispatched NotificationsSubscribeStream from FeedPage.',
+        );
+      } catch (e) {
+        AppLogger.error(
+          'Failed to dispatch NotificationsSubscribeStream: $e',
+          error: e,
+        );
+      }
+    }
   }
 
   void _startRealtimeListeners() {
@@ -116,15 +139,7 @@ class _FeedPageState extends State<FeedPage>
         centerTitle: false,
         backgroundColor: Theme.of(context).colorScheme.surface,
         actions: [
-          IconButton(
-            icon: Icon(
-              Icons.notifications_none,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-            onPressed: () {
-              context.push(Constants.notificationsRoute);
-            },
-          ),
+          const NotificationIconWithBadge(),
           if (_realtimeStarted)
             Padding(
               padding: const EdgeInsets.only(right: 16.0),

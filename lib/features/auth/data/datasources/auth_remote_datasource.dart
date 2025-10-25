@@ -18,7 +18,6 @@ class AuthRemoteDataSource {
   Future<UserModel> signUp({
     required String email,
     required String password,
-    required String username,
   }) async {
     try {
       AppLogger.info('Attempting signup for email: $email');

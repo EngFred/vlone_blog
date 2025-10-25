@@ -9,6 +9,7 @@ class NotificationsRemoteDataSource {
 
   static const String _notificationsView = 'notifications_view';
   static const String _notificationsTable = 'notifications';
+  static const String _unreadCountTable = 'unread_notification_count';
 
   NotificationsRemoteDataSource(this.client);
 
@@ -41,6 +42,54 @@ class NotificationsRemoteDataSource {
         .handleError((e, stackTrace) {
           AppLogger.error(
             'Realtime stream error for notifications: $e',
+            error: e,
+            stackTrace: stackTrace,
+          );
+          throw ServerException(e.toString());
+        });
+  }
+
+  /// Stream the unread notification count for the current user.
+  /// Expects the `unread_notification_count` table (one row per user).
+  Stream<int> getUnreadCountStream() {
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) {
+      AppLogger.warning('Cannot stream unread count: User not logged in.');
+      return Stream.error(const ServerException('User not authenticated.'));
+    }
+
+    AppLogger.info('Subscribing to unread count stream for user: $userId');
+
+    final realtimeStream = client
+        .from(_unreadCountTable)
+        .stream(primaryKey: ['user_id'])
+        .eq('user_id', userId);
+
+    return realtimeStream
+        .map((rows) {
+          try {
+            if (rows.isEmpty) {
+              // No row yet for this user -> count is 0
+              return 0;
+            }
+            // Supabase realtime returns a list of maps; we expect one row
+            final first = rows.first;
+            final rawCount = first['unread_count'];
+            if (rawCount == null) return 0;
+            if (rawCount is int) return rawCount;
+            return int.tryParse(rawCount.toString()) ?? 0;
+          } catch (e, st) {
+            AppLogger.error(
+              'Failed parsing unread count row: $e',
+              error: e,
+              stackTrace: st,
+            );
+            throw ServerException('Failed to parse unread count.');
+          }
+        })
+        .handleError((e, stackTrace) {
+          AppLogger.error(
+            'Realtime stream error for unread count: $e',
             error: e,
             stackTrace: stackTrace,
           );
