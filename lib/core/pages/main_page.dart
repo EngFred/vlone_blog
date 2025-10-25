@@ -24,7 +24,9 @@ class _MainPageState extends State<MainPage> {
   String? _userId;
   int _selectedIndex = 0;
   bool _initializedPages = false;
+  bool _locationSynced = false;
   final Set<int> _loadedTabs = {};
+
   @override
   void initState() {
     super.initState();
@@ -51,21 +53,17 @@ class _MainPageState extends State<MainPage> {
       AppLogger.info('Current user loaded from session: $sessionUserId');
       if (mounted) {
         setState(() => _userId = sessionUserId);
-        FlutterNativeSplash.remove();
         _initializedPages = true;
-        _syncSelectedIndexWithLocation();
 
-        // ❌ BUGGY: Dispatching here caused a race condition.
-        // _dispatchLoadForIndex(_selectedIndex);
-
-        // ✅ FIX: Dispatch *after* the first frame is built.
-        // This ensures the FeedPage and its BlocListener exist
-        // *before* the GetFeedEvent is processed.
+        // ✅ FIX: Wait for first frame, then sync location and dispatch loads
+        // This ensures the widget tree is fully built and context is safe
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
+            _syncSelectedIndexWithLocation();
             _dispatchLoadForIndex(_selectedIndex);
           }
         });
+        FlutterNativeSplash.remove();
       }
     } catch (e, stackTrace) {
       AppLogger.error(
@@ -85,11 +83,19 @@ class _MainPageState extends State<MainPage> {
     return 0;
   }
 
+  /// ✅ FIX: Now called from addPostFrameCallback after initState
+  /// GoRouterState.of() is safe to call here
   void _syncSelectedIndexWithLocation() {
-    final location = GoRouterState.of(context).uri.path;
-    final idx = _calculateSelectedIndexFromLocation(location);
-    if (mounted && idx != _selectedIndex) {
-      setState(() => _selectedIndex = idx);
+    try {
+      final location = GoRouterState.of(context).uri.path;
+      final idx = _calculateSelectedIndexFromLocation(location);
+      if (mounted && idx != _selectedIndex) {
+        setState(() => _selectedIndex = idx);
+        _locationSynced = true;
+      }
+    } catch (e) {
+      AppLogger.warning('Failed to sync location: $e');
+      _locationSynced = true;
     }
   }
 
@@ -143,6 +149,7 @@ class _MainPageState extends State<MainPage> {
         default:
           route = Constants.feedRoute;
       }
+      setState(() => _selectedIndex = index);
       context.go(route);
       _dispatchLoadForIndex(index);
     }
@@ -151,11 +158,23 @@ class _MainPageState extends State<MainPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // ✅ OPTIMIZED: Only sync if pages are already initialized
-    // Prevents unnecessary setState during initial build
-    if (_initializedPages) {
+    // ✅ Sync location changes when route updates
+    if (_initializedPages && _locationSynced) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _syncSelectedIndexWithLocation();
+        if (mounted) {
+          try {
+            final location = GoRouterState.of(context).uri.path;
+            final idx = _calculateSelectedIndexFromLocation(location);
+            if (idx != _selectedIndex) {
+              setState(() => _selectedIndex = idx);
+              // Don't re-dispatch load here - it was already done in _onItemTapped
+            }
+          } catch (e) {
+            AppLogger.warning(
+              'Failed to sync location in didChangeDependencies: $e',
+            );
+          }
+        }
       });
     }
   }
