@@ -83,6 +83,18 @@ final sl = GetIt.instance;
 /// ✅ OPTIMIZED: Accept pre-initialized SupabaseClient to avoid duplicate initialization
 /// This function is now called from main() AFTER Supabase.initialize()
 Future<void> init({SupabaseClient? supabaseClient}) async {
+  await initAuth(supabaseClient: supabaseClient);
+  await initPosts();
+  await initLikes();
+  await initFavorites();
+  await initComments();
+  await initProfile();
+  await initFollowers();
+  await initUsers();
+}
+
+/// Init only auth-related dependencies first for faster startup
+Future<void> initAuth({SupabaseClient? supabaseClient}) async {
   // External - Use provided client or get from instance
   // ✅ PERFORMANCE: This prevents the "already initialized" warning
   // and saves ~50-100ms by not re-initializing Supabase
@@ -124,7 +136,9 @@ Future<void> init({SupabaseClient? supabaseClient}) async {
       authRepository: sl<AuthRepository>(),
     ),
   );
+}
 
+Future<void> initPosts() async {
   // -------------------
   // Posts Feature
   // -------------------
@@ -157,53 +171,6 @@ Future<void> init({SupabaseClient? supabaseClient}) async {
   );
 
   // -------------------
-  // Likes Feature
-  // -------------------
-  sl.registerLazySingleton<LikesRemoteDataSource>(
-    () => LikesRemoteDataSource(sl<SupabaseClient>()),
-  );
-  sl.registerLazySingleton<LikesRepository>(
-    () => LikesRepositoryImpl(sl<LikesRemoteDataSource>()),
-  );
-  sl.registerLazySingleton<LikePostUseCase>(
-    () => LikePostUseCase(sl<LikesRepository>()),
-  );
-  sl.registerLazySingleton<StreamLikesUseCase>(
-    () => StreamLikesUseCase(sl<LikesRepository>()),
-  );
-  sl.registerFactory<LikesBloc>(
-    () => LikesBloc(
-      likePostUseCase: sl<LikePostUseCase>(),
-      streamLikesUseCase: sl<StreamLikesUseCase>(),
-    ),
-  );
-
-  // -------------------
-  // Favorites Feature
-  // -------------------
-  sl.registerLazySingleton<FavoritesRemoteDataSource>(
-    () => FavoritesRemoteDataSource(sl<SupabaseClient>()),
-  );
-  sl.registerLazySingleton<FavoritesRepository>(
-    () => FavoritesRepositoryImpl(sl<FavoritesRemoteDataSource>()),
-  );
-  sl.registerLazySingleton<FavoritePostUseCase>(
-    () => FavoritePostUseCase(sl<FavoritesRepository>()),
-  );
-  sl.registerLazySingleton<GetFavoritesUseCase>(
-    () => GetFavoritesUseCase(sl<FavoritesRepository>()),
-  );
-  sl.registerLazySingleton<StreamFavoritesUseCase>(
-    () => StreamFavoritesUseCase(sl<FavoritesRepository>()),
-  );
-  sl.registerFactory<FavoritesBloc>(
-    () => FavoritesBloc(
-      favoritePostUseCase: sl<FavoritePostUseCase>(),
-      streamFavoritesUseCase: sl<StreamFavoritesUseCase>(),
-    ),
-  );
-
-  // -------------------
   // Real-time post streams used in PostsBloc
   // -------------------
   sl.registerLazySingleton<StreamNewPostsUseCase>(
@@ -230,7 +197,60 @@ Future<void> init({SupabaseClient? supabaseClient}) async {
       streamPostDeletionsUseCase: sl<StreamPostDeletionsUseCase>(),
     ),
   );
+}
 
+Future<void> initLikes() async {
+  // -------------------
+  // Likes Feature
+  // -------------------
+  sl.registerLazySingleton<LikesRemoteDataSource>(
+    () => LikesRemoteDataSource(sl<SupabaseClient>()),
+  );
+  sl.registerLazySingleton<LikesRepository>(
+    () => LikesRepositoryImpl(sl<LikesRemoteDataSource>()),
+  );
+  sl.registerLazySingleton<LikePostUseCase>(
+    () => LikePostUseCase(sl<LikesRepository>()),
+  );
+  sl.registerLazySingleton<StreamLikesUseCase>(
+    () => StreamLikesUseCase(sl<LikesRepository>()),
+  );
+  sl.registerFactory<LikesBloc>(
+    () => LikesBloc(
+      likePostUseCase: sl<LikePostUseCase>(),
+      streamLikesUseCase: sl<StreamLikesUseCase>(),
+    ),
+  );
+}
+
+Future<void> initFavorites() async {
+  // -------------------
+  // Favorites Feature
+  // -------------------
+  sl.registerLazySingleton<FavoritesRemoteDataSource>(
+    () => FavoritesRemoteDataSource(sl<SupabaseClient>()),
+  );
+  sl.registerLazySingleton<FavoritesRepository>(
+    () => FavoritesRepositoryImpl(sl<FavoritesRemoteDataSource>()),
+  );
+  sl.registerLazySingleton<FavoritePostUseCase>(
+    () => FavoritePostUseCase(sl<FavoritesRepository>()),
+  );
+  sl.registerLazySingleton<GetFavoritesUseCase>(
+    () => GetFavoritesUseCase(sl<FavoritesRepository>()),
+  );
+  sl.registerLazySingleton<StreamFavoritesUseCase>(
+    () => StreamFavoritesUseCase(sl<FavoritesRepository>()),
+  );
+  sl.registerFactory<FavoritesBloc>(
+    () => FavoritesBloc(
+      favoritePostUseCase: sl<FavoritePostUseCase>(),
+      streamFavoritesUseCase: sl<StreamFavoritesUseCase>(),
+    ),
+  );
+}
+
+Future<void> initComments() async {
   // -------------------
   // Comments Feature
   // -------------------
@@ -257,7 +277,9 @@ Future<void> init({SupabaseClient? supabaseClient}) async {
       repository: sl<CommentsRepository>(),
     ),
   );
+}
 
+Future<void> initProfile() async {
   // -------------------
   // Profile Feature
   // -------------------
@@ -283,7 +305,9 @@ Future<void> init({SupabaseClient? supabaseClient}) async {
       streamProfileUpdatesUseCase: sl<StreamProfileUpdatesUseCase>(),
     ),
   );
+}
 
+Future<void> initFollowers() async {
   // -------------------
   // Followers Feature
   // -------------------
@@ -313,7 +337,9 @@ Future<void> init({SupabaseClient? supabaseClient}) async {
       getFollowStatusUseCase: sl<GetFollowStatusUseCase>(),
     ),
   );
+}
 
+Future<void> initUsers() async {
   // -------------------
   // Users Feature
   // -------------------

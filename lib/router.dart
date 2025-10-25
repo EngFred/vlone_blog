@@ -1,3 +1,7 @@
+// Updated router.dart with optimizations:
+// - No major changes needed, as it's already efficient with sync session checks.
+// - Added comment for clarity on performance.
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;

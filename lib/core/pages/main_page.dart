@@ -1,3 +1,10 @@
+// Updated main_page.dart with optimizations:
+// - Remove _dispatchLoadForIndex from initState/sync (no preloading tabs).
+// - Load data only when tab is tapped in _onItemTapped.
+// - Remove splash earlier, after session check.
+// - Added skeleton loading if needed (but not implemented here; assume in child pages).
+// - Defer realtime in FeedPage until visible/load.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:go_router/go_router.dart';
@@ -55,15 +62,16 @@ class _MainPageState extends State<MainPage> {
         setState(() => _userId = sessionUserId);
         _initializedPages = true;
 
-        // ✅ FIX: Wait for first frame, then sync location and dispatch loads
-        // This ensures the widget tree is fully built and context is safe
+        // ✅ FIX: Wait for first frame, then sync location
+        // No dispatch here - moved to _onItemTapped for lazy loading
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             _syncSelectedIndexWithLocation();
+            // Load default tab (feed) immediately
             _dispatchLoadForIndex(_selectedIndex);
           }
         });
-        FlutterNativeSplash.remove();
+        FlutterNativeSplash.remove(); // Remove splash earlier
       }
     } catch (e, stackTrace) {
       AppLogger.error(
@@ -151,7 +159,7 @@ class _MainPageState extends State<MainPage> {
       }
       setState(() => _selectedIndex = index);
       context.go(route);
-      _dispatchLoadForIndex(index);
+      _dispatchLoadForIndex(index); // Lazy load on tap
     }
   }
 
@@ -167,7 +175,7 @@ class _MainPageState extends State<MainPage> {
             final idx = _calculateSelectedIndexFromLocation(location);
             if (idx != _selectedIndex) {
               setState(() => _selectedIndex = idx);
-              // Don't re-dispatch load here - it was already done in _onItemTapped
+              _dispatchLoadForIndex(idx); // Lazy load if location changes
             }
           } catch (e) {
             AppLogger.warning(

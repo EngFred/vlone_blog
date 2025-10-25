@@ -32,19 +32,30 @@ void main() async {
 
   AppLogger.info('Initializing app dependencies');
 
+  // Initialize Supabase first
   await Supabase.initialize(
     url: Constants.supabaseUrl,
     anonKey: Constants.supabaseAnonKey,
     authOptions: FlutterAuthClientOptions(localStorage: SecureStorage()),
   );
 
-  await di.init(supabaseClient: Supabase.instance.client);
+  // Call initAuth early, right after Supabase
+  await di.initAuth(supabaseClient: Supabase.instance.client);
 
-  AppLogger.info('Initializing Workmanager');
-  await Workmanager().initialize(
-    backgroundCallbackDispatcher,
-    isInDebugMode: false,
-  );
+  // Parallelize Workmanager and other feature inits
+  await Future.wait([
+    Workmanager().initialize(
+      backgroundCallbackDispatcher,
+      isInDebugMode: false,
+    ),
+    di.initPosts(),
+    di.initLikes(),
+    di.initFavorites(),
+    di.initComments(),
+    di.initProfile(),
+    di.initFollowers(),
+    di.initUsers(),
+  ]);
 
   AppLogger.info('Starting app');
   runApp(const MyApp());
