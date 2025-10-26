@@ -1,8 +1,12 @@
+// ⛔ Remove the Cupertino import
+// import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
+// ✅ Import your new custom transition
+import 'package:vlone_blog_app/core/routes/slide_transition_page.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/create_post_page.dart';
@@ -31,41 +35,63 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: Constants.notificationsRoute,
-      builder: (context, state) => const NotificationsPage(),
+      // ✅ Use custom slide animation
+      pageBuilder: (context, state) => SlideTransitionPage(
+        key: state.pageKey,
+        child: const NotificationsPage(),
+      ),
     ),
     GoRoute(
       path: '${Constants.profileRoute}/:userId/edit',
-      builder: (context, state) {
+      // ✅ Use custom slide animation
+      pageBuilder: (context, state) {
         final userId = state.pathParameters['userId']!;
-        return EditProfilePage(userId: userId);
+        return SlideTransitionPage(
+          key: state.pageKey,
+          child: EditProfilePage(userId: userId),
+        );
       },
     ),
     GoRoute(
       path: Constants.createPostRoute,
-      builder: (context, state) {
+      // ✅ Use custom slide animation
+      pageBuilder: (context, state) {
         final userId = state.pathParameters['userId']!;
-        return CreatePostPage(userId: userId);
+        return SlideTransitionPage(
+          key: state.pageKey,
+          child: CreatePostPage(userId: userId),
+        );
       },
     ),
     GoRoute(
       path: '${Constants.postDetailsRoute}/:postId',
-      builder: (context, state) {
+      // ✅ Use custom slide animation
+      pageBuilder: (context, state) {
         final postId = state.pathParameters['postId']!;
         final PostEntity? extraPost = state.extra is PostEntity
             ? state.extra as PostEntity
             : null;
-        return PostDetailsPage(postId: postId, post: extraPost);
+        return SlideTransitionPage(
+          key: state.pageKey,
+          child: PostDetailsPage(postId: postId, post: extraPost),
+        );
       },
     ),
     GoRoute(
       path: Constants.followersRoute + '/:userId',
-      builder: (context, state) =>
-          FollowersPage(userId: state.pathParameters['userId']!),
+      // ✅ Use custom slide animation
+      pageBuilder: (context, state) => SlideTransitionPage(
+        key: state.pageKey,
+        child: FollowersPage(userId: state.pathParameters['userId']!),
+      ),
     ),
     GoRoute(
       path: Constants.followingRoute + '/:userId',
-      builder: (context, state) =>
-          FollowingPage(userId: state.pathParameters['userId']!),
+      // ✅ Use custom slide animation
+      pageBuilder: (context, state) => SlideTransitionPage(
+        key: state.pageKey,
+        child: FollowingPage(userId: state.pathParameters['userId']!),
+      ),
     ),
     ShellRoute(
       builder: (context, state, child) {
@@ -74,57 +100,64 @@ final GoRouter appRouter = GoRouter(
       routes: [
         GoRoute(
           path: Constants.feedRoute,
-          builder: (context, state) => const SizedBox.shrink(),
+          // Fades are good for shell routes
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: SizedBox.shrink()),
         ),
         GoRoute(
           path: Constants.reelsRoute,
-          builder: (context, state) => const SizedBox.shrink(),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: SizedBox.shrink()),
         ),
         GoRoute(
           path: Constants.usersRoute,
-          builder: (context, state) => const UsersPage(),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: UsersPage()),
         ),
-        // ✅ Bottom nav profile page route
-        // "me" is just a route identifier, we resolve it to actual userId
         GoRoute(
           path: '${Constants.profileRoute}/me',
-          builder: (context, state) {
+          pageBuilder: (context, state) {
             final supabase = sl<SupabaseClient>();
             final currentUserId = supabase.auth.currentUser?.id;
             if (currentUserId == null) {
               AppLogger.error('No current user found for profile/me route');
-              return const Scaffold(
-                body: Center(
-                  child: Text('Unable to load profile. Please log in again.'),
+              return const NoTransitionPage(
+                child: Scaffold(
+                  body: Center(
+                    child: Text('Unable to load profile. Please log in again.'),
+                  ),
                 ),
               );
             }
-            // ✅ Pass the actual userId, not "me"
-            return ProfilePage(userId: currentUserId);
+            return NoTransitionPage(child: ProfilePage(userId: currentUserId));
           },
         ),
       ],
     ),
-    // ✅ Standalone user profile route (outside ShellRoute)
-    // This handles viewing other users' profiles
     GoRoute(
       path: '${Constants.profileRoute}/:userId',
-      builder: (context, state) {
+      // ✅ Use custom slide animation
+      pageBuilder: (context, state) {
         final userId = state.pathParameters['userId']!;
         final supabase = sl<SupabaseClient>();
         final currentUserId = supabase.auth.currentUser?.id;
 
-        // If viewing own profile from a direct link, redirect to /profile/me for bottom nav
         if (currentUserId != null && currentUserId == userId) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             GoRouter.of(context).go('${Constants.profileRoute}/me');
           });
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+          return SlideTransitionPage(
+            key: state.pageKey,
+            child: const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            ),
           );
         }
 
-        return UserProfilePage(userId: userId);
+        return SlideTransitionPage(
+          key: state.pageKey,
+          child: UserProfilePage(userId: userId),
+        );
       },
     ),
   ],
@@ -147,13 +180,11 @@ final GoRouter appRouter = GoRouter(
         state.uri.path == Constants.loginRoute ||
         state.uri.path == Constants.signupRoute;
 
-    // If no session and trying to access protected route, go to login
     if (!isLoggedIn && !isAuthRoute) {
       AppLogger.warning('No session found, redirecting to login');
       return Constants.loginRoute;
     }
 
-    // If has session and trying to access auth pages, redirect to feed
     if (isLoggedIn && isAuthRoute) {
       AppLogger.info('User has valid session, redirecting to feed');
       return Constants.feedRoute;

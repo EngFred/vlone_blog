@@ -29,6 +29,11 @@ class NotificationsPage extends StatelessWidget {
           return Scaffold(
             appBar: AppBar(
               // Show context-aware AppBar
+              centerTitle: false,
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              iconTheme: IconThemeData(
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
               leading: isSelectionMode
                   ? IconButton(
                       icon: const Icon(Icons.close),

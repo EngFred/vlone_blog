@@ -14,6 +14,7 @@ import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bl
 import 'package:vlone_blog_app/features/posts/presentation/widgets/feed_list.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/notification_icon_with_badge.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/user_greeting_title.dart';
 
 class FeedPage extends StatefulWidget {
   final String userId;
@@ -135,9 +136,12 @@ class _FeedPageState extends State<FeedPage>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Feed'),
+        title: const UserGreetingTitle(),
         centerTitle: false,
         backgroundColor: Theme.of(context).colorScheme.surface,
+        iconTheme: IconThemeData(
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
         actions: [
           const NotificationIconWithBadge(),
           if (_realtimeStarted)

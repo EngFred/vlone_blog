@@ -86,7 +86,6 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
       },
       (_) {
         AppLogger.info('Comment added successfully. Stream will update UI.');
-        // --- FIX ---
         // We no longer emit `CommentAdded` here.
         // The state remains `CommentsLoaded` (or whatever it was).
         // The real-time stream listener `_onRealtimeCommentReceived`
@@ -103,11 +102,15 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     AppLogger.info(
       'Starting comments real-time stream for post: ${event.postId}',
     );
+
+    // ✅ Emit the loading state your UI already understands
+    emit(CommentsLoading());
+
     _currentPostId = event.postId;
 
     await _commentsStreamSubscription?.cancel();
 
-    // Use repository stream (existing implementation)
+    // [Your existing stream listening logic remains unchanged]
     _commentsStreamSubscription = repository
         .getCommentsStream(event.postId)
         .listen(
@@ -123,7 +126,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
           },
         );
 
-    // Also subscribe to global comments stream for notification
+    // [Your existing global stream logic remains unchanged]
     streamCommentsUseCase(NoParams()).listen(
       (either) {
         either.fold(
@@ -142,7 +145,9 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
       },
     );
 
-    emit(CommentsStreamStarted(event.postId));
+    // ⛔️ REMOVE this line. The state is already Loading,
+    // and will become Loaded when the stream fires.
+    // emit(CommentsStreamStarted(event.postId));
   }
 
   Future<void> _onStopCommentsStream(

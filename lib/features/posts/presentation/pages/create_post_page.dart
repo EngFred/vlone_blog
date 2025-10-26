@@ -63,6 +63,11 @@ class _CreatePostPageState extends State<CreatePostPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Create Post'),
+        centerTitle: false,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        iconTheme: IconThemeData(
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
         scrolledUnderElevation: 0.0,
         elevation: 0,
         actions: [

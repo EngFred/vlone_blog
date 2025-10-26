@@ -28,8 +28,6 @@ class _CommentTileState extends State<CommentTile> {
 
   // ✅ Navigation Logic: go to /profile/me if owner, push to /profile/userId if other
   void _navigateToProfile(BuildContext context) {
-    if (widget.comment.userId == null) return;
-
     if (widget.comment.userId == widget.currentUserId) {
       // Tapped own profile: GO to the main profile tab
       context.go('${Constants.profileRoute}/me');
@@ -205,7 +203,7 @@ class _CommentTileState extends State<CommentTile> {
                         comment: reply,
                         onReply: widget.onReply,
                         depth: 1, // Enforce single indent
-                        currentUserId: widget.currentUserId, // ✅ Pass down
+                        currentUserId: widget.currentUserId,
                       );
                     }).toList(),
                   ),

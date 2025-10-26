@@ -10,11 +10,8 @@ class PostHeader extends StatelessWidget {
   final String? currentUserId;
 
   const PostHeader({super.key, required this.post, this.currentUserId});
-
-  // ✅ --- This is the new, consolidated navigation logic ---
   void _navigateToProfile(BuildContext context) {
     // Check for null just in case
-    if (post.userId == null) return;
 
     if (post.userId == currentUserId) {
       // User is tapping their OWN profile.
