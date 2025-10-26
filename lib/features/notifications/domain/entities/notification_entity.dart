@@ -62,6 +62,45 @@ class NotificationEntity extends Equatable {
     required this.createdAt,
   });
 
+  /// Creates a new instance of [NotificationEntity] with updated fields.
+  NotificationEntity copyWith({
+    String? id,
+    String? recipientId,
+    NotificationType? type,
+    bool? isRead,
+    DateTime? createdAt,
+    String? actorId,
+    String? actorUsername,
+    String? actorAvatarUrl,
+    String? postId,
+    String? content,
+  }) {
+    return NotificationEntity(
+      id: id ?? this.id,
+      recipientId: recipientId ?? this.recipientId,
+      type: type ?? this.type,
+      isRead: isRead ?? this.isRead,
+      createdAt: createdAt ?? this.createdAt,
+      actorId: actorId ?? this.actorId,
+      actorUsername: actorUsername ?? this.actorUsername,
+      actorAvatarUrl: actorAvatarUrl ?? this.actorAvatarUrl,
+      postId: postId ?? this.postId,
+      content: content ?? this.content,
+    );
+  }
+
+  /// A constant empty notification entity.
+  /// Used as a fallback in logic to avoid null checks.
+  static final NotificationEntity empty = NotificationEntity(
+    id: '',
+    recipientId: '',
+    actorId: '',
+    type: NotificationType.unknown,
+    actorUsername: '',
+    isRead: true, // Set as true so it's ignored by "mark as read" logic
+    createdAt: DateTime.fromMicrosecondsSinceEpoch(0),
+  );
+
   @override
   List<Object?> get props => [
     id,

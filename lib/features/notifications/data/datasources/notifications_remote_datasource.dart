@@ -50,7 +50,6 @@ class NotificationsRemoteDataSource {
   }
 
   /// Stream the unread notification count for the current user.
-  /// Expects the `unread_notification_count` table (one row per user).
   Stream<int> getUnreadCountStream() {
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
@@ -69,10 +68,8 @@ class NotificationsRemoteDataSource {
         .map((rows) {
           try {
             if (rows.isEmpty) {
-              // No row yet for this user -> count is 0
               return 0;
             }
-            // Supabase realtime returns a list of maps; we expect one row
             final first = rows.first;
             final rawCount = first['unread_count'];
             if (rawCount == null) return 0;
@@ -146,6 +143,42 @@ class NotificationsRemoteDataSource {
     } catch (e, stackTrace) {
       AppLogger.error(
         'Failed to mark all notifications as read, error: $e',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      throw ServerException(e.toString());
+    }
+  }
+
+  /// Deletes one or more notifications by their IDs.
+  /// Your RLS policy ensures the user can only delete their own notifications.
+  Future<void> deleteNotifications(List<String> notificationIds) async {
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) {
+      throw const ServerException('User not authenticated.');
+    }
+    if (notificationIds.isEmpty) {
+      AppLogger.warning('Delete notifications called with empty list.');
+      return;
+    }
+
+    AppLogger.info('Deleting ${notificationIds.length} notifications.');
+    try {
+      await client
+          .from(_notificationsTable)
+          .delete()
+          .inFilter('id', notificationIds) //
+          .eq(
+            'recipient_id',
+            userId,
+          ); // RLS already handles this, but .eq() is a good safeguard.
+
+      AppLogger.info(
+        'Successfully deleted ${notificationIds.length} notifications.',
+      );
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Failed to delete notifications, error: $e',
         error: e,
         stackTrace: stackTrace,
       );

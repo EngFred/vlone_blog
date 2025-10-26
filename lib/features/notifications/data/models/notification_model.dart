@@ -40,8 +40,7 @@ class NotificationModel extends NotificationEntity {
       // which should join with the 'profiles' table.
       actorUsername: map['actor_username'] as String? ?? 'Unknown User',
       // Changed to match the SQL view's column name
-      actorAvatarUrl:
-          map['actor_image_url'] as String?, // ✅ Fixed: was 'actor_avatar_url'
+      actorAvatarUrl: map['actor_image_url'] as String?,
     );
   }
 
@@ -60,7 +59,7 @@ class NotificationModel extends NotificationEntity {
       // These are not part of the 'notifications' table,
       // but are included for completeness if ever needed.
       'actor_username': actorUsername,
-      'actor_image_url': actorAvatarUrl, // ✅ Changed to match view
+      'actor_image_url': actorAvatarUrl,
     };
   }
 }

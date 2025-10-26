@@ -49,6 +49,7 @@ import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart'
 import 'package:vlone_blog_app/features/notifications/data/datasources/notifications_remote_datasource.dart';
 import 'package:vlone_blog_app/features/notifications/data/repository/notification_repository_impl.dart';
 import 'package:vlone_blog_app/features/notifications/domain/repository/notification_repository.dart';
+import 'package:vlone_blog_app/features/notifications/domain/usecases/delete_notifications_usecase.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/get_notifications_stream_usecase.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/get_unread_count_stream_usecase.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/mark_all_as_read_usecase.dart';
@@ -383,12 +384,16 @@ Future<void> initNotifications() async {
   sl.registerLazySingleton<GetUnreadCountStreamUseCase>(
     () => GetUnreadCountStreamUseCase(sl<NotificationsRepository>()),
   );
+  sl.registerLazySingleton<DeleteNotificationsUseCase>(
+    () => DeleteNotificationsUseCase(sl<NotificationsRepository>()),
+  );
   sl.registerFactory<NotificationsBloc>(
     () => NotificationsBloc(
       getNotificationsStreamUseCase: sl<GetNotificationsStreamUseCase>(),
       markAsReadUseCase: sl<MarkAsReadUseCase>(),
       markAllAsReadUseCase: sl<MarkAllAsReadUseCase>(),
       getUnreadCountStreamUseCase: sl<GetUnreadCountStreamUseCase>(),
+      deleteNotificationsUseCase: sl<DeleteNotificationsUseCase>(),
     ),
   );
 }

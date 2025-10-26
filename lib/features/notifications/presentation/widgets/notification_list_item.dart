@@ -6,8 +6,15 @@ import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifica
 
 class NotificationListItem extends StatelessWidget {
   final NotificationEntity notification;
+  final bool isSelectionMode;
+  final bool isSelected;
 
-  const NotificationListItem({super.key, required this.notification});
+  const NotificationListItem({
+    super.key,
+    required this.notification,
+    this.isSelectionMode = false,
+    this.isSelected = false,
+  });
 
   /// Helper to generate the notification message
   String _getNotificationMessage(NotificationType type) {
@@ -29,35 +36,58 @@ class NotificationListItem extends StatelessWidget {
     }
   }
 
-  /// Handles notification tap - marks as read without navigation
+  /// Handles notification tap
   void _onNotificationTapped(BuildContext context) {
-    // Mark the notification as read - user stays on notifications page
-    if (!notification.isRead) {
+    if (isSelectionMode) {
+      // In selection mode, tap toggles selection
       context.read<NotificationsBloc>().add(
-        NotificationsMarkOneAsRead(notification.id),
+        NotificationsToggleSelection(notification.id),
+      );
+    } else {
+      // In normal mode, tap marks as read
+      if (!notification.isRead) {
+        context.read<NotificationsBloc>().add(
+          NotificationsMarkOneAsRead(notification.id),
+        );
+      }
+      // NOTE navigation to related content is not implemented yet, that will come in later
+    }
+  }
+
+  /// Handles notification long-press
+  void _onNotificationLongPressed(BuildContext context) {
+    if (!isSelectionMode) {
+      // If not in selection mode, enter it and select this item
+      context.read<NotificationsBloc>().add(
+        NotificationsEnterSelectionMode(notification.id),
       );
     }
+  }
 
-    // Navigation logic commented out - user stays on notifications page
-    //
-    /*
-    switch (notification.type) {
-      case NotificationType.like:
-      case NotificationType.comment:
-      case NotificationType.repost:
-      case NotificationType.mention:
-      case NotificationType.favorite:
-        if (notification.postId != null) {
-          context.go('${Constants.postDetailsRoute}/${notification.postId}');
-        }
-        break;
-      case NotificationType.follow:
-        context.go('${Constants.profileRoute}/${notification.actorId}');
-        break;
-      case NotificationType.unknown:
-        break;
-    }
-    */
+  /// Handles single delete dialog
+  void _showDeleteConfirmationDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Notification?'),
+        content: const Text('This action cannot be undone.'),
+        actions: [
+          TextButton(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+          ),
+          TextButton(
+            child: const Text('Delete'),
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              context.read<NotificationsBloc>().add(
+                NotificationsDeleteOne(notification.id),
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -65,28 +95,50 @@ class NotificationListItem extends StatelessWidget {
     final theme = Theme.of(context);
     final bool isUnread = !notification.isRead;
 
+    // Determine background color based on state
+    Color backgroundColor;
+    if (isSelected) {
+      backgroundColor = theme.colorScheme.primary.withOpacity(0.2);
+    } else if (isUnread) {
+      backgroundColor = theme.colorScheme.primary.withOpacity(0.05);
+    } else {
+      backgroundColor = theme.canvasColor;
+    }
+
     return Material(
-      color: isUnread
-          ? theme.colorScheme.primary.withOpacity(0.05)
-          : theme.canvasColor,
+      color: backgroundColor, // Use dynamic background color
       child: InkWell(
         onTap: () => _onNotificationTapped(context),
+        onLongPress: () => _onNotificationLongPressed(context),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Actor's Avatar
-              CircleAvatar(
-                radius: 24,
-                backgroundImage: notification.actorAvatarUrl != null
-                    ? NetworkImage(notification.actorAvatarUrl!)
-                    : null,
-                child: notification.actorAvatarUrl == null
-                    ? Text(notification.actorUsername[0].toUpperCase())
-                    : null,
-              ),
-              const SizedBox(width: 12),
+              // Show Checkbox or Avatar based on selection mode
+              if (isSelectionMode)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12.0, top: 8.0),
+                  child: Checkbox(
+                    value: isSelected,
+                    onChanged: (bool? value) {
+                      _onNotificationTapped(context);
+                    },
+                  ),
+                )
+              else
+                // Actor's Avatar
+                CircleAvatar(
+                  radius: 24,
+                  backgroundImage: notification.actorAvatarUrl != null
+                      ? NetworkImage(notification.actorAvatarUrl!)
+                      : null,
+                  child: notification.actorAvatarUrl == null
+                      ? Text(notification.actorUsername[0].toUpperCase())
+                      : null,
+                ),
+              if (!isSelectionMode) const SizedBox(width: 12),
+
               // Notification Content
               Expanded(
                 child: Column(
@@ -120,8 +172,13 @@ class NotificationListItem extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              // Unread Indicator
-              if (isUnread)
+
+              // Show context-aware trailing widget
+              if (isSelectionMode)
+                // In selection mode, this space is occupied by the checkbox
+                Container()
+              else if (isUnread)
+                // Unread Indicator
                 Container(
                   width: 10,
                   height: 10,
@@ -130,6 +187,12 @@ class NotificationListItem extends StatelessWidget {
                     color: theme.colorScheme.primary,
                     shape: BoxShape.circle,
                   ),
+                )
+              else
+                // Show a delete button for single-item deletion
+                IconButton(
+                  icon: Icon(Icons.delete_outline, color: Colors.grey.shade600),
+                  onPressed: () => _showDeleteConfirmationDialog(context),
                 ),
             ],
           ),
