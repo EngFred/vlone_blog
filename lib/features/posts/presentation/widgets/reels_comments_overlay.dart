@@ -8,14 +8,41 @@ import 'package:vlone_blog_app/features/posts/presentation/widgets/comment_input
 import 'package:vlone_blog_app/features/posts/presentation/widgets/comments_section.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 
+/// Bottom-sheet style comments overlay for reels (TikTok / IG style).
+/// Use by calling:
+///   await ReelsCommentsOverlay.show(context, post, userId);
 class ReelsCommentsOverlay extends StatefulWidget {
   final PostEntity post;
   final String userId;
+
   const ReelsCommentsOverlay({
     super.key,
     required this.post,
     required this.userId,
   });
+
+  /// Helper to show the overlay as a modal bottom sheet.
+  static Future<void> show(
+    BuildContext context,
+    PostEntity post,
+    String userId,
+  ) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
+      builder: (ctx) {
+        return SafeArea(
+          left: false,
+          right: false,
+          top: false,
+          bottom: false,
+          child: ReelsCommentsOverlay(post: post, userId: userId),
+        );
+      },
+    );
+  }
 
   @override
   State<ReelsCommentsOverlay> createState() => _ReelsCommentsOverlayState();
@@ -30,21 +57,21 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        context.read<CommentsBloc>().add(
-          SubscribeToCommentsEvent(widget.post.id),
-        );
-      }
+      if (!mounted) return;
+      context.read<CommentsBloc>().add(
+        SubscribeToCommentsEvent(widget.post.id),
+      );
     });
   }
 
   void _addComment() {
-    if (_commentController.text.trim().isEmpty) return;
+    final text = _commentController.text.trim();
+    if (text.isEmpty) return;
     context.read<CommentsBloc>().add(
       AddCommentEvent(
         postId: widget.post.id,
         userId: widget.userId,
-        text: _commentController.text.trim(),
+        text: text,
         parentCommentId: _replyingTo?.id,
       ),
     );
@@ -66,93 +93,128 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
       selector: (state) =>
           (state is AuthAuthenticated) ? state.user.profileImageUrl : null,
       builder: (context, userAvatarUrl) {
-        final screenW = MediaQuery.of(context).size.width;
-        final panelWidth = min(350.0, screenW * 0.9);
+        // start taller (user requested increased height)
+        final initialFraction = 0.70; // start ~70% of screen height
+        final minFraction = 0.40; // allow small peek
+        final maxFraction = min(0.92, 0.95); // never truly full-screen
 
-        return Scaffold(
-          backgroundColor: Colors.transparent,
-          body: Stack(
-            children: [
-              // Dismiss overlay
-              GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  color: Colors.black.withOpacity(0.5),
-                ),
-              ),
-              // Comments panel (right)
-              Positioned(
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: panelWidth,
-                child: Material(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  elevation: 8,
-                  borderRadius: const BorderRadius.horizontal(
-                    left: Radius.circular(20),
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {}, // prevent dismiss by accidental taps inside sheet area
+          child: DraggableScrollableSheet(
+            initialChildSize: initialFraction,
+            minChildSize: minFraction,
+            maxChildSize: maxFraction,
+            expand: false,
+            builder: (context, scrollController) {
+              // AnimatedPadding ensures sheet rises above keyboard when it appears
+              final viewInsets = MediaQuery.of(context).viewInsets.bottom;
+              return AnimatedPadding(
+                duration: const Duration(milliseconds: 160),
+                padding: EdgeInsets.only(bottom: viewInsets),
+                curve: Curves.easeOut,
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
                   ),
-                  child: SafeArea(
+                  child: Container(
+                    color: Theme.of(context).scaffoldBackgroundColor,
                     child: Column(
                       children: [
-                        // Header
-                        Container(
-                          padding: const EdgeInsets.all(16.0),
-                          decoration: BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(
-                                color: Theme.of(context).dividerColor,
-                              ),
-                            ),
-                          ),
-                          child: Row(
+                        // HEADER with fixed height to prevent tiny overflow
+                        SizedBox(
+                          height: 72,
+                          child: Column(
                             children: [
-                              IconButton(
-                                icon: const Icon(Icons.close),
-                                onPressed: () => Navigator.of(context).pop(),
+                              const SizedBox(height: 8),
+                              Container(
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[400],
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
                               ),
-                              Expanded(
-                                child: Text(
-                                  '${widget.post.commentsCount} Comments',
-                                  style: Theme.of(context).textTheme.titleLarge,
+                              const SizedBox(height: 8),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12.0,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '${widget.post.commentsCount} Comments',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.titleMedium,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.close),
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
 
-                        // Comments list (scrollable)
+                        const Divider(height: 1),
+
+                        // Comments list: Expanded so remaining space is used
                         Expanded(
-                          child: CommentsSection(
-                            commentsCount: null,
-                            showCountHeader: false,
-                            onReply: (comment) {
-                              setState(() => _replyingTo = comment);
-                              _focusNode.requestFocus();
-                            },
-                            scrollable: true,
-                            currentUserId: widget.userId,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0,
+                            ),
+                            child: CommentsSection(
+                              commentsCount: null,
+                              showCountHeader: false,
+                              onReply: (comment) {
+                                setState(() => _replyingTo = comment);
+                                Future.microtask(
+                                  () => _focusNode.requestFocus(),
+                                );
+                              },
+                              scrollable: true,
+                              currentUserId: widget.userId,
+                              controller:
+                                  scrollController, // <- pass controller for smooth drag
+                            ),
                           ),
                         ),
 
-                        // Input
-                        CommentInputField(
-                          userAvatarUrl: userAvatarUrl,
-                          controller: _commentController,
-                          focusNode: _focusNode,
-                          replyingTo: _replyingTo,
-                          onSend: _addComment,
-                          onCancelReply: () =>
-                              setState(() => _replyingTo = null),
+                        // Input field pinned to bottom, respects SafeArea and divider
+                        SafeArea(
+                          top: false,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: Border(
+                                top: BorderSide(
+                                  color: Theme.of(context).dividerColor,
+                                ),
+                              ),
+                            ),
+                            child: CommentInputField(
+                              userAvatarUrl: userAvatarUrl,
+                              controller: _commentController,
+                              focusNode: _focusNode,
+                              replyingTo: _replyingTo,
+                              onSend: _addComment,
+                              onCancelReply: () =>
+                                  setState(() => _replyingTo = null),
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ),
-              ),
-            ],
+              );
+            },
           ),
         );
       },

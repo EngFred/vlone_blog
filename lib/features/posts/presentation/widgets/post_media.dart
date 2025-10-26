@@ -7,16 +7,27 @@ import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
+import 'package:go_router/go_router.dart';
 
 class PostMedia extends StatefulWidget {
   final PostEntity post;
   final double? height;
   final bool autoPlay;
+
+  /// When true (default), the widget uses VisibilityDetector to auto-pause when
+  /// the visible fraction drops below thresholds (useful for feeds).
+  ///
+  /// When false, visibility-driven auto-pausing is disabled — useful for
+  /// Post Details pages where the user may scroll the comments area and you
+  /// don't want the video to stop automatically.
+  final bool useVisibilityDetector;
+
   const PostMedia({
     super.key,
     required this.post,
     this.height,
     this.autoPlay = false,
+    this.useVisibilityDetector = true,
   });
 
   @override
@@ -27,7 +38,7 @@ class _PostMediaState extends State<PostMedia>
     with AutomaticKeepAliveClientMixin {
   VideoPlayerController? _videoController;
   bool _initialized = false;
-  bool _isInitializing = false; // NEW: Prevent concurrent inits
+  bool _isInitializing = false; // Prevent concurrent inits
   final VideoControllerManager _videoManager = VideoControllerManager();
   bool _isDisposed = false;
 
@@ -64,8 +75,7 @@ class _PostMediaState extends State<PostMedia>
       // Init failed - swallow, we will stay on thumbnail
     } finally {
       _isInitializing = false;
-      if (mounted)
-        setState(() {}); // reflect new state if needed (e.g., hide spinner)
+      if (mounted) setState(() {}); // reflect new state if needed
     }
   }
 
@@ -77,7 +87,6 @@ class _PostMediaState extends State<PostMedia>
 
     if (_videoController == null || !_initialized) {
       // Initialize on first tap for feeds/profile.
-      // We run initialization once (guarded by _isInitializing).
       _ensureControllerInitialized().then((_) {
         if (_videoController != null && mounted && !_isDisposed) {
           // Once initialized, play immediately
@@ -103,72 +112,186 @@ class _PostMediaState extends State<PostMedia>
   }
 
   BoxFit _getBoxFit() {
+    // For feed/profile we want images centered and letterboxed (like videos)
     return widget.autoPlay ? BoxFit.cover : BoxFit.contain;
+  }
+
+  void _openFullMedia() {
+    // throttle navigation to prevent double pushes
+    Debouncer.instance.throttle(
+      'open_full_${widget.post.id}',
+      const Duration(milliseconds: 300),
+      () {
+        context.push('/media', extra: widget.post);
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    // default height: if not provided, use a feed/profile default
+    final double height = widget.height ?? 320.0;
+
     if (widget.post.mediaType == 'image') {
-      return _buildImage();
+      return _buildImage(height);
     } else if (widget.post.mediaType == 'video') {
-      return _buildVideo();
+      return _buildVideo(height);
     } else {
       return const SizedBox.shrink();
     }
   }
 
-  Widget _buildImage() {
+  Widget _buildImage(double height) {
     final boxFit = _getBoxFit();
-    if (widget.height != null) {
-      return SizedBox(
-        height: widget.height,
-        width: double.infinity,
-        child: CachedNetworkImage(
-          imageUrl: widget.post.mediaUrl!,
-          fit: boxFit,
-          placeholder: (context, url) => SizedBox(
-            height: widget.height,
-            child: const Center(child: CircularProgressIndicator()),
+
+    // Images get same height as video (unless in Reels — Reels don't use PostMedia)
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Stack(
+        children: [
+          // Center the image inside the sized box and wrap in Hero
+          Center(
+            child: Hero(
+              tag: 'media_${widget.post.id}',
+              child: SizedBox(
+                width: double.infinity,
+                height: height,
+                child: CachedNetworkImage(
+                  imageUrl: widget.post.mediaUrl!,
+                  fit: boxFit,
+                  placeholder: (context, url) => SizedBox(
+                    height: height,
+                    child: const Center(child: CircularProgressIndicator()),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    height: height,
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    child: const Center(child: Icon(Icons.broken_image)),
+                  ),
+                ),
+              ),
+            ),
           ),
-          errorWidget: (context, url, error) => Container(
-            height: widget.height,
-            color: Theme.of(context).colorScheme.surfaceVariant,
-            child: const Center(child: Icon(Icons.broken_image)),
+
+          // Top-right maximize button
+          Positioned(
+            top: 8,
+            right: 8,
+            child: SafeArea(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: _openFullMedia,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.black45,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.open_in_full, color: Colors.white),
+                ),
+              ),
+            ),
           ),
-        ),
-      );
-    } else {
-      return CachedNetworkImage(
-        imageUrl: widget.post.mediaUrl!,
-        fit: boxFit,
-        width: double.infinity,
-        placeholder: (context, url) => Container(
-          width: double.infinity,
-          height: 400,
-          child: const Center(child: CircularProgressIndicator()),
-        ),
-        errorWidget: (context, url, error) => Container(
-          width: double.infinity,
-          height: 400,
-          color: Theme.of(context).colorScheme.surfaceVariant,
-          child: const Center(child: Icon(Icons.broken_image)),
-        ),
-      );
-    }
+        ],
+      ),
+    );
   }
 
-  Widget _buildVideo() {
-    final bool isFixedHeight = widget.height != null;
+  Widget _buildVideo(double height) {
     final boxFit = _getBoxFit();
-
-    // use a short leading-edge throttle so taps are immediate but rapid taps ignored
     const toggleKeyPrefix = 'toggle_play_';
     const toggleDuration = Duration(milliseconds: 300);
 
-    if (isFixedHeight) {
+    Widget content = GestureDetector(
+      onTap: () => Debouncer.instance.throttle(
+        '$toggleKeyPrefix${widget.post.id}',
+        toggleDuration,
+        _togglePlayPause,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.zero,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Wrap the current visible content in a Hero so transition is smooth
+            Hero(
+              tag: 'media_${widget.post.id}',
+              child: _initialized && _videoController != null
+                  ? FittedBox(
+                      fit: boxFit,
+                      child: SizedBox(
+                        width: _videoController!.value.size.width.toDouble(),
+                        height: _videoController!.value.size.height.toDouble(),
+                        child: VideoPlayer(_videoController!),
+                      ),
+                    )
+                  : Container(
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      child: widget.post.thumbnailUrl != null
+                          ? CachedNetworkImage(
+                              imageUrl: widget.post.thumbnailUrl!,
+                              fit: boxFit,
+                              width: double.infinity,
+                              height: double.infinity,
+                            )
+                          : const Center(
+                              child: Icon(Icons.play_circle_outline),
+                            ),
+                    ),
+            ),
+
+            // Play overlay
+            if (!_initialized ||
+                (_videoController != null &&
+                    !VideoPlaybackManager.isPlaying(_videoController!)))
+              const Center(
+                child: Icon(
+                  Icons.play_circle_fill,
+                  size: 64.0,
+                  color: Colors.white,
+                ),
+              ),
+
+            // Initializing spinner
+            if (_isInitializing)
+              const Center(
+                child: SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              ),
+
+            // Maximize button at top-right
+            Positioned(
+              top: 8,
+              right: 8,
+              child: SafeArea(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: _openFullMedia,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.open_in_full, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // If useVisibilityDetector is enabled, wrap content and handle visibility changes.
+    if (widget.useVisibilityDetector) {
       return SizedBox(
-        height: widget.height,
+        height: height,
         width: double.infinity,
         child: VisibilityDetector(
           key: Key('post_media_${widget.post.id}'),
@@ -177,12 +300,12 @@ class _PostMediaState extends State<PostMedia>
             final visiblePct = info.visibleFraction;
             final controller = _videoController;
 
-            // Preload when becoming visible
+            // If enough visible and not initialized, try to init
             if (visiblePct > 0.4 && !_initialized && !_isInitializing) {
               _ensureControllerInitialized();
             }
 
-            // Pause when scrolled away
+            // If controller is playing and it becomes mostly invisible, pause it.
             if (controller != null &&
                 !_isDisposed &&
                 mounted &&
@@ -192,147 +315,13 @@ class _PostMediaState extends State<PostMedia>
               if (mounted) setState(() {});
             }
           },
-          child: GestureDetector(
-            onTap: () => Debouncer.instance.throttle(
-              '$toggleKeyPrefix${widget.post.id}',
-              toggleDuration,
-              _togglePlayPause,
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.zero,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (_initialized && _videoController != null)
-                    FittedBox(
-                      fit: boxFit,
-                      child: SizedBox(
-                        width: _videoController!.value.size.width.toDouble(),
-                        height: _videoController!.value.size.height.toDouble(),
-                        child: VideoPlayer(_videoController!),
-                      ),
-                    )
-                  else
-                    Container(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
-                      child: widget.post.thumbnailUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: widget.post.thumbnailUrl!,
-                              fit: boxFit,
-                              width: double.infinity,
-                              height: double.infinity,
-                            )
-                          : const Center(
-                              child: Icon(Icons.play_circle_outline),
-                            ),
-                    ),
-                  if (!_initialized ||
-                      (_videoController != null &&
-                          !VideoPlaybackManager.isPlaying(_videoController!)))
-                    const Center(
-                      child: Icon(
-                        Icons.play_circle_fill,
-                        size: 64.0,
-                        color: Colors.white,
-                      ),
-                    ),
-                  if (_isInitializing)
-                    const Center(
-                      child: SizedBox(
-                        width: 36,
-                        height: 36,
-                        child: CircularProgressIndicator(color: Colors.white),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    } else {
-      // Constrained mode for feeds/profile
-      return AspectRatio(
-        aspectRatio: 1.0,
-        child: VisibilityDetector(
-          key: Key('post_media_${widget.post.id}'),
-          onVisibilityChanged: (info) {
-            if (_isDisposed || !mounted) return;
-            final visiblePct = info.visibleFraction;
-            final controller = _videoController;
-
-            if (visiblePct > 0.4 && !_initialized && !_isInitializing) {
-              _ensureControllerInitialized();
-            }
-
-            if (controller != null &&
-                !_isDisposed &&
-                mounted &&
-                visiblePct < 0.2 &&
-                VideoPlaybackManager.isPlaying(controller)) {
-              VideoPlaybackManager.pause();
-              if (mounted) setState(() {});
-            }
-          },
-          child: GestureDetector(
-            onTap: () => Debouncer.instance.throttle(
-              '$toggleKeyPrefix${widget.post.id}',
-              toggleDuration,
-              _togglePlayPause,
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.zero,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (_initialized && _videoController != null)
-                    FittedBox(
-                      fit: boxFit,
-                      child: SizedBox(
-                        width: _videoController!.value.size.width.toDouble(),
-                        height: _videoController!.value.size.height.toDouble(),
-                        child: VideoPlayer(_videoController!),
-                      ),
-                    )
-                  else
-                    Container(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
-                      child: widget.post.thumbnailUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: widget.post.thumbnailUrl!,
-                              fit: boxFit,
-                              width: double.infinity,
-                              height: double.infinity,
-                            )
-                          : const Center(
-                              child: Icon(Icons.play_circle_outline),
-                            ),
-                    ),
-                  if (!_initialized ||
-                      (_videoController != null &&
-                          !VideoPlaybackManager.isPlaying(_videoController!)))
-                    const Center(
-                      child: Icon(
-                        Icons.play_circle_fill,
-                        size: 64.0,
-                        color: Colors.white,
-                      ),
-                    ),
-                  if (_isInitializing)
-                    const Center(
-                      child: SizedBox(
-                        width: 36,
-                        height: 36,
-                        child: CircularProgressIndicator(color: Colors.white),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
+          child: content,
         ),
       );
     }
+
+    // No visibility detection — just return the content sized
+    return SizedBox(height: height, width: double.infinity, child: content);
   }
 
   @override
@@ -342,6 +331,7 @@ class _PostMediaState extends State<PostMedia>
     _videoController = null;
     if (controller != null) {
       if (VideoPlaybackManager.isPlaying(controller)) {
+        // When disposing we don't want the onPause callback to trigger a setState on a disposed widget.
         VideoPlaybackManager.pause(invokeCallback: false);
       }
       _videoManager.releaseController(widget.post.id);

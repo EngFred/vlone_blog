@@ -32,7 +32,14 @@ class PostDetailsContent extends StatelessWidget {
               child: Text(post.content!),
             ),
           if (post.mediaUrl != null)
-            PostMedia(post: post, height: detailsMediaHeight),
+            // IMPORTANT: on the Post Details page we explicitly disable
+            // the visibility detector so scrolling through comments below
+            // won't pause the video.
+            PostMedia(
+              post: post,
+              height: detailsMediaHeight,
+              useVisibilityDetector: false, // <--- key change
+            ),
           PostActions(post: post, userId: userId, onCommentTap: onCommentTap),
           const Divider(),
         ],

@@ -1,6 +1,7 @@
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:vlone_blog_app/core/error/failures.dart';
+import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
@@ -82,9 +83,21 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           AppLogger.error('Logout failed: $friendlyMessage');
           emit(AuthError(friendlyMessage));
         },
-        (_) {
+        (_) async {
           AppLogger.info('Logout successful');
-          _cachedUser = null; // ✅ Clear the cache
+
+          // Cancel any pending debounced actions (important)
+          // so no delayed follow/like/navigation happens after logout
+          try {
+            Debouncer.instance.cancelAll();
+            AppLogger.info('Debouncer: canceled all pending actions on logout');
+          } catch (e) {
+            AppLogger.warning(
+              'Failed to cancel debouncer actions on logout: $e',
+            );
+          }
+
+          _cachedUser = null;
           emit(AuthUnauthenticated());
         },
       );

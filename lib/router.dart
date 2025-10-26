@@ -6,6 +6,7 @@ import 'package:vlone_blog_app/core/routes/slide_transition_page.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/create_post_page.dart';
+import 'package:vlone_blog_app/features/posts/presentation/pages/full_media_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/post_details_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/edit_profile_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
@@ -24,11 +25,13 @@ final GoRouter appRouter = GoRouter(
   routes: [
     GoRoute(
       path: Constants.loginRoute,
-      builder: (context, state) => const LoginPage(),
+      pageBuilder: (context, state) =>
+          SlideTransitionPage(key: state.pageKey, child: const LoginPage()),
     ),
     GoRoute(
       path: Constants.signupRoute,
-      builder: (context, state) => const SignupPage(),
+      pageBuilder: (context, state) =>
+          SlideTransitionPage(key: state.pageKey, child: const SignupPage()),
     ),
     GoRoute(
       path: Constants.notificationsRoute,
@@ -49,7 +52,6 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: Constants.createPostRoute,
-      // now no userId extraction
       pageBuilder: (context, state) {
         return SlideTransitionPage(
           key: state.pageKey,
@@ -71,14 +73,32 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(
-      path: Constants.followersRoute + '/:userId',
+      path: '/media',
+      pageBuilder: (context, state) {
+        final PostEntity? post = state.extra is PostEntity
+            ? state.extra as PostEntity
+            : null;
+        if (post == null) {
+          return SlideTransitionPage(
+            key: state.pageKey,
+            child: Scaffold(body: Center(child: Text('Media not found'))),
+          );
+        }
+        return SlideTransitionPage(
+          key: state.pageKey,
+          child: FullMediaPage(post: post),
+        );
+      },
+    ),
+    GoRoute(
+      path: '${Constants.followersRoute}/:userId',
       pageBuilder: (context, state) => SlideTransitionPage(
         key: state.pageKey,
         child: FollowersPage(userId: state.pathParameters['userId']!),
       ),
     ),
     GoRoute(
-      path: Constants.followingRoute + '/:userId',
+      path: '${Constants.followingRoute}/:userId',
       pageBuilder: (context, state) => SlideTransitionPage(
         key: state.pageKey,
         child: FollowingPage(userId: state.pathParameters['userId']!),
@@ -107,7 +127,6 @@ final GoRouter appRouter = GoRouter(
         GoRoute(
           path: '${Constants.profileRoute}/me',
           pageBuilder: (context, state) {
-            // Use AuthBloc (single source of truth)
             final authState = context.read<AuthBloc>().state;
             if (authState is AuthAuthenticated) {
               final currentUserId = authState.user.id;
@@ -138,7 +157,6 @@ final GoRouter appRouter = GoRouter(
             : null;
 
         if (currentUserId != null && currentUserId == userId) {
-          // Redirect to /profile/me to reuse that route
           WidgetsBinding.instance.addPostFrameCallback((_) {
             GoRouter.of(context).go('${Constants.profileRoute}/me');
           });
@@ -168,7 +186,6 @@ final GoRouter appRouter = GoRouter(
     );
   },
 
-  // redirect uses AuthBloc instead of Supabase client
   redirect: (context, state) async {
     AppLogger.info('Router redirect check for path: ${state.uri.path}');
 

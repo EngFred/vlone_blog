@@ -181,7 +181,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
           );
         });
       }
-      SnackbarUtils.showError(context, state.message);
+      // SnackbarUtils.showError(context, state.message);
     }
   }
 
@@ -211,7 +211,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
           );
         });
       }
-      SnackbarUtils.showError(context, state.message);
+      // SnackbarUtils.showError(context, state.message);
     }
   }
 

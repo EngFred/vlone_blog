@@ -12,7 +12,8 @@ class CommentsSection extends StatelessWidget {
   final void Function(CommentEntity) onReply;
   final bool scrollable;
   final bool showCountHeader;
-  final String currentUserId; // ✅ Added currentUserId
+  final String currentUserId;
+  final ScrollController? controller; // NEW: optional controller
 
   const CommentsSection({
     super.key,
@@ -20,12 +21,12 @@ class CommentsSection extends StatelessWidget {
     required this.onReply,
     this.scrollable = false,
     this.showCountHeader = true,
-    required this.currentUserId, // ✅ Required in constructor
+    required this.currentUserId,
+    this.controller,
   });
 
   Widget _buildHeader(BuildContext context) {
     final theme = Theme.of(context);
-    // Fallback text if count is null
     final countText = commentsCount != null
         ? 'Comments ($commentsCount)'
         : 'Comments';
@@ -56,10 +57,10 @@ class CommentsSection extends StatelessWidget {
 
     return BlocBuilder<CommentsBloc, CommentsState>(
       builder: (context, state) {
-        // --- Loading / Error / Empty states handling
         if (state is CommentsInitial || state is CommentsLoading) {
           if (scrollable) {
             return ListView(
+              controller: controller,
               padding: EdgeInsets.zero,
               children: [
                 headerWidget,
@@ -84,6 +85,22 @@ class CommentsSection extends StatelessWidget {
         }
 
         if (state is CommentsError) {
+          if (scrollable) {
+            return ListView(
+              controller: controller,
+              padding: EdgeInsets.zero,
+              children: [
+                headerWidget,
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 24.0,
+                  ),
+                  child: CustomErrorWidget(message: state.message),
+                ),
+              ],
+            );
+          }
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -108,53 +125,49 @@ class CommentsSection extends StatelessWidget {
             );
             if (scrollable) {
               return ListView(
+                controller: controller,
                 padding: EdgeInsets.zero,
                 children: [
-                  headerWidget, // Use the conditional widget
-                  Padding(
-                    padding: const EdgeInsets.only(top: 40.0),
-                    child: emptyWidget,
-                  ),
+                  headerWidget,
+                  const SizedBox(height: 40),
+                  emptyWidget,
                 ],
               );
             }
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                headerWidget,
-                Padding(
-                  padding: const EdgeInsets.only(top: 40.0),
-                  child: emptyWidget,
-                ),
-              ],
+              children: [headerWidget, const SizedBox(height: 40), emptyWidget],
             );
           }
-          // ----- SCROLLABLE MODE: build a single ListView
+
           if (scrollable) {
+            // When scrollable, we stitch header as first item (if present)
+            final baseIndexOffset = showCountHeader ? 1 : 0;
+            final totalItems = commentList.length + baseIndexOffset;
             return ListView.builder(
+              controller: controller,
               padding: EdgeInsets.zero,
-              // Adjust itemCount based on whether the header is shown
-              itemCount: commentList.length + (showCountHeader ? 1 : 0),
+              itemCount: totalItems,
               itemBuilder: (context, index) {
-                // Adjust index check based on whether the header is the first item
                 if (showCountHeader && index == 0) return headerWidget;
-                final commentIndex = showCountHeader ? index - 1 : index;
+                final commentIndex = index - baseIndexOffset;
                 final comment = commentList[commentIndex];
                 return CommentTile(
                   key: ValueKey(comment.id),
                   comment: comment,
                   onReply: onReply,
                   depth: 0,
-                  currentUserId: currentUserId, // ✅ Passed down
+                  currentUserId: currentUserId,
                 );
               },
             );
           }
-          // ----- NON-SCROLLABLE MODE
+
+          // NON-SCROLLABLE mode (embedded in column)
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              headerWidget, // Use the conditional widget
+              headerWidget,
               ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -167,7 +180,7 @@ class CommentsSection extends StatelessWidget {
                     comment: comment,
                     onReply: onReply,
                     depth: 0,
-                    currentUserId: currentUserId, // ✅ Passed down
+                    currentUserId: currentUserId,
                   );
                 },
               ),

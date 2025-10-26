@@ -15,7 +15,6 @@ import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 class ReelsPage extends StatefulWidget {
   final bool isVisible;
   const ReelsPage({super.key, this.isVisible = true});
-
   @override
   State<ReelsPage> createState() => _ReelsPageState();
 }
@@ -28,17 +27,14 @@ class _ReelsPageState extends State<ReelsPage>
   late PageController _pageController;
   int _currentPage = 0;
   bool _isPageChanging = false;
-
   @override
   bool get wantKeepAlive => true;
-
   @override
   void initState() {
     super.initState();
     AppLogger.info('Initializing ReelsPage');
     _pageController = PageController(initialPage: 0, viewportFraction: 1.0);
     WidgetsBinding.instance.addObserver(this);
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userId = context.read<AuthBloc>().cachedUser?.id;
       if (userId != null) {
@@ -81,6 +77,8 @@ class _ReelsPageState extends State<ReelsPage>
         'Starting real-time listeners from ReelsPage for user $userId',
       );
       context.read<PostsBloc>().add(StartRealtimeListenersEvent(userId));
+      context.read<LikesBloc>().add(StartLikesStreamEvent(userId));
+      context.read<FavoritesBloc>().add(StartFavoritesStreamEvent(userId));
       _realtimeStarted = true;
     }
   }
@@ -89,6 +87,8 @@ class _ReelsPageState extends State<ReelsPage>
     if (_realtimeStarted && mounted) {
       AppLogger.info('Stopping real-time listeners from ReelsPage');
       context.read<PostsBloc>().add(StopRealtimeListenersEvent());
+      context.read<LikesBloc>().add(StopLikesStreamEvent());
+      context.read<FavoritesBloc>().add(StopFavoritesStreamEvent());
       _realtimeStarted = false;
     }
   }
@@ -96,7 +96,6 @@ class _ReelsPageState extends State<ReelsPage>
   void _updatePosts(List<PostEntity> newPosts) {
     final oldIds = _posts.map((p) => p.id).toList();
     final newIds = newPosts.map((p) => p.id).toList();
-
     if (oldIds.length == newIds.length &&
         oldIds.every((id) => newIds.contains(id))) {
       if (!mounted) return;
@@ -112,7 +111,6 @@ class _ReelsPageState extends State<ReelsPage>
           ..clear()
           ..addAll(newPosts);
       });
-
       if (_posts.isNotEmpty && _pageController.hasClients) {
         _pageController.jumpToPage(0);
         _currentPage = 0;
@@ -132,28 +130,12 @@ class _ReelsPageState extends State<ReelsPage>
     });
   }
 
-  void _applyPostUpdate(
-    String postId, {
-    int? likesDelta,
-    bool? isLiked,
-    int? favoritesDelta,
-    bool? isFavorited,
-  }) {
+  void _applyPostUpdate(String postId, {bool? isLiked, bool? isFavorited}) {
     final index = _posts.indexWhere((p) => p.id == postId);
     if (index == -1 || !mounted) return;
     final old = _posts[index];
     final updated = old.copyWith(
-      likesCount:
-          (likesDelta != null ? (old.likesCount + likesDelta) : old.likesCount)
-              .clamp(0, double.infinity)
-              .toInt(),
       isLiked: isLiked ?? old.isLiked,
-      favoritesCount:
-          (favoritesDelta != null
-                  ? (old.favoritesCount + favoritesDelta)
-                  : old.favoritesCount)
-              .clamp(0, double.infinity)
-              .toInt(),
       isFavorited: isFavorited ?? old.isFavorited,
     );
     setState(() => _posts[index] = updated);
@@ -166,7 +148,6 @@ class _ReelsPageState extends State<ReelsPage>
     if (currentUserId == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-
     return Scaffold(
       body: MultiBlocListener(
         listeners: [
@@ -212,71 +193,59 @@ class _ReelsPageState extends State<ReelsPage>
                 }
               } else if (state is PostDeleted) {
                 final index = _posts.indexWhere((p) => p.id == state.postId);
-                if (index != -1 && mounted)
+                if (index != -1 && mounted) {
                   setState(() => _posts.removeAt(index));
+                }
               }
             },
           ),
           BlocListener<LikesBloc, LikesState>(
             listener: (context, state) {
-              if (state is LikeUpdated) {
-                final delta = state.isLiked ? 1 : -1;
-                _applyPostUpdate(
-                  state.postId,
-                  likesDelta: delta,
-                  isLiked: state.isLiked,
-                );
+              if (state is LikeSuccess) {
+                // Optimistic update
+                _applyPostUpdate(state.postId, isLiked: state.isLiked);
+              } else if (state is LikeUpdated) {
+                // Real-time update (eventual consistency)
+                _applyPostUpdate(state.postId, isLiked: state.isLiked);
               } else if (state is LikeError) {
-                final index = _posts.indexWhere((p) => p.id == state.postId);
-                if (index != -1 && mounted) {
-                  final old = _posts[index];
-                  setState(
-                    () => _posts[index] = old.copyWith(
-                      isLiked: state.previousState,
-                    ),
-                  );
-                  final correctedCount = state.previousState
-                      ? (old.likesCount + 1)
-                      : (old.likesCount - 1);
-                  setState(
-                    () => _posts[index] = _posts[index].copyWith(
-                      likesCount: correctedCount
-                          .clamp(0, double.infinity)
-                          .toInt(),
-                    ),
-                  );
+                AppLogger.error('Like error in ReelsPage: ${state.message}');
+                // Revert optimistic update on failure
+                if (state.shouldRevert) {
+                  _applyPostUpdate(state.postId, isLiked: state.previousState);
+                  // if (mounted) {
+                  //   SnackbarUtils.showError(
+                  //     context,
+                  //     'Failed to ${state.previousState ? 'unlike' : 'like'} reel.',
+                  //   );
+                  // }
                 }
               }
             },
           ),
           BlocListener<FavoritesBloc, FavoritesState>(
             listener: (context, state) {
-              if (state is FavoriteUpdated) {
-                final delta = state.isFavorited ? 1 : -1;
-                _applyPostUpdate(
-                  state.postId,
-                  favoritesDelta: delta,
-                  isFavorited: state.isFavorited,
-                );
+              if (state is FavoriteSuccess) {
+                // Optimistic update
+                _applyPostUpdate(state.postId, isFavorited: state.isFavorited);
+              } else if (state is FavoriteUpdated) {
+                // Real-time update (eventual consistency)
+                _applyPostUpdate(state.postId, isFavorited: state.isFavorited);
               } else if (state is FavoriteError) {
-                final index = _posts.indexWhere((p) => p.id == state.postId);
-                if (index != -1 && mounted) {
-                  final old = _posts[index];
-                  setState(
-                    () => _posts[index] = old.copyWith(
-                      isFavorited: state.previousState,
-                    ),
+                AppLogger.error(
+                  'Favorite error in ReelsPage: ${state.message}',
+                );
+                // Revert optimistic update on failure
+                if (state.shouldRevert) {
+                  _applyPostUpdate(
+                    state.postId,
+                    isFavorited: state.previousState,
                   );
-                  final correctedCount = state.previousState
-                      ? (old.favoritesCount + 1)
-                      : (old.favoritesCount - 1);
-                  setState(
-                    () => _posts[index] = _posts[index].copyWith(
-                      favoritesCount: correctedCount
-                          .clamp(0, double.infinity)
-                          .toInt(),
-                    ),
-                  );
+                  // if (mounted) {
+                  //   SnackbarUtils.showError(
+                  //     context,
+                  //     'Failed to ${state.previousState ? 'unfavorite' : 'favorite'} reel.',
+                  //   );
+                  // }
                 }
               }
             },
@@ -326,10 +295,10 @@ class _ReelsPageState extends State<ReelsPage>
                   },
                 );
               }
-
               final postsState = context.watch<PostsBloc>().state;
-              if (postsState is PostsLoading || postsState is PostsInitial)
+              if (postsState is PostsLoading || postsState is PostsInitial) {
                 return const LoadingIndicator();
+              }
               if (postsState is PostsError) {
                 return CustomErrorWidget(
                   message: postsState.message,

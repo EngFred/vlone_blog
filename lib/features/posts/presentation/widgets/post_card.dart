@@ -1,3 +1,4 @@
+// lib/features/posts/presentation/widgets/post_card.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
@@ -16,6 +17,8 @@ class PostCard extends StatefulWidget {
 }
 
 class _PostCardState extends State<PostCard> {
+  static const double _kMediaDefaultHeight = 420.0;
+
   @override
   Widget build(BuildContext context) {
     return BlocProvider.value(
@@ -37,7 +40,12 @@ class _PostCardState extends State<PostCard> {
                 child: Text(widget.post.content!),
               ),
             if (widget.post.mediaUrl != null) const SizedBox(height: 8),
-            if (widget.post.mediaUrl != null) PostMedia(post: widget.post),
+            if (widget.post.mediaUrl != null)
+              PostMedia(
+                post: widget.post,
+                // Apply default height for non-reels so images match videos
+                height: _kMediaDefaultHeight,
+              ),
             const SizedBox(height: 8),
             PostActions(post: widget.post, userId: widget.userId),
             const SizedBox(height: 8),
