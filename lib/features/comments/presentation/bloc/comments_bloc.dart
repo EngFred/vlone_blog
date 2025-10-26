@@ -85,8 +85,13 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
         emit(CommentsError(failure.message));
       },
       (_) {
-        AppLogger.info('Comment added successfully');
-        emit(CommentAdded(event.postId));
+        AppLogger.info('Comment added successfully. Stream will update UI.');
+        // --- FIX ---
+        // We no longer emit `CommentAdded` here.
+        // The state remains `CommentsLoaded` (or whatever it was).
+        // The real-time stream listener `_onRealtimeCommentReceived`
+        // will handle emitting the new `CommentsLoaded` state.
+        // This prevents the UI from flickering to an empty state.
       },
     );
   }

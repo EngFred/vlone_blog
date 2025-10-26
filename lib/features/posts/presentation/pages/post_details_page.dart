@@ -39,7 +39,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   @override
   void initState() {
     super.initState();
-    // _loadCurrentUserFromAuth(); // <-- REMOVED: This causes a race condition
 
     if (widget.post != null) {
       _post = widget.post!;
@@ -218,7 +217,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
-    // --- THIS IS THE FIX ---
     // Get the userId safely using a BlocSelector
     return BlocSelector<AuthBloc, AuthState, String?>(
       selector: (state) {
@@ -247,7 +245,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
             _subscribeToCommentsIfNeeded();
           }
         }
-        // --- End of logic ---
 
         // The rest of your original build method
         return WillPopScope(
