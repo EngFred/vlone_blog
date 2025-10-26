@@ -10,12 +10,11 @@ import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart'
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/reel_item.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
+import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 
 class ReelsPage extends StatefulWidget {
   final bool isVisible;
-  final String userId;
-
-  const ReelsPage({super.key, this.isVisible = true, required this.userId});
+  const ReelsPage({super.key, this.isVisible = true});
 
   @override
   State<ReelsPage> createState() => _ReelsPageState();
@@ -36,16 +35,26 @@ class _ReelsPageState extends State<ReelsPage>
   @override
   void initState() {
     super.initState();
-    AppLogger.info('Initializing ReelsPage for user: ${widget.userId}');
+    AppLogger.info('Initializing ReelsPage');
     _pageController = PageController(initialPage: 0, viewportFraction: 1.0);
-
     WidgetsBinding.instance.addObserver(this);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userId = context.read<AuthBloc>().cachedUser?.id;
+      if (userId != null) {
+        context.read<PostsBloc>().add(GetReelsEvent(userId));
+        _startRealtimeListeners(userId);
+      } else {
+        AppLogger.warning(
+          'ReelsPage: userId null at init; waiting for AuthBloc',
+        );
+      }
+    });
   }
 
   @override
-  void didUpdateWidget(ReelsPage oldWidget) {
+  void didUpdateWidget(covariant ReelsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-
     if (widget.isVisible != oldWidget.isVisible) {
       AppLogger.info('ReelsPage visibility changed: ${widget.isVisible}');
       if (!widget.isVisible) {
@@ -66,10 +75,12 @@ class _ReelsPageState extends State<ReelsPage>
     }
   }
 
-  void _startRealtimeListeners() {
+  void _startRealtimeListeners(String userId) {
     if (!_realtimeStarted && mounted) {
-      AppLogger.info('Starting real-time listeners from ReelsPage');
-      context.read<PostsBloc>().add(StartRealtimeListenersEvent(widget.userId));
+      AppLogger.info(
+        'Starting real-time listeners from ReelsPage for user $userId',
+      );
+      context.read<PostsBloc>().add(StartRealtimeListenersEvent(userId));
       _realtimeStarted = true;
     }
   }
@@ -111,18 +122,13 @@ class _ReelsPageState extends State<ReelsPage>
 
   void _onPageChanged(int index) {
     if (_isPageChanging) return;
-
     setState(() {
       _currentPage = index;
       _isPageChanging = true;
     });
-
     AppLogger.info('Reel page changed to index: $index');
-
     Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) {
-        setState(() => _isPageChanging = false);
-      }
+      if (mounted) setState(() => _isPageChanging = false);
     });
   }
 
@@ -135,7 +141,6 @@ class _ReelsPageState extends State<ReelsPage>
   }) {
     final index = _posts.indexWhere((p) => p.id == postId);
     if (index == -1 || !mounted) return;
-
     final old = _posts[index];
     final updated = old.copyWith(
       likesCount:
@@ -157,6 +162,10 @@ class _ReelsPageState extends State<ReelsPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final currentUserId = context.select((AuthBloc b) => b.cachedUser?.id);
+    if (currentUserId == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     return Scaffold(
       body: MultiBlocListener(
@@ -165,33 +174,20 @@ class _ReelsPageState extends State<ReelsPage>
             listener: (context, state) {
               if (state is ReelsLoaded) {
                 AppLogger.info(
-                  'Reels loaded with ${state.posts.length} posts for user: ${widget.userId}',
+                  'Reels loaded with ${state.posts.length} posts for user: $currentUserId',
                 );
                 if (mounted) {
                   _updatePosts(state.posts);
                   _hasLoadedOnce = true;
-
                   if (!_realtimeStarted && !state.isRealtimeActive) {
-                    _startRealtimeListeners();
+                    _startRealtimeListeners(currentUserId);
                   }
                 }
               } else if (state is PostCreated &&
                   state.post.mediaType == 'video') {
-                // Optimistically add the new video post (reel) to the UI immediately
-                AppLogger.info(
-                  'New video post created (from PostCreated state): ${state.post.id}',
-                );
-                if (mounted) {
-                  // Check if the post isn't already in the list (from real-time)
-                  final exists = _posts.any((p) => p.id == state.post.id);
-                  if (!exists) {
-                    setState(() {
-                      // Add the new video post to the top of the list
-                      _posts.insert(0, state.post);
-                    });
-                  }
-                  // Assuming SnackbarUtils is defined elsewhere and used for feedback
-                  // SnackbarUtils.showSuccess(context, 'Reel created successfully!');
+                final exists = _posts.any((p) => p.id == state.post.id);
+                if (!exists && mounted) {
+                  setState(() => _posts.insert(0, state.post));
                 }
               } else if (state is RealtimePostUpdate) {
                 final index = _posts.indexWhere((p) => p.id == state.postId);
@@ -216,11 +212,8 @@ class _ReelsPageState extends State<ReelsPage>
                 }
               } else if (state is PostDeleted) {
                 final index = _posts.indexWhere((p) => p.id == state.postId);
-                if (index != -1 && mounted) {
+                if (index != -1 && mounted)
                   setState(() => _posts.removeAt(index));
-                }
-              } else if (state is PostsError) {
-                AppLogger.error('PostsError in ReelsPage: ${state.message}');
               }
             },
           ),
@@ -291,23 +284,17 @@ class _ReelsPageState extends State<ReelsPage>
         ],
         child: RefreshIndicator(
           onRefresh: () async {
-            AppLogger.info('Refreshing reels for user: ${widget.userId}');
-
+            AppLogger.info('Refreshing reels for user: $currentUserId');
             _stopRealtimeListeners();
-
             final bloc = context.read<PostsBloc>();
-            bloc.add(GetReelsEvent(widget.userId));
-
+            bloc.add(GetReelsEvent(currentUserId));
             await bloc.stream.firstWhere(
               (state) => state is ReelsLoaded || state is PostsError,
             );
-
-            _startRealtimeListeners();
+            _startRealtimeListeners(currentUserId);
           },
           child: Builder(
             builder: (context) {
-              final postsState = context.watch<PostsBloc>().state;
-
               if (_hasLoadedOnce) {
                 if (_posts.isEmpty) {
                   return EmptyStateWidget(
@@ -315,11 +302,10 @@ class _ReelsPageState extends State<ReelsPage>
                     icon: Icons.video_library,
                     actionText: 'Check Again',
                     onRetry: () => context.read<PostsBloc>().add(
-                      GetReelsEvent(widget.userId),
+                      GetReelsEvent(currentUserId),
                     ),
                   );
                 }
-
                 return PageView.builder(
                   controller: _pageController,
                   scrollDirection: Axis.vertical,
@@ -329,11 +315,10 @@ class _ReelsPageState extends State<ReelsPage>
                   itemBuilder: (context, index) {
                     final post = _posts[index];
                     final isCurrentPage = index == _currentPage;
-
                     return ReelItem(
                       key: ValueKey(post.id),
                       post: post,
-                      userId: widget.userId,
+                      userId: currentUserId,
                       isActive: isCurrentPage && widget.isVisible,
                       isPrevious: index == _currentPage - 1,
                       isNext: index == _currentPage + 1,
@@ -342,19 +327,17 @@ class _ReelsPageState extends State<ReelsPage>
                 );
               }
 
-              if (postsState is PostsLoading || postsState is PostsInitial) {
+              final postsState = context.watch<PostsBloc>().state;
+              if (postsState is PostsLoading || postsState is PostsInitial)
                 return const LoadingIndicator();
-              }
-
               if (postsState is PostsError) {
                 return CustomErrorWidget(
                   message: postsState.message,
                   onRetry: () => context.read<PostsBloc>().add(
-                    GetReelsEvent(widget.userId),
+                    GetReelsEvent(currentUserId),
                   ),
                 );
               }
-
               return const LoadingIndicator();
             },
           ),

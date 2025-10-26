@@ -184,13 +184,15 @@ class MyApp extends StatelessWidget {
                 AppLogger.info(
                   'AuthBloc: User authenticated, navigating to main page',
                 );
+                // Remove splash once we confirm auth and user is available
+                FlutterNativeSplash.remove();
                 appRouter.go(Constants.feedRoute);
               } else if (state is AuthUnauthenticated) {
                 AppLogger.info(
                   'AuthBloc: User unauthenticated, navigating to login',
                 );
-                appRouter.go(Constants.loginRoute);
                 FlutterNativeSplash.remove();
+                appRouter.go(Constants.loginRoute);
               }
             },
             child: child ?? const SizedBox.shrink(),

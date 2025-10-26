@@ -20,7 +20,7 @@ class SlideTransitionPage extends CustomTransitionPage<void> {
           return SlideTransition(position: offsetAnimation, child: child);
         },
         // ✅ Set transition duration
-        transitionDuration: const Duration(milliseconds: 500),
-        reverseTransitionDuration: const Duration(milliseconds: 500),
+        transitionDuration: const Duration(milliseconds: 300),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
       );
 }

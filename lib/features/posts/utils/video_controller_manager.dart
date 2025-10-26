@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 
 /// Caches `VideoPlayerController` instances and reference counts them.
 /// Adds a simple LRU eviction to bound memory usage on low-end devices.
+/// Also dedupes concurrent initializations for the same post id.
 class VideoControllerManager {
   VideoControllerManager._({this.maxControllers = 6});
   static VideoControllerManager? _instance;
@@ -22,6 +23,9 @@ class VideoControllerManager {
   // LRU ordering: front = least recently used, back = most recently used
   final List<String> _lru = [];
 
+  // Ongoing initialization futures to dedupe concurrent getController calls
+  final Map<String, Future<VideoPlayerController>> _ongoingInits = {};
+
   /// Returns a controller for [postId], downloading/caching the [url] if needed.
   /// The returned controller is reference-counted; call [releaseController] when done.
   Future<VideoPlayerController> getController(String postId, String url) async {
@@ -32,20 +36,49 @@ class VideoControllerManager {
       return _controllers[postId]!;
     }
 
+    // If an initialization is already in progress for this post, return the same Future
+    if (_ongoingInits.containsKey(postId)) {
+      try {
+        final ctrl = await _ongoingInits[postId]!;
+        // ensure we bump refcount if returned successfully
+        _refCounts[postId] = (_refCounts[postId] ?? 0) + 1;
+        _touchLru(postId);
+        return ctrl;
+      } catch (e) {
+        // If the ongoing init failed, remove it and fall through to attempt again
+        _ongoingInits.remove(postId);
+      }
+    }
+
     // Evict least recently used controllers with refCount == 0 until we have space.
     await _evictIfNeeded();
 
-    // Download or reuse cached file
+    // Start initialization and store the future to dedupe
+    final initFuture = _initializeController(postId, url);
+    _ongoingInits[postId] = initFuture;
+
+    try {
+      final controller = await initFuture;
+      // Register controller and set ref count
+      _controllers[postId] = controller;
+      _refCounts[postId] = (_refCounts[postId] ?? 0) + 1;
+      _touchLru(postId);
+      return controller;
+    } finally {
+      _ongoingInits.remove(postId);
+    }
+  }
+
+  Future<VideoPlayerController> _initializeController(
+    String postId,
+    String url,
+  ) async {
+    // Download or reuse cached file (may throw - caller should handle)
     final File file = await DefaultCacheManager().getSingleFile(url);
 
     final controller = VideoPlayerController.file(file);
     await controller.initialize();
     controller.setLooping(true);
-
-    _controllers[postId] = controller;
-    _refCounts[postId] = 1;
-    _touchLru(postId);
-
     return controller;
   }
 
@@ -78,6 +111,9 @@ class VideoControllerManager {
     _controllers.clear();
     _refCounts.clear();
     _lru.clear();
+    // Cancel any ongoing inits by just clearing references — the underlying futures
+    // will still complete, but we won't retain or reuse their controllers.
+    _ongoingInits.clear();
   }
 
   // --- LRU helpers ---
@@ -101,7 +137,7 @@ class VideoControllerManager {
       );
 
       if (candidate.isEmpty) {
-        // No zero-ref candidates — as a last resort, evict the absolute least used controller (might be risky)
+        // No zero-ref candidates — as a last resort, evict the absolute least used controller
         final fallback = _lru.isNotEmpty ? _lru.first : null;
         if (fallback == null) break; // nothing to evict
         try {
@@ -110,7 +146,6 @@ class VideoControllerManager {
         _controllers.remove(fallback);
         _refCounts.remove(fallback);
         _removeFromLru(fallback);
-        // after eviction loop will check again
       } else {
         // Dispose candidate and remove
         try {

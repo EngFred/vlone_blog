@@ -1,7 +1,9 @@
+// lib/features/posts/presentation/widgets/post_media.dart
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:video_player/video_player.dart';
+import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
@@ -25,6 +27,7 @@ class _PostMediaState extends State<PostMedia>
     with AutomaticKeepAliveClientMixin {
   VideoPlayerController? _videoController;
   bool _initialized = false;
+  bool _isInitializing = false; // NEW: Prevent concurrent inits
   final VideoControllerManager _videoManager = VideoControllerManager();
   bool _isDisposed = false;
 
@@ -34,15 +37,23 @@ class _PostMediaState extends State<PostMedia>
   Future<void> _ensureControllerInitialized() async {
     if (_isDisposed || !mounted) return;
     if (_videoController != null && _initialized) return;
+    if (_isInitializing) return; // prevent duplicate attempts
+
+    _isInitializing = true;
     try {
       final controller = await _videoManager.getController(
         widget.post.id,
         widget.post.mediaUrl!,
       );
+
       if (_isDisposed || !mounted) {
-        _videoManager.releaseController(widget.post.id);
+        // If widget unmounted, release the controller we just got
+        try {
+          _videoManager.releaseController(widget.post.id);
+        } catch (_) {}
         return;
       }
+
       if (mounted) {
         setState(() {
           _videoController = controller;
@@ -50,16 +61,26 @@ class _PostMediaState extends State<PostMedia>
         });
       }
     } catch (e) {
-      // Ignore; fallback to thumbnail
+      // Init failed - swallow, we will stay on thumbnail
+    } finally {
+      _isInitializing = false;
+      if (mounted)
+        setState(() {}); // reflect new state if needed (e.g., hide spinner)
     }
   }
 
   void _togglePlayPause() {
     if (_isDisposed || !mounted) return;
+
+    // If initialization is in progress, ignore toggles.
+    if (_isInitializing) return;
+
     if (_videoController == null || !_initialized) {
-      // Initialize on first tap for feeds/profile
+      // Initialize on first tap for feeds/profile.
+      // We run initialization once (guarded by _isInitializing).
       _ensureControllerInitialized().then((_) {
-        if (_videoController != null && mounted) {
+        if (_videoController != null && mounted && !_isDisposed) {
+          // Once initialized, play immediately
           VideoPlaybackManager.play(_videoController!, () {
             if (mounted && !_isDisposed) setState(() {});
           });
@@ -141,6 +162,10 @@ class _PostMediaState extends State<PostMedia>
     final bool isFixedHeight = widget.height != null;
     final boxFit = _getBoxFit();
 
+    // use a short leading-edge throttle so taps are immediate but rapid taps ignored
+    const toggleKeyPrefix = 'toggle_play_';
+    const toggleDuration = Duration(milliseconds: 300);
+
     if (isFixedHeight) {
       return SizedBox(
         height: widget.height,
@@ -153,7 +178,7 @@ class _PostMediaState extends State<PostMedia>
             final controller = _videoController;
 
             // Preload when becoming visible
-            if (visiblePct > 0.4 && !_initialized) {
+            if (visiblePct > 0.4 && !_initialized && !_isInitializing) {
               _ensureControllerInitialized();
             }
 
@@ -166,12 +191,13 @@ class _PostMediaState extends State<PostMedia>
               VideoPlaybackManager.pause();
               if (mounted) setState(() {});
             }
-
-            //For reels page, autoplay is NOT handled here
-            // It's handled by ReelVideoPlayer instead
           },
           child: GestureDetector(
-            onTap: _togglePlayPause,
+            onTap: () => Debouncer.instance.throttle(
+              '$toggleKeyPrefix${widget.post.id}',
+              toggleDuration,
+              _togglePlayPause,
+            ),
             child: ClipRRect(
               borderRadius: BorderRadius.zero,
               child: Stack(
@@ -208,6 +234,14 @@ class _PostMediaState extends State<PostMedia>
                         Icons.play_circle_fill,
                         size: 64.0,
                         color: Colors.white,
+                      ),
+                    ),
+                  if (_isInitializing)
+                    const Center(
+                      child: SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: CircularProgressIndicator(color: Colors.white),
                       ),
                     ),
                 ],
@@ -227,7 +261,7 @@ class _PostMediaState extends State<PostMedia>
             final visiblePct = info.visibleFraction;
             final controller = _videoController;
 
-            if (visiblePct > 0.4 && !_initialized) {
+            if (visiblePct > 0.4 && !_initialized && !_isInitializing) {
               _ensureControllerInitialized();
             }
 
@@ -241,7 +275,11 @@ class _PostMediaState extends State<PostMedia>
             }
           },
           child: GestureDetector(
-            onTap: _togglePlayPause,
+            onTap: () => Debouncer.instance.throttle(
+              '$toggleKeyPrefix${widget.post.id}',
+              toggleDuration,
+              _togglePlayPause,
+            ),
             child: ClipRRect(
               borderRadius: BorderRadius.zero,
               child: Stack(
@@ -278,6 +316,14 @@ class _PostMediaState extends State<PostMedia>
                         Icons.play_circle_fill,
                         size: 64.0,
                         color: Colors.white,
+                      ),
+                    ),
+                  if (_isInitializing)
+                    const Center(
+                      child: SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: CircularProgressIndicator(color: Colors.white),
                       ),
                     ),
                 ],

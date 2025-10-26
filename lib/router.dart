@@ -1,11 +1,7 @@
-// ⛔ Remove the Cupertino import
-// import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
-import 'package:vlone_blog_app/core/di/injection_container.dart';
-// ✅ Import your new custom transition
 import 'package:vlone_blog_app/core/routes/slide_transition_page.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
@@ -21,6 +17,7 @@ import 'package:vlone_blog_app/features/followers/presentation/pages/followers_p
 import 'package:vlone_blog_app/features/followers/presentation/pages/following_page.dart';
 import 'package:vlone_blog_app/features/users/presentation/pages/users_page.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/pages/notifications_page.dart';
+import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: Constants.loginRoute,
@@ -35,7 +32,6 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: Constants.notificationsRoute,
-      // ✅ Use custom slide animation
       pageBuilder: (context, state) => SlideTransitionPage(
         key: state.pageKey,
         child: const NotificationsPage(),
@@ -43,7 +39,6 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '${Constants.profileRoute}/:userId/edit',
-      // ✅ Use custom slide animation
       pageBuilder: (context, state) {
         final userId = state.pathParameters['userId']!;
         return SlideTransitionPage(
@@ -54,18 +49,16 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: Constants.createPostRoute,
-      // ✅ Use custom slide animation
+      // now no userId extraction
       pageBuilder: (context, state) {
-        final userId = state.pathParameters['userId']!;
         return SlideTransitionPage(
           key: state.pageKey,
-          child: CreatePostPage(userId: userId),
+          child: const CreatePostPage(),
         );
       },
     ),
     GoRoute(
       path: '${Constants.postDetailsRoute}/:postId',
-      // ✅ Use custom slide animation
       pageBuilder: (context, state) {
         final postId = state.pathParameters['postId']!;
         final PostEntity? extraPost = state.extra is PostEntity
@@ -79,7 +72,6 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: Constants.followersRoute + '/:userId',
-      // ✅ Use custom slide animation
       pageBuilder: (context, state) => SlideTransitionPage(
         key: state.pageKey,
         child: FollowersPage(userId: state.pathParameters['userId']!),
@@ -87,7 +79,6 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: Constants.followingRoute + '/:userId',
-      // ✅ Use custom slide animation
       pageBuilder: (context, state) => SlideTransitionPage(
         key: state.pageKey,
         child: FollowingPage(userId: state.pathParameters['userId']!),
@@ -100,7 +91,6 @@ final GoRouter appRouter = GoRouter(
       routes: [
         GoRoute(
           path: Constants.feedRoute,
-          // Fades are good for shell routes
           pageBuilder: (context, state) =>
               const NoTransitionPage(child: SizedBox.shrink()),
         ),
@@ -117,10 +107,15 @@ final GoRouter appRouter = GoRouter(
         GoRoute(
           path: '${Constants.profileRoute}/me',
           pageBuilder: (context, state) {
-            final supabase = sl<SupabaseClient>();
-            final currentUserId = supabase.auth.currentUser?.id;
-            if (currentUserId == null) {
-              AppLogger.error('No current user found for profile/me route');
+            // Use AuthBloc (single source of truth)
+            final authState = context.read<AuthBloc>().state;
+            if (authState is AuthAuthenticated) {
+              final currentUserId = authState.user.id;
+              return NoTransitionPage(
+                child: ProfilePage(userId: currentUserId),
+              );
+            } else {
+              AppLogger.error('No authenticated user for profile/me route');
               return const NoTransitionPage(
                 child: Scaffold(
                   body: Center(
@@ -129,20 +124,21 @@ final GoRouter appRouter = GoRouter(
                 ),
               );
             }
-            return NoTransitionPage(child: ProfilePage(userId: currentUserId));
           },
         ),
       ],
     ),
     GoRoute(
       path: '${Constants.profileRoute}/:userId',
-      // ✅ Use custom slide animation
       pageBuilder: (context, state) {
         final userId = state.pathParameters['userId']!;
-        final supabase = sl<SupabaseClient>();
-        final currentUserId = supabase.auth.currentUser?.id;
+        final authState = context.read<AuthBloc>().state;
+        final currentUserId = authState is AuthAuthenticated
+            ? authState.user.id
+            : null;
 
         if (currentUserId != null && currentUserId == userId) {
+          // Redirect to /profile/me to reuse that route
           WidgetsBinding.instance.addPostFrameCallback((_) {
             GoRouter.of(context).go('${Constants.profileRoute}/me');
           });
@@ -171,22 +167,26 @@ final GoRouter appRouter = GoRouter(
       ),
     );
   },
+
+  // redirect uses AuthBloc instead of Supabase client
   redirect: (context, state) async {
     AppLogger.info('Router redirect check for path: ${state.uri.path}');
-    final supabase = sl<SupabaseClient>();
-    final session = supabase.auth.currentSession;
-    final isLoggedIn = session != null;
+
+    final authState = context.read<AuthBloc>().state;
+    final isLoggedIn = authState is AuthAuthenticated;
     final isAuthRoute =
         state.uri.path == Constants.loginRoute ||
         state.uri.path == Constants.signupRoute;
 
     if (!isLoggedIn && !isAuthRoute) {
-      AppLogger.warning('No session found, redirecting to login');
+      AppLogger.warning(
+        'No auth session found (AuthBloc), redirecting to login',
+      );
       return Constants.loginRoute;
     }
 
     if (isLoggedIn && isAuthRoute) {
-      AppLogger.info('User has valid session, redirecting to feed');
+      AppLogger.info('User authenticated (AuthBloc), redirecting to feed');
       return Constants.feedRoute;
     }
 

@@ -1,4 +1,4 @@
-import java.util.Properties 
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -48,14 +48,15 @@ android {
 
     buildTypes {
         release {
-            // ✅ Use debug signing config temporarily for testing
-            signingConfig = signingConfigs.getByName("debug")
+            //Commented out debug signing config
+            // signingConfig = signingConfigs.getByName("debug")
 
-            // Commented out release signing config
-            // signingConfig = signingConfigs.getByName("release")
+            //Uncommented release signing config
+            signingConfig = signingConfigs.getByName("release")
 
-            // isMinifyEnabled = false
-            // isShrinkResources = false
+            //Uncommented and set to true for release optimization
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
         // Debug build type remains unchanged
     }

@@ -14,11 +14,11 @@ import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bl
 import 'package:vlone_blog_app/features/posts/presentation/widgets/feed_list.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/notification_icon_with_badge.dart';
+import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/user_greeting_title.dart';
 
 class FeedPage extends StatefulWidget {
-  final String userId;
-  const FeedPage({super.key, required this.userId});
+  const FeedPage({super.key});
 
   @override
   State<FeedPage> createState() => _FeedPageState();
@@ -28,8 +28,6 @@ class _FeedPageState extends State<FeedPage>
     with AutomaticKeepAliveClientMixin {
   final List<PostEntity> _posts = [];
   bool _realtimeStarted = false;
-
-  // track notifications subscription dispatch so we don't dispatch repeatedly
   bool _notificationsSubscribed = false;
 
   @override
@@ -38,9 +36,22 @@ class _FeedPageState extends State<FeedPage>
   @override
   void initState() {
     super.initState();
-    AppLogger.info('Initializing FeedPage for user: ${widget.userId}');
-    _startRealtimeListeners();
-    _subscribeNotifications();
+    AppLogger.info('Initializing FeedPage');
+    // Defer start until after first frame so AuthBloc can be read safely:
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userId = context.read<AuthBloc>().cachedUser?.id;
+      if (userId != null) {
+        _startRealtimeListeners(userId);
+        _subscribeNotifications();
+        // Trigger initial feed load if posts bloc is idle
+        context.read<PostsBloc>().add(GetFeedEvent(userId));
+      } else {
+        AppLogger.warning(
+          'FeedPage: userId null at init; waiting for AuthBloc',
+        );
+        // Optionally listen to AuthBloc changes (if you want)
+      }
+    });
   }
 
   void _subscribeNotifications() {
@@ -60,10 +71,12 @@ class _FeedPageState extends State<FeedPage>
     }
   }
 
-  void _startRealtimeListeners() {
+  void _startRealtimeListeners(String userId) {
     if (!_realtimeStarted && mounted) {
-      AppLogger.info('Starting real-time listeners from FeedPage');
-      context.read<PostsBloc>().add(StartRealtimeListenersEvent(widget.userId));
+      AppLogger.info(
+        'Starting real-time listeners from FeedPage for user $userId',
+      );
+      context.read<PostsBloc>().add(StartRealtimeListenersEvent(userId));
       _realtimeStarted = true;
     }
   }
@@ -78,16 +91,13 @@ class _FeedPageState extends State<FeedPage>
 
   void _updatePosts(List<PostEntity> newPosts) {
     if (!mounted) return;
-
     final oldIds = _posts.map((p) => p.id).toSet();
     final newIds = newPosts.map((p) => p.id).toSet();
 
     if (oldIds.length == newIds.length && oldIds.containsAll(newIds)) {
       setState(() {
         for (int i = 0; i < newPosts.length; i++) {
-          if (_posts[i] != newPosts[i]) {
-            _posts[i] = newPosts[i];
-          }
+          if (_posts[i] != newPosts[i]) _posts[i] = newPosts[i];
         }
       });
     } else {
@@ -134,6 +144,14 @@ class _FeedPageState extends State<FeedPage>
   Widget build(BuildContext context) {
     super.build(context);
 
+    // Read userId from AuthBloc reactively in build
+    final currentUserId = context.select((AuthBloc b) => b.cachedUser?.id);
+
+    if (currentUserId == null) {
+      // Waiting for auth resolution
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const UserGreetingTitle(),
@@ -173,25 +191,18 @@ class _FeedPageState extends State<FeedPage>
             listener: (context, state) {
               if (state is FeedLoaded) {
                 AppLogger.info(
-                  'Feed loaded with ${state.posts.length} posts for user: ${widget.userId}',
+                  'Feed loaded with ${state.posts.length} posts for user: $currentUserId',
                 );
                 _updatePosts(state.posts);
               } else if (state is PostCreated) {
-                AppLogger.info(
-                  'New post created (from PostCreated state): ${state.post.id}',
-                );
-                if (mounted) {
-                  final exists = _posts.any((p) => p.id == state.post.id);
-                  if (!exists) {
-                    setState(() {
-                      _posts.insert(0, state.post);
-                    });
-                  }
-                  SnackbarUtils.showSuccess(
-                    context,
-                    'Post created successfully!',
-                  );
+                final exists = _posts.any((p) => p.id == state.post.id);
+                if (!exists && mounted) {
+                  setState(() => _posts.insert(0, state.post));
                 }
+                SnackbarUtils.showSuccess(
+                  context,
+                  'Post created successfully!',
+                );
               } else if (state is RealtimePostUpdate) {
                 final index = _posts.indexWhere((p) => p.id == state.postId);
                 if (index != -1 && mounted) {
@@ -215,19 +226,11 @@ class _FeedPageState extends State<FeedPage>
                 }
               } else if (state is PostDeleted) {
                 final index = _posts.indexWhere((p) => p.id == state.postId);
-                if (index != -1 && mounted) {
+                if (index != -1 && mounted)
                   setState(() => _posts.removeAt(index));
-                }
               } else if (state is PostsError) {
-                if (!state.message.contains('update action') &&
-                    !state.message.contains('like') &&
-                    !state.message.contains('favorite') &&
-                    !state.message.contains('share')) {
-                  if (mounted) {
-                    SnackbarUtils.showError(context, state.message);
-                  }
-                }
                 AppLogger.error('PostsError in FeedPage: ${state.message}');
+                if (mounted) SnackbarUtils.showError(context, state.message);
               }
             },
           ),
@@ -304,28 +307,22 @@ class _FeedPageState extends State<FeedPage>
         ],
         child: RefreshIndicator(
           onRefresh: () async {
-            AppLogger.info('Refreshing feed for user: ${widget.userId}');
+            AppLogger.info('Refreshing feed for user: $currentUserId');
             _stopRealtimeListeners();
-
             final bloc = context.read<PostsBloc>();
-            bloc.add(GetFeedEvent(widget.userId));
-
+            bloc.add(GetFeedEvent(currentUserId));
             await bloc.stream.firstWhere(
               (state) => state is FeedLoaded || state is PostsError,
             );
-
-            _startRealtimeListeners();
+            _startRealtimeListeners(currentUserId);
           },
           child: Builder(
             builder: (context) {
-              final postsState = context.watch<PostsBloc>().state;
-
-              // ✅ FIX: Show posts if loaded, regardless of current state
               if (_posts.isNotEmpty) {
-                return FeedList(posts: _posts, userId: widget.userId);
+                return FeedList(posts: _posts, userId: currentUserId);
               }
 
-              // Initial load states
+              final postsState = context.watch<PostsBloc>().state;
               if (postsState is PostsLoading || postsState is PostsInitial) {
                 return const LoadingIndicator();
               }
@@ -337,14 +334,14 @@ class _FeedPageState extends State<FeedPage>
                     icon: Icons.post_add,
                   );
                 }
-                return FeedList(posts: postsState.posts, userId: widget.userId);
+                return FeedList(posts: postsState.posts, userId: currentUserId);
               }
 
               if (postsState is PostsError) {
                 return CustomErrorWidget(
                   message: postsState.message,
                   onRetry: () => context.read<PostsBloc>().add(
-                    GetFeedEvent(widget.userId),
+                    GetFeedEvent(currentUserId),
                   ),
                 );
               }
@@ -355,9 +352,7 @@ class _FeedPageState extends State<FeedPage>
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push(
-          Constants.createPostRoute.replaceAll(':userId', widget.userId),
-        ),
+        onPressed: () => context.push(Constants.createPostRoute),
         child: const Icon(Icons.add),
       ),
     );

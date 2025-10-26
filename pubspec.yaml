@@ -37,6 +37,7 @@ dependencies:
   timeago: ^3.7.1
   image_cropper: ^11.0.0
   video_trimmer: ^5.0.0
+  flutter_launcher_icons: ^0.14.4
 
 dev_dependencies:
   flutter_test:
@@ -46,3 +47,16 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+flutter_launcher_icons:
+  image_path: "assets/logo.png"
+
+  android: true
+  ios: true
+
+  # Optional: For Android, if your logo is not rectangular, you can define
+  # a separate adaptive icon (recommended for modern Android).
+  # Use a background color and a foreground image (your logo).
+  # The background must be a color or a path to a drawable.
+  adaptive_icon_background: "#FFFFFF" # Use the same white background as your splash
+  adaptive_icon_foreground: "assets/logo.png"

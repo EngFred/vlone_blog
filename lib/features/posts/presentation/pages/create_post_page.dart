@@ -1,15 +1,14 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/media_upload_widget.dart';
+import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 
 class CreatePostPage extends StatefulWidget {
-  final String userId;
-  const CreatePostPage({super.key, required this.userId});
+  const CreatePostPage({super.key});
 
   @override
   State<CreatePostPage> createState() => _CreatePostPageState();
@@ -57,8 +56,9 @@ class _CreatePostPageState extends State<CreatePostPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // eliminating the need for the AuthBloc selector and the complex loading check.
-    final userId = widget.userId;
+
+    // Read user id from AuthBloc reactively
+    final currentUserId = context.select((AuthBloc b) => b.cachedUser?.id);
 
     return Scaffold(
       appBar: AppBar(
@@ -77,12 +77,15 @@ class _CreatePostPageState extends State<CreatePostPage> {
               return Padding(
                 padding: const EdgeInsets.only(right: 12.0),
                 child: FilledButton(
-                  onPressed: _isPostButtonEnabled && !isLoading
+                  onPressed:
+                      (currentUserId != null &&
+                          _isPostButtonEnabled &&
+                          !isLoading)
                       ? () {
-                          // Use the userId from the widget property
+                          // Use userId from AuthBloc
                           context.read<PostsBloc>().add(
                             CreatePostEvent(
-                              userId: userId,
+                              userId: currentUserId,
                               content: _contentController.text.trim().isEmpty
                                   ? null
                                   : _contentController.text.trim(),
@@ -111,9 +114,8 @@ class _CreatePostPageState extends State<CreatePostPage> {
       body: BlocListener<PostsBloc, PostsState>(
         listener: (context, state) {
           if (state is PostCreated) {
-            // This listener now fires on the global bloc,
-            // and pops the page as expected.
-            context.pop();
+            // pop when created
+            if (context.mounted) context.pop();
           } else if (state is PostsError) {
             SnackbarUtils.showError(context, state.message);
           }

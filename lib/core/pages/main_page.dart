@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
-import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/reels_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:vlone_blog_app/features/users/presentation/pages/users_page.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
+import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -24,85 +23,54 @@ class _MainPageState extends State<MainPage> {
   String? _userId;
   int _selectedIndex = 0;
   bool _initializedPages = false;
-  bool _locationSynced = false;
   final Set<int> _loadedTabs = {};
 
   @override
   void initState() {
     super.initState();
-    AppLogger.info('Initializing MainPage');
-    _loadCurrentUser();
+    AppLogger.info('Initializing MainPage (now auth-driven)');
+    // no direct supabase call here. We will wait for AuthBloc to provide the user.
   }
 
-  /// ✅ OPTIMIZED: Get userId directly from Supabase session
-  /// No need to fetch profile again - AuthBloc already did that
-  Future<void> _loadCurrentUser() async {
-    AppLogger.info('Loading current user for MainPage');
-    try {
-      final supabase = sl<SupabaseClient>();
-      final sessionUserId = supabase.auth.currentUser?.id;
-      if (sessionUserId == null) {
-        AppLogger.error('No user session found in MainPage');
-        FlutterNativeSplash.remove();
-        if (context.mounted) context.go(Constants.loginRoute);
-        return;
-      }
-      AppLogger.info('Current user loaded from session: $sessionUserId');
-      if (mounted) {
-        setState(() => _userId = sessionUserId);
-        _initializedPages = true;
+  void _onAuthUpdated(String? userId) {
+    if (userId == null) return;
+    if (_userId == userId && _initializedPages) return;
 
-        // Wait for first frame, then sync location
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _syncSelectedIndexWithLocation();
-            // Load default tab (feed) immediately
-            _dispatchLoadForIndex(_selectedIndex);
-          }
-        });
-        FlutterNativeSplash.remove();
-      }
-    } catch (e, stackTrace) {
-      AppLogger.error(
-        'Unexpected error loading user: $e',
-        error: e,
-        stackTrace: stackTrace,
-      );
-      FlutterNativeSplash.remove();
-      if (context.mounted) context.go(Constants.loginRoute);
-    }
+    setState(() {
+      _userId = userId;
+      _initializedPages = true;
+    });
+
+    // sync location and load the default tab once the first frame is available
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncSelectedIndexWithLocation();
+      _dispatchLoadForIndex(_selectedIndex);
+      FlutterNativeSplash.remove(); // in case it wasn't removed yet
+    });
   }
 
   int _calculateSelectedIndexFromLocation(String location) {
-    // Check for /profile/me route (bottom nav profile)
     if (location == '${Constants.profileRoute}/me') return 3;
     if (location == Constants.usersRoute) return 2;
     if (location == Constants.reelsRoute) return 1;
     return 0;
   }
 
-  /// Sync selected index with current router location
   void _syncSelectedIndexWithLocation() {
     try {
       final location = GoRouterState.of(context).uri.path;
       final idx = _calculateSelectedIndexFromLocation(location);
       if (mounted && idx != _selectedIndex) {
         setState(() => _selectedIndex = idx);
-        _locationSynced = true;
       }
     } catch (e) {
       AppLogger.warning('Failed to sync location: $e');
-      _locationSynced = true;
     }
   }
 
-  /// Load data for the provided tab index.
-  /// IMPORTANT: For profile (index 3) we ALWAYS refresh header, realtime, and posts.
   void _dispatchLoadForIndex(int index) {
     if (_userId == null) return;
-
     AppLogger.info('Loading data for tab index: $index (user: $_userId)');
-
     switch (index) {
       case 0:
         if (_loadedTabs.contains(0)) return;
@@ -120,17 +88,11 @@ class _MainPageState extends State<MainPage> {
         context.read<UsersBloc>().add(GetAllUsersEvent(_userId!));
         break;
       case 3:
-        // ALWAYS refresh profile header & realtime
         context.read<ProfileBloc>().add(GetProfileDataEvent(_userId!));
         context.read<ProfileBloc>().add(StartProfileRealtimeEvent(_userId!));
-
-        // ALWAYS refresh profile posts as well (user requested full profile refresh)
         context.read<PostsBloc>().add(
           GetUserPostsEvent(profileUserId: _userId!, currentUserId: _userId!),
         );
-
-        // Note: we intentionally do NOT gate posts by _loadedTabs here because
-        // user requested that the entire profile (including posts) refresh on tap.
         break;
       default:
         break;
@@ -142,8 +104,6 @@ class _MainPageState extends State<MainPage> {
       AppLogger.warning('Cannot navigate, userId is null');
       return;
     }
-
-    // Determine route for the requested index
     String route;
     switch (index) {
       case 0:
@@ -156,7 +116,6 @@ class _MainPageState extends State<MainPage> {
         route = Constants.usersRoute;
         break;
       case 3:
-        // Navigate to /profile/me for bottom nav profile
         route = '${Constants.profileRoute}/me';
         break;
       default:
@@ -166,19 +125,13 @@ class _MainPageState extends State<MainPage> {
     if (!mounted) return;
 
     if (index != _selectedIndex) {
-      // Normal tab switch
       setState(() => _selectedIndex = index);
       context.go(route);
-      _dispatchLoadForIndex(index); // Lazy load on tap (profile included)
+      _dispatchLoadForIndex(index);
     } else {
-      // User tapped the currently selected tab.
-      // If it's the Profile tab, refresh the entire profile page including posts.
       if (index == 3) {
         AppLogger.info('Re-tap on Profile tab detected - full profile refresh');
         _dispatchLoadForIndex(3);
-        // Optionally: scroll-to-top or other UI refresh actions can be triggered here.
-      } else {
-        // For other tabs you might implement "scroll to top" behavior if desired.
       }
     }
   }
@@ -186,40 +139,40 @@ class _MainPageState extends State<MainPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Sync location changes when route updates
-    if (_initializedPages && _locationSynced) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          try {
-            final location = GoRouterState.of(context).uri.path;
-            final idx = _calculateSelectedIndexFromLocation(location);
-            if (idx != _selectedIndex) {
-              setState(() => _selectedIndex = idx);
-              _dispatchLoadForIndex(idx); // Lazy load if location changes
-            }
-          } catch (e) {
-            AppLogger.warning(
-              'Failed to sync location in didChangeDependencies: $e',
-            );
-          }
-        }
-      });
+    // Try to read cached user right away from AuthBloc
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthAuthenticated) {
+      _onAuthUpdated(authState.user.id);
     }
+
+    // If the auth state changes later, the BlocListener in build will pick it up.
   }
 
   @override
   Widget build(BuildContext context) {
+    return BlocListener<AuthBloc, AuthState>(
+      listener: (context, state) {
+        if (state is AuthAuthenticated) {
+          _onAuthUpdated(state.user.id);
+        } else if (state is AuthUnauthenticated) {
+          // router's redirect usually handles actual navigation; keep UI reactiveness
+          AppLogger.info('Auth state became unauthenticated on MainPage');
+        }
+      },
+      child: _buildScaffold(),
+    );
+  }
+
+  Widget _buildScaffold() {
     if (_userId == null || !_initializedPages) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    // Pages built with PageStorageKey for state preservation
     final pages = [
-      FeedPage(key: const PageStorageKey('feed_page'), userId: _userId!),
+      FeedPage(key: const PageStorageKey('feed_page')),
       ReelsPage(
         key: const PageStorageKey('reels_page'),
         isVisible: _selectedIndex == 1,
-        userId: _userId!,
       ),
       const UsersPage(key: PageStorageKey('users_page')),
       ProfilePage(key: const PageStorageKey('profile_page'), userId: _userId!),
@@ -253,10 +206,5 @@ class _MainPageState extends State<MainPage> {
         onTap: _onItemTapped,
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 }

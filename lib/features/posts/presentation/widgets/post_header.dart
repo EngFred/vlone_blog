@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
+import 'package:vlone_blog_app/core/widgets/debounced_inkwell.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 
@@ -10,16 +11,11 @@ class PostHeader extends StatelessWidget {
   final String? currentUserId;
 
   const PostHeader({super.key, required this.post, this.currentUserId});
-  void _navigateToProfile(BuildContext context) {
-    // Check for null just in case
 
+  void _navigateToProfile(BuildContext context) {
     if (post.userId == currentUserId) {
-      // User is tapping their OWN profile.
-      // Use context.go() to switch to the main profile tab in the ShellRoute.
       context.go('${Constants.profileRoute}/me');
     } else {
-      // User is tapping ANOTHER user's profile.
-      // Use context.push() to show the standalone UserProfilePage.
       context.push('${Constants.profileRoute}/${post.userId}');
     }
   }
@@ -33,9 +29,12 @@ class PostHeader extends StatelessWidget {
         horizontal: 12.0,
         vertical: 4.0,
       ),
-      leading: GestureDetector(
-        // ✅ --- Call the new helper method ---
+      leading: DebouncedInkWell(
+        actionKey: 'nav_profile_${post.userId}',
+        duration: const Duration(milliseconds: 500),
         onTap: () => _navigateToProfile(context),
+        borderRadius: BorderRadius.circular(24),
+        padding: const EdgeInsets.all(2),
         child: CircleAvatar(
           radius: 20,
           backgroundImage: post.avatarUrl != null
@@ -44,9 +43,12 @@ class PostHeader extends StatelessWidget {
           child: post.avatarUrl == null ? const Icon(Icons.person) : null,
         ),
       ),
-      title: GestureDetector(
-        // ✅ --- Call the new helper method ---
+      title: DebouncedInkWell(
+        actionKey: 'nav_profile_title_${post.userId}',
+        duration: const Duration(milliseconds: 300),
         onTap: () => _navigateToProfile(context),
+        borderRadius: BorderRadius.circular(8),
+        padding: const EdgeInsets.symmetric(vertical: 4),
         child: Text(
           post.username ?? 'Unknown',
           style: const TextStyle(fontWeight: FontWeight.w600),
@@ -64,7 +66,6 @@ class PostHeader extends StatelessWidget {
   }
 
   void _showDeleteDialog(BuildContext context) {
-    // ... (Your delete dialog logic is perfect, no changes needed)
     showDialog(
       context: context,
       builder: (context) => AlertDialog(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
+import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/features/users/domain/entities/user_list_entity.dart';
 
 class UserListItem extends StatefulWidget {
@@ -22,20 +23,14 @@ class UserListItem extends StatefulWidget {
 }
 
 class _UserListItemState extends State<UserListItem> {
-  DateTime? _lastTapTime;
-  static const _debounceDuration = Duration(milliseconds: 500);
+  static const Duration _debounceDuration = Duration(milliseconds: 400);
 
   void _handleFollowTap() {
-    final now = DateTime.now();
-
-    // Debounce: ignore if tapped within debounce duration
-    if (_lastTapTime != null &&
-        now.difference(_lastTapTime!) < _debounceDuration) {
-      return;
-    }
-
-    _lastTapTime = now;
-    widget.onFollowToggle(widget.user.id, !widget.user.isFollowing);
+    final key = 'user_follow_${widget.user.id}';
+    // Use the central Debouncer
+    Debouncer.instance.debounce(key, _debounceDuration, () {
+      widget.onFollowToggle(widget.user.id, !widget.user.isFollowing);
+    });
   }
 
   @override
@@ -44,14 +39,12 @@ class _UserListItemState extends State<UserListItem> {
     final isFollowing = widget.user.isFollowing;
     final isSelf = widget.user.id == widget.currentUserId;
 
-    // Use InkWell/GestureDetector on a clean container for better control over visual feedback
     return GestureDetector(
       onTap: () => context.push('${Constants.profileRoute}/${widget.user.id}'),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
         padding: const EdgeInsets.symmetric(vertical: 8.0),
         decoration: BoxDecoration(
-          // Subtle border for definition
           border: Border(
             bottom: BorderSide(
               color: theme.dividerColor.withOpacity(0.3),
@@ -61,7 +54,6 @@ class _UserListItemState extends State<UserListItem> {
         ),
         child: Row(
           children: [
-            // 1. Avatar (Slightly larger for presence)
             CircleAvatar(
               radius: 24,
               backgroundImage: widget.user.profileImageUrl != null
@@ -72,8 +64,6 @@ class _UserListItemState extends State<UserListItem> {
                   : null,
             ),
             const SizedBox(width: 12),
-
-            // 2. Title and Subtitle (Expanded to take available space)
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -86,7 +76,6 @@ class _UserListItemState extends State<UserListItem> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  // Use a dimmed color for the bio for hierarchy
                   Text(
                     widget.user.bio ?? 'No bio available',
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -97,18 +86,15 @@ class _UserListItemState extends State<UserListItem> {
                 ],
               ),
             ),
-
             const SizedBox(width: 12),
 
-            // 3. Follow Button (Only shown if not self)
             if (!isSelf)
               SizedBox(
-                width: 90, // Fixed width for consistent alignment
-                height: 36, // Standard button height
+                width: 90,
+                height: 36,
                 child: ElevatedButton(
                   onPressed: widget.isLoading ? null : _handleFollowTap,
                   style: ElevatedButton.styleFrom(
-                    // ✅ Pill Shape, no elevation
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18.0),
@@ -119,7 +105,6 @@ class _UserListItemState extends State<UserListItem> {
                         width: isFollowing ? 1.0 : 0.0,
                       ),
                     ),
-                    // ✅ Dynamic Colors
                     backgroundColor: isFollowing
                         ? theme.colorScheme.surface
                         : theme.colorScheme.primary,
@@ -134,7 +119,6 @@ class _UserListItemState extends State<UserListItem> {
                           height: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5,
-                            // Use a color that contrasts with the button background
                             valueColor: AlwaysStoppedAnimation<Color>(
                               isFollowing
                                   ? theme.colorScheme.primary

@@ -2,12 +2,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
 
-/// Dedicated video player for reels with proper lifecycle management
-/// Handles immediate autoplay and smooth preloading
 class ReelVideoPlayer extends StatefulWidget {
   final PostEntity post;
   final bool isActive;
@@ -38,7 +37,6 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
   @override
   void initState() {
     super.initState();
-    //Only initialize if active or should preload, but don't auto-play yet
     if (widget.isActive || widget.shouldPreload) {
       _initializeIfNeeded();
     }
@@ -48,10 +46,8 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
   void didUpdateWidget(ReelVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Handle active state changes
     if (widget.isActive != oldWidget.isActive) {
       if (widget.isActive) {
-        // Initialize first if needed, then play
         if (!_initialized && !_isInitializing) {
           _initializeIfNeeded().then((_) {
             if (mounted && widget.isActive) {
@@ -66,7 +62,6 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
       }
     }
 
-    // Handle preload changes
     if (widget.shouldPreload != oldWidget.shouldPreload) {
       if (widget.shouldPreload && !_initialized && !_isInitializing) {
         _initializeIfNeeded();
@@ -77,12 +72,11 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
   Future<void> _initializeIfNeeded() async {
     if (_isDisposed || !mounted) return;
     if (_initialized || _videoController != null) return;
-    if (_isInitializing) return; //Prevent concurrent initialization
+    if (_isInitializing) return;
 
-    // Only initialize if active or should preload
     if (!widget.isActive && !widget.shouldPreload) return;
 
-    _isInitializing = true; // Lock to prevent race condition
+    _isInitializing = true;
     AppLogger.info('Initializing video controller for post: ${widget.post.id}');
 
     try {
@@ -108,11 +102,9 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
           'Video controller initialized for post: ${widget.post.id}, isActive: ${widget.isActive}',
         );
 
-        //Only auto-play if this is the active reel AND we're not already playing
         if (widget.isActive &&
             mounted &&
             !VideoPlaybackManager.isPlaying(controller)) {
-          // Small delay to ensure UI is ready
           Future.delayed(const Duration(milliseconds: 50), () {
             if (mounted && widget.isActive && !_isDisposed) {
               _playVideo();
@@ -123,15 +115,14 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
     } catch (e) {
       AppLogger.error('Failed to initialize video controller: $e');
       _isInitializing = false;
-      // Silently fail to thumbnail
+      // silently fall back to thumbnail
+      if (mounted) setState(() {});
     }
   }
 
   void _playVideo() {
     if (_isDisposed || !mounted) return;
-
     if (!_initialized && _videoController == null) {
-      // Don't initialize here to avoid double init
       AppLogger.warning('Cannot play video - not initialized yet');
       return;
     }
@@ -171,8 +162,17 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
   Widget build(BuildContext context) {
     super.build(context);
 
+    // throttle taps when initialized
+    final onTapHandler = _initialized
+        ? () => Debouncer.instance.throttle(
+            'reel_toggle_${widget.post.id}',
+            const Duration(milliseconds: 300),
+            _togglePlayPause,
+          )
+        : null;
+
     return GestureDetector(
-      onTap: _initialized ? _togglePlayPause : null,
+      onTap: onTapHandler,
       child: Container(
         color: Colors.black,
         child: Stack(
@@ -187,8 +187,7 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
                 ),
               )
             else
-              // Show thumbnail while loading
-              widget.post.thumbnailUrl != null
+              (widget.post.thumbnailUrl != null)
                   ? CachedNetworkImage(
                       imageUrl: widget.post.thumbnailUrl!,
                       fit: BoxFit.cover,
@@ -206,8 +205,17 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
                       ),
                     ),
 
-            // Play icon overlay (only show when paused)
-            if (!_initialized ||
+            // If initializing show spinner (higher priority)
+            if (_isInitializing)
+              const Center(
+                child: SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              )
+            // Play icon overlay (only show when NOT initializing and paused)
+            else if (!_initialized ||
                 (_videoController != null &&
                     !VideoPlaybackManager.isPlaying(_videoController!)))
               const Center(
@@ -216,12 +224,6 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
                   size: 80.0,
                   color: Colors.white,
                 ),
-              ),
-
-            // Loading indicator during initialization
-            if (_isInitializing && widget.isActive)
-              const Center(
-                child: CircularProgressIndicator(color: Colors.white),
               ),
           ],
         ),

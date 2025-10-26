@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 
 class ProfileHeader extends StatelessWidget {
@@ -19,9 +20,10 @@ class ProfileHeader extends StatelessWidget {
     this.onFollowToggle,
   });
 
+  static const Duration _followDebounce = Duration(milliseconds: 400);
+
   @override
   Widget build(BuildContext context) {
-    // Determine if the follow button should be shown
     final showFollowButton =
         !isOwnProfile && isFollowing != null && onFollowToggle != null;
 
@@ -40,7 +42,7 @@ class ProfileHeader extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // 1. Avatar
+          // Avatar
           CircleAvatar(
             radius: 54,
             backgroundColor: Theme.of(context).colorScheme.primaryContainer,
@@ -57,7 +59,7 @@ class ProfileHeader extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // 2. Username and Email
+          // Username & email
           Text(
             profile.username,
             style: TextStyle(
@@ -75,7 +77,7 @@ class ProfileHeader extends StatelessWidget {
           ),
           const SizedBox(height: 8),
 
-          // 3. Bio
+          // Bio
           if (profile.bio != null && profile.bio!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -90,7 +92,7 @@ class ProfileHeader extends StatelessWidget {
             ),
           const SizedBox(height: 16),
 
-          // 4. Stats
+          // Stats row
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Row(
@@ -116,7 +118,7 @@ class ProfileHeader extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // 5. Follow/Unfollow Button (If not own profile)
+          // Follow/Unfollow Button
           if (showFollowButton)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -125,7 +127,16 @@ class ProfileHeader extends StatelessWidget {
                 child: ElevatedButton.icon(
                   onPressed: isProcessingFollow
                       ? null
-                      : () => onFollowToggle!(!isFollowing!),
+                      : () {
+                          // Use the app-wide Debouncer to prevent accidental multi-taps
+                          final key = 'follow_${profile.id}';
+                          Debouncer.instance.debounce(key, _followDebounce, () {
+                            // Safe call to callback
+                            if (onFollowToggle != null) {
+                              onFollowToggle!(!isFollowing!);
+                            }
+                          });
+                        },
                   icon: isProcessingFollow
                       ? const SizedBox(
                           height: 16,
