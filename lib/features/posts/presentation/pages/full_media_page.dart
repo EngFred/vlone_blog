@@ -1,4 +1,3 @@
-// lib/features/posts/presentation/pages/full_media_page.dart
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
@@ -7,12 +6,11 @@ import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
 
-/// Full screen viewer for both images and videos.
-/// Expects PostEntity passed via `extra` in GoRouter (or Navigator).
 class FullMediaPage extends StatefulWidget {
   final PostEntity post;
+  final String? heroTag;
 
-  const FullMediaPage({super.key, required this.post});
+  const FullMediaPage({super.key, required this.post, this.heroTag});
 
   @override
   State<FullMediaPage> createState() => _FullMediaPageState();
@@ -25,8 +23,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
   bool _isInitializing = false;
   bool _isDisposed = false;
 
-  // Seeking state for slider
-  Duration? _scrubValue; // temp value while dragging
+  Duration? _scrubValue;
   bool _isScrubbing = false;
   bool _wasPlayingBeforeScrub = false;
 
@@ -51,7 +48,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
         return;
       }
 
-      // attach listener to update UI on position/duration changes
       ctrl.addListener(_videoListener);
 
       setState(() {
@@ -60,7 +56,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
         _isInitializing = false;
       });
 
-      // start playing once ready
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _videoController != null) {
           VideoPlaybackManager.play(_videoController!, () {
@@ -70,20 +65,13 @@ class _FullMediaPageState extends State<FullMediaPage> {
       });
     } catch (e) {
       _isInitializing = false;
-      // fall back to thumbnail — do nothing else
     }
   }
 
   void _videoListener() {
-    // Only update UI when not scrubbing (we show temporary scrub value during drag)
     if (!mounted || _isScrubbing) return;
-
-    // VideoPlayerController's value frequently updates; keep light-weight
     final value = _videoController?.value;
     if (value == null) return;
-
-    // If buffering or playing/duration changed, refresh UI
-    // A simple setState here is fine; it's cheap in this page.
     if (mounted) setState(() {});
   }
 
@@ -117,7 +105,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
     }
   }
 
-  // Called when user starts scrubbing the slider
   void _onScrubStart(double value) {
     if (_videoController == null || !_initialized) return;
     _isScrubbing = true;
@@ -129,14 +116,12 @@ class _FullMediaPageState extends State<FullMediaPage> {
     setState(() {});
   }
 
-  // While dragging — update visual position only
   void _onScrubUpdate(double value) {
     if (_videoController == null || !_initialized) return;
     _scrubValue = _videoController!.value.duration * value;
     setState(() {});
   }
 
-  // When drag ends — perform actual seek and resume if needed
   void _onScrubEnd(double value) {
     if (_videoController == null || !_initialized) {
       _isScrubbing = false;
@@ -144,7 +129,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
       return;
     }
     final target = _videoController!.value.duration * value;
-    // clamp target
     final safeTarget = Duration(
       milliseconds: target.inMilliseconds.clamp(
         0,
@@ -152,17 +136,14 @@ class _FullMediaPageState extends State<FullMediaPage> {
       ),
     );
 
-    // Perform the seek (do it once on drag end)
     _videoController!
         .seekTo(safeTarget)
         .then((_) {
-          // resume play if it was playing before scrub
           if (_wasPlayingBeforeScrub) {
             VideoPlaybackManager.play(_videoController!, () {
               if (mounted) setState(() {});
             });
           }
-          // clear scrubbing state
           if (mounted) {
             _isScrubbing = false;
             _scrubValue = null;
@@ -170,7 +151,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
           }
         })
         .catchError((_) {
-          // Always clear scrubbing state even on error
           if (mounted) {
             _isScrubbing = false;
             _scrubValue = null;
@@ -182,22 +162,21 @@ class _FullMediaPageState extends State<FullMediaPage> {
   @override
   Widget build(BuildContext context) {
     final media = widget.post;
+    final heroTag = widget.heroTag ?? 'media_${media.id}';
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Stack(
           children: [
-            // Centered hero content for image/video
             Center(
               child: Hero(
-                tag: 'media_${media.id}',
+                tag: heroTag,
                 child: media.mediaType == 'image'
                     ? _buildInteractiveImage(media)
                     : _buildFullVideo(media),
               ),
             ),
-
-            // Top-left: back
             Positioned(
               top: 12,
               left: 12,
@@ -211,39 +190,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
               ),
             ),
 
-            // Top-right: play/pause or placeholder (for image we don't show play)
-            if (media.mediaType == 'video')
-              Positioned(
-                top: 12,
-                right: 12,
-                child: SafeArea(
-                  child: GestureDetector(
-                    onTap: () => Debouncer.instance.throttle(
-                      'full_media_toggle_${media.id}',
-                      const Duration(milliseconds: 300),
-                      _togglePlayPause,
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.black45,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        _videoController != null &&
-                                VideoPlaybackManager.isPlaying(
-                                  _videoController!,
-                                )
-                            ? Icons.pause
-                            : Icons.play_arrow,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-            // Bottom controls for video: seekbar + time (only for video)
+            // Bottom controls (video only)
             if (media.mediaType == 'video')
               Positioned(
                 left: 0,
@@ -277,7 +224,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
 
   Widget _buildFullVideo(PostEntity media) {
     if (!_initialized || _videoController == null) {
-      // show thumbnail as fallback while initializing
       return media.thumbnailUrl != null
           ? CachedNetworkImage(
               imageUrl: media.thumbnailUrl!,
@@ -289,7 +235,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
             );
     }
 
-    // Show video inside AspectRatio so it scales correctly
     return AspectRatio(
       aspectRatio: _videoController!.value.aspectRatio,
       child: GestureDetector(
@@ -302,8 +247,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
           fit: StackFit.expand,
           children: [
             VideoPlayer(_videoController!),
-
-            // Show big play icon when paused
+            // Large central play icon when paused
             if (!VideoPlaybackManager.isPlaying(_videoController!) &&
                 !_isScrubbing)
               const Center(
@@ -313,8 +257,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
                   color: Colors.white,
                 ),
               ),
-
-            // Show buffering spinner when controller reports buffering or still initializing
+            // Buffering indicator
             if (_isInitializing || _videoController!.value.isBuffering)
               const Center(
                 child: CircularProgressIndicator(color: Colors.white),
@@ -327,7 +270,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
 
   Widget _buildVideoControls() {
     if (_videoController == null || !_initialized) {
-      // Minimal controls while initializing
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         color: Colors.black45,
@@ -360,7 +302,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Seekbar
+          // Time + seekbar row
           Row(
             children: [
               // Current time
@@ -371,7 +313,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
 
               const SizedBox(width: 8),
 
-              // Slider (expanded)
+              // Slider
               Expanded(
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
@@ -410,21 +352,10 @@ class _FullMediaPageState extends State<FullMediaPage> {
 
           const SizedBox(height: 6),
 
-          // Row of small controls: rewind 10s, play/pause, forward 10s
+          // Single prominent play/pause control
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              IconButton(
-                icon: const Icon(Icons.replay_10, color: Colors.white),
-                onPressed: () {
-                  final curr = _videoController!.value.position;
-                  final target = curr - const Duration(seconds: 10);
-                  _videoController!.seekTo(
-                    target >= Duration.zero ? target : Duration.zero,
-                  );
-                },
-              ),
-              const SizedBox(width: 12),
               IconButton(
                 icon: Icon(
                   VideoPlaybackManager.isPlaying(_videoController!)
@@ -438,16 +369,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
                   const Duration(milliseconds: 300),
                   _togglePlayPause,
                 ),
-              ),
-              const SizedBox(width: 12),
-              IconButton(
-                icon: const Icon(Icons.forward_10, color: Colors.white),
-                onPressed: () {
-                  final curr = _videoController!.value.position;
-                  final dur = _videoController!.value.duration;
-                  final target = curr + const Duration(seconds: 10);
-                  _videoController!.seekTo(target <= dur ? target : dur);
-                },
               ),
             ],
           ),

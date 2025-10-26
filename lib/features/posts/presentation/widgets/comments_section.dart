@@ -1,3 +1,4 @@
+// comments_section.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
@@ -13,7 +14,7 @@ class CommentsSection extends StatelessWidget {
   final bool scrollable;
   final bool showCountHeader;
   final String currentUserId;
-  final ScrollController? controller; // NEW: optional controller
+  final ScrollController? controller;
 
   const CommentsSection({
     super.key,
@@ -40,11 +41,18 @@ class CommentsSection extends StatelessWidget {
         ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
-      child: Text(
-        countText,
-        style: theme.textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.bold,
-        ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              countText,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          // placeholder for future actions (sort/filter)
+        ],
       ),
     );
   }
@@ -141,7 +149,6 @@ class CommentsSection extends StatelessWidget {
           }
 
           if (scrollable) {
-            // When scrollable, we stitch header as first item (if present)
             final baseIndexOffset = showCountHeader ? 1 : 0;
             final totalItems = commentList.length + baseIndexOffset;
             return ListView.builder(
@@ -163,7 +170,7 @@ class CommentsSection extends StatelessWidget {
             );
           }
 
-          // NON-SCROLLABLE mode (embedded in column)
+          // Non-scrollable mode
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

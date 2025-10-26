@@ -1,4 +1,3 @@
-// lib/features/posts/presentation/widgets/post_media.dart
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -13,13 +12,6 @@ class PostMedia extends StatefulWidget {
   final PostEntity post;
   final double? height;
   final bool autoPlay;
-
-  /// When true (default), the widget uses VisibilityDetector to auto-pause when
-  /// the visible fraction drops below thresholds (useful for feeds).
-  ///
-  /// When false, visibility-driven auto-pausing is disabled — useful for
-  /// Post Details pages where the user may scroll the comments area and you
-  /// don't want the video to stop automatically.
   final bool useVisibilityDetector;
 
   const PostMedia({
@@ -38,7 +30,7 @@ class _PostMediaState extends State<PostMedia>
     with AutomaticKeepAliveClientMixin {
   VideoPlayerController? _videoController;
   bool _initialized = false;
-  bool _isInitializing = false; // Prevent concurrent inits
+  bool _isInitializing = false;
   final VideoControllerManager _videoManager = VideoControllerManager();
   bool _isDisposed = false;
 
@@ -48,7 +40,7 @@ class _PostMediaState extends State<PostMedia>
   Future<void> _ensureControllerInitialized() async {
     if (_isDisposed || !mounted) return;
     if (_videoController != null && _initialized) return;
-    if (_isInitializing) return; // prevent duplicate attempts
+    if (_isInitializing) return;
 
     _isInitializing = true;
     try {
@@ -58,7 +50,6 @@ class _PostMediaState extends State<PostMedia>
       );
 
       if (_isDisposed || !mounted) {
-        // If widget unmounted, release the controller we just got
         try {
           _videoManager.releaseController(widget.post.id);
         } catch (_) {}
@@ -72,24 +63,20 @@ class _PostMediaState extends State<PostMedia>
         });
       }
     } catch (e) {
-      // Init failed - swallow, we will stay on thumbnail
+      // ignore
     } finally {
       _isInitializing = false;
-      if (mounted) setState(() {}); // reflect new state if needed
+      if (mounted) setState(() {});
     }
   }
 
   void _togglePlayPause() {
     if (_isDisposed || !mounted) return;
-
-    // If initialization is in progress, ignore toggles.
     if (_isInitializing) return;
 
     if (_videoController == null || !_initialized) {
-      // Initialize on first tap for feeds/profile.
       _ensureControllerInitialized().then((_) {
         if (_videoController != null && mounted && !_isDisposed) {
-          // Once initialized, play immediately
           VideoPlaybackManager.play(_videoController!, () {
             if (mounted && !_isDisposed) setState(() {});
           });
@@ -112,17 +99,18 @@ class _PostMediaState extends State<PostMedia>
   }
 
   BoxFit _getBoxFit() {
-    // For feed/profile we want images centered and letterboxed (like videos)
     return widget.autoPlay ? BoxFit.cover : BoxFit.contain;
   }
 
-  void _openFullMedia() {
-    // throttle navigation to prevent double pushes
+  void _openFullMedia(String heroTag) {
     Debouncer.instance.throttle(
       'open_full_${widget.post.id}',
       const Duration(milliseconds: 300),
       () {
-        context.push('/media', extra: widget.post);
+        context.push(
+          '/media',
+          extra: {'post': widget.post, 'heroTag': heroTag},
+        );
       },
     );
   }
@@ -130,31 +118,29 @@ class _PostMediaState extends State<PostMedia>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    // default height: if not provided, use a feed/profile default
+    final heroTag = 'media_${widget.post.id}_${identityHashCode(this)}';
     final double height = widget.height ?? 320.0;
 
     if (widget.post.mediaType == 'image') {
-      return _buildImage(height);
+      return _buildImage(height, heroTag);
     } else if (widget.post.mediaType == 'video') {
-      return _buildVideo(height);
+      return _buildVideo(height, heroTag);
     } else {
       return const SizedBox.shrink();
     }
   }
 
-  Widget _buildImage(double height) {
+  Widget _buildImage(double height, String heroTag) {
     final boxFit = _getBoxFit();
 
-    // Images get same height as video (unless in Reels — Reels don't use PostMedia)
     return SizedBox(
       height: height,
       width: double.infinity,
       child: Stack(
         children: [
-          // Center the image inside the sized box and wrap in Hero
           Center(
             child: Hero(
-              tag: 'media_${widget.post.id}',
+              tag: heroTag,
               child: SizedBox(
                 width: double.infinity,
                 height: height,
@@ -174,15 +160,13 @@ class _PostMediaState extends State<PostMedia>
               ),
             ),
           ),
-
-          // Top-right maximize button
           Positioned(
             top: 8,
             right: 8,
             child: SafeArea(
               child: InkWell(
                 borderRadius: BorderRadius.circular(8),
-                onTap: _openFullMedia,
+                onTap: () => _openFullMedia(heroTag),
                 child: Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
@@ -199,7 +183,7 @@ class _PostMediaState extends State<PostMedia>
     );
   }
 
-  Widget _buildVideo(double height) {
+  Widget _buildVideo(double height, String heroTag) {
     final boxFit = _getBoxFit();
     const toggleKeyPrefix = 'toggle_play_';
     const toggleDuration = Duration(milliseconds: 300);
@@ -215,9 +199,8 @@ class _PostMediaState extends State<PostMedia>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Wrap the current visible content in a Hero so transition is smooth
             Hero(
-              tag: 'media_${widget.post.id}',
+              tag: heroTag,
               child: _initialized && _videoController != null
                   ? FittedBox(
                       fit: boxFit,
@@ -241,8 +224,6 @@ class _PostMediaState extends State<PostMedia>
                             ),
                     ),
             ),
-
-            // Play overlay
             if (!_initialized ||
                 (_videoController != null &&
                     !VideoPlaybackManager.isPlaying(_videoController!)))
@@ -253,8 +234,6 @@ class _PostMediaState extends State<PostMedia>
                   color: Colors.white,
                 ),
               ),
-
-            // Initializing spinner
             if (_isInitializing)
               const Center(
                 child: SizedBox(
@@ -263,15 +242,13 @@ class _PostMediaState extends State<PostMedia>
                   child: CircularProgressIndicator(color: Colors.white),
                 ),
               ),
-
-            // Maximize button at top-right
             Positioned(
               top: 8,
               right: 8,
               child: SafeArea(
                 child: InkWell(
                   borderRadius: BorderRadius.circular(8),
-                  onTap: _openFullMedia,
+                  onTap: () => _openFullMedia(heroTag),
                   child: Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
@@ -288,24 +265,21 @@ class _PostMediaState extends State<PostMedia>
       ),
     );
 
-    // If useVisibilityDetector is enabled, wrap content and handle visibility changes.
     if (widget.useVisibilityDetector) {
       return SizedBox(
         height: height,
         width: double.infinity,
         child: VisibilityDetector(
-          key: Key('post_media_${widget.post.id}'),
+          key: Key('post_media_${widget.post.id}_${identityHashCode(this)}'),
           onVisibilityChanged: (info) {
             if (_isDisposed || !mounted) return;
             final visiblePct = info.visibleFraction;
             final controller = _videoController;
 
-            // If enough visible and not initialized, try to init
             if (visiblePct > 0.4 && !_initialized && !_isInitializing) {
               _ensureControllerInitialized();
             }
 
-            // If controller is playing and it becomes mostly invisible, pause it.
             if (controller != null &&
                 !_isDisposed &&
                 mounted &&
@@ -320,7 +294,6 @@ class _PostMediaState extends State<PostMedia>
       );
     }
 
-    // No visibility detection — just return the content sized
     return SizedBox(height: height, width: double.infinity, child: content);
   }
 
@@ -331,7 +304,6 @@ class _PostMediaState extends State<PostMedia>
     _videoController = null;
     if (controller != null) {
       if (VideoPlaybackManager.isPlaying(controller)) {
-        // When disposing we don't want the onPause callback to trigger a setState on a disposed widget.
         VideoPlaybackManager.pause(invokeCallback: false);
       }
       _videoManager.releaseController(widget.post.id);

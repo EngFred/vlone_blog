@@ -10,8 +10,6 @@ class CommentEntity extends Equatable {
   final String? parentCommentId;
   final String? username;
   final String? avatarUrl;
-
-  // ✅ ADDED for flat thread display (Replying to @user)
   final String? parentUsername;
 
   final List<CommentEntity> replies;

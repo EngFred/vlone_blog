@@ -75,18 +75,54 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/media',
       pageBuilder: (context, state) {
-        final PostEntity? post = state.extra is PostEntity
-            ? state.extra as PostEntity
-            : null;
+        // Support two shapes for state.extra:
+        // 1) legacy: state.extra is PostEntity
+        // 2) new: state.extra is Map<String, dynamic> with keys: 'post' (PostEntity) and optional 'heroTag' (String)
+        PostEntity? post;
+        String? heroTag;
+
+        final extra = state.extra;
+        if (extra is PostEntity) {
+          post = extra;
+          heroTag = null;
+        } else if (extra is Map) {
+          final potentialPost = extra['post'];
+          if (potentialPost is PostEntity) {
+            post = potentialPost;
+            final potentialTag = extra['heroTag'];
+            if (potentialTag is String) heroTag = potentialTag;
+          } else {
+            // If the map doesn't contain a PostEntity, log and fall through to not-found
+            // (keeps behavior explicit and diagnosable during development)
+            // ignore: avoid_print
+            AppLogger.info(
+              'Router /media: extra Map provided but missing "post" key or wrong type: ${extra.runtimeType}',
+            );
+          }
+        } else if (extra != null) {
+          // Unrecognized extra type
+          // ignore: avoid_print
+          AppLogger.info(
+            'Router /media: unrecognized extra type: ${extra.runtimeType}',
+          );
+        }
+
         if (post == null) {
           return SlideTransitionPage(
             key: state.pageKey,
-            child: Scaffold(body: Center(child: Text('Media not found'))),
+            child: Scaffold(
+              appBar: AppBar(
+                title: const Text('Media'),
+                backgroundColor: Theme.of(context).colorScheme.surface,
+              ),
+              body: const Center(child: Text('Media not found')),
+            ),
           );
         }
+
         return SlideTransitionPage(
           key: state.pageKey,
-          child: FullMediaPage(post: post),
+          child: FullMediaPage(post: post, heroTag: heroTag),
         );
       },
     ),

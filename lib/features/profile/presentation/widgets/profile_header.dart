@@ -22,6 +22,77 @@ class ProfileHeader extends StatelessWidget {
 
   static const Duration _followDebounce = Duration(milliseconds: 400);
 
+  // UPDATED: Helper function to show the full-screen image overlay.
+  // Overlay now only exits via the Close button.
+  void _showProfileImageOverlay(BuildContext context, String? imageUrl) {
+    if (imageUrl == null) {
+      return;
+    }
+
+    showDialog(
+      context: context,
+      useSafeArea: false,
+      // ⚠️ IMPORTANT: Prevents closing when tapping outside the dialog
+      // (the black area) or pressing the device's back button.
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return Scaffold(
+          // Use Scaffold to properly handle the overlay and AppBar style actions
+          backgroundColor: Colors.black.withOpacity(0.9),
+          body: Stack(
+            children: [
+              // 1. Image Content (Center)
+              GestureDetector(
+                // ❌ REMOVED: onTap handler is removed here to prevent closing on image tap
+                onTap: () {},
+                child: Center(
+                  child: Hero(
+                    tag: 'profileImage-${profile.id}',
+                    child: CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      placeholder: (context, url) => Center(
+                        child: CircularProgressIndicator(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => const Icon(
+                        Icons.error,
+                        color: Colors.white,
+                        size: 80,
+                      ),
+                      fit: BoxFit.contain,
+                      width: MediaQuery.of(context).size.width,
+                      height: MediaQuery.of(context).size.height,
+                    ),
+                  ),
+                ),
+              ),
+
+              // 2. Close Button (Top Right) - This is now the ONLY way to exit.
+              Positioned(
+                top:
+                    36.0, // Space from the status bar (adjust as needed for aesthetics)
+                right: 16.0,
+                child: SafeArea(
+                  // Ensure button is below the notch/status bar
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                    tooltip: 'Close image view',
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final showFollowButton =
@@ -42,20 +113,27 @@ class ProfileHeader extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Avatar
-          CircleAvatar(
-            radius: 54,
-            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-            backgroundImage: profile.profileImageUrl != null
-                ? CachedNetworkImageProvider(profile.profileImageUrl!)
-                : null,
-            child: profile.profileImageUrl == null
-                ? Icon(
-                    Icons.person,
-                    size: 54,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  )
-                : null,
+          // Avatar (UPDATED: Wrapped in GestureDetector and Hero)
+          GestureDetector(
+            onTap: () =>
+                _showProfileImageOverlay(context, profile.profileImageUrl),
+            child: Hero(
+              tag: 'profileImage-${profile.id}', // Hero source tag
+              child: CircleAvatar(
+                radius: 54,
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                backgroundImage: profile.profileImageUrl != null
+                    ? CachedNetworkImageProvider(profile.profileImageUrl!)
+                    : null,
+                child: profile.profileImageUrl == null
+                    ? Icon(
+                        Icons.person,
+                        size: 54,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      )
+                    : null,
+              ),
+            ),
           ),
           const SizedBox(height: 12),
 
