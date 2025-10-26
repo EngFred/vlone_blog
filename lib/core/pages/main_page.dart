@@ -1,10 +1,3 @@
-// Updated main_page.dart with optimizations:
-// - Remove _dispatchLoadForIndex from initState/sync (no preloading tabs).
-// - Load data only when tab is tapped in _onItemTapped.
-// - Remove splash earlier, after session check.
-// - Added skeleton loading if needed (but not implemented here; assume in child pages).
-// - Defer realtime in FeedPage until visible/load.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:go_router/go_router.dart';
@@ -43,7 +36,6 @@ class _MainPageState extends State<MainPage> {
 
   /// ✅ OPTIMIZED: Get userId directly from Supabase session
   /// No need to fetch profile again - AuthBloc already did that
-  /// This saves ~150-300ms on MainPage initialization
   Future<void> _loadCurrentUser() async {
     AppLogger.info('Loading current user for MainPage');
     try {
@@ -55,15 +47,12 @@ class _MainPageState extends State<MainPage> {
         if (context.mounted) context.go(Constants.loginRoute);
         return;
       }
-      // ✅ PERFORMANCE: Use session userId directly instead of fetching profile
-      // Profile was already fetched and cached by AuthBloc
       AppLogger.info('Current user loaded from session: $sessionUserId');
       if (mounted) {
         setState(() => _userId = sessionUserId);
         _initializedPages = true;
 
-        // ✅ FIX: Wait for first frame, then sync location
-        // No dispatch here - moved to _onItemTapped for lazy loading
+        // Wait for first frame, then sync location
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             _syncSelectedIndexWithLocation();
@@ -71,7 +60,7 @@ class _MainPageState extends State<MainPage> {
             _dispatchLoadForIndex(_selectedIndex);
           }
         });
-        FlutterNativeSplash.remove(); // Remove splash earlier
+        FlutterNativeSplash.remove();
       }
     } catch (e, stackTrace) {
       AppLogger.error(
@@ -85,14 +74,14 @@ class _MainPageState extends State<MainPage> {
   }
 
   int _calculateSelectedIndexFromLocation(String location) {
-    if (location.startsWith(Constants.profileRoute)) return 3;
+    // Check for /profile/me route (bottom nav profile)
+    if (location == '${Constants.profileRoute}/me') return 3;
     if (location == Constants.usersRoute) return 2;
     if (location == Constants.reelsRoute) return 1;
     return 0;
   }
 
-  /// ✅ FIX: Now called from addPostFrameCallback after initState
-  /// GoRouterState.of() is safe to call here
+  /// Sync selected index with current router location
   void _syncSelectedIndexWithLocation() {
     try {
       final location = GoRouterState.of(context).uri.path;
@@ -107,29 +96,43 @@ class _MainPageState extends State<MainPage> {
     }
   }
 
-  /// ✅ OPTIMIZED: Load data only once per tab (using _loadedTabs set)
-  /// Prevents duplicate loads when switching between tabs
+  /// Load data for the provided tab index.
+  /// IMPORTANT: For profile (index 3) we ALWAYS refresh header, realtime, and posts.
   void _dispatchLoadForIndex(int index) {
     if (_userId == null) return;
-    if (_loadedTabs.contains(index)) return;
-    _loadedTabs.add(index);
+
     AppLogger.info('Loading data for tab index: $index (user: $_userId)');
+
     switch (index) {
       case 0:
+        if (_loadedTabs.contains(0)) return;
+        _loadedTabs.add(0);
         context.read<PostsBloc>().add(GetFeedEvent(_userId!));
         break;
       case 1:
+        if (_loadedTabs.contains(1)) return;
+        _loadedTabs.add(1);
         context.read<PostsBloc>().add(GetReelsEvent(_userId!));
         break;
       case 2:
+        if (_loadedTabs.contains(2)) return;
+        _loadedTabs.add(2);
         context.read<UsersBloc>().add(GetAllUsersEvent(_userId!));
         break;
       case 3:
+        // ALWAYS refresh profile header & realtime
         context.read<ProfileBloc>().add(GetProfileDataEvent(_userId!));
         context.read<ProfileBloc>().add(StartProfileRealtimeEvent(_userId!));
+
+        // ALWAYS refresh profile posts as well (user requested full profile refresh)
         context.read<PostsBloc>().add(
           GetUserPostsEvent(profileUserId: _userId!, currentUserId: _userId!),
         );
+
+        // Note: we intentionally do NOT gate posts by _loadedTabs here because
+        // user requested that the entire profile (including posts) refresh on tap.
+        break;
+      default:
         break;
     }
   }
@@ -139,34 +142,51 @@ class _MainPageState extends State<MainPage> {
       AppLogger.warning('Cannot navigate, userId is null');
       return;
     }
-    if (index != _selectedIndex && mounted) {
-      String route;
-      switch (index) {
-        case 0:
-          route = Constants.feedRoute;
-          break;
-        case 1:
-          route = Constants.reelsRoute;
-          break;
-        case 2:
-          route = Constants.usersRoute;
-          break;
-        case 3:
-          route = '${Constants.profileRoute}/$_userId';
-          break;
-        default:
-          route = Constants.feedRoute;
-      }
+
+    // Determine route for the requested index
+    String route;
+    switch (index) {
+      case 0:
+        route = Constants.feedRoute;
+        break;
+      case 1:
+        route = Constants.reelsRoute;
+        break;
+      case 2:
+        route = Constants.usersRoute;
+        break;
+      case 3:
+        // Navigate to /profile/me for bottom nav profile
+        route = '${Constants.profileRoute}/me';
+        break;
+      default:
+        route = Constants.feedRoute;
+    }
+
+    if (!mounted) return;
+
+    if (index != _selectedIndex) {
+      // Normal tab switch
       setState(() => _selectedIndex = index);
       context.go(route);
-      _dispatchLoadForIndex(index); // Lazy load on tap
+      _dispatchLoadForIndex(index); // Lazy load on tap (profile included)
+    } else {
+      // User tapped the currently selected tab.
+      // If it's the Profile tab, refresh the entire profile page including posts.
+      if (index == 3) {
+        AppLogger.info('Re-tap on Profile tab detected - full profile refresh');
+        _dispatchLoadForIndex(3);
+        // Optionally: scroll-to-top or other UI refresh actions can be triggered here.
+      } else {
+        // For other tabs you might implement "scroll to top" behavior if desired.
+      }
     }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // ✅ Sync location changes when route updates
+    // Sync location changes when route updates
     if (_initializedPages && _locationSynced) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -192,8 +212,8 @@ class _MainPageState extends State<MainPage> {
     if (_userId == null || !_initializedPages) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    // ✅ PERFORMANCE: Pages are built with PageStorageKey for state preservation
-    // This prevents rebuilding page state when switching tabs
+
+    // Pages built with PageStorageKey for state preservation
     final pages = [
       FeedPage(key: const PageStorageKey('feed_page'), userId: _userId!),
       ReelsPage(
@@ -204,6 +224,7 @@ class _MainPageState extends State<MainPage> {
       const UsersPage(key: PageStorageKey('users_page')),
       ProfilePage(key: const PageStorageKey('profile_page'), userId: _userId!),
     ];
+
     final bool isReelsPage = _selectedIndex == 1;
     final Color barBackgroundColor = isReelsPage
         ? Colors.black
@@ -211,6 +232,7 @@ class _MainPageState extends State<MainPage> {
     final Color unselectedColor = isReelsPage
         ? Colors.white.withOpacity(0.6)
         : Theme.of(context).colorScheme.onSurface.withOpacity(0.6);
+
     return Scaffold(
       body: IndexedStack(index: _selectedIndex, children: pages),
       bottomNavigationBar: BottomNavigationBar(

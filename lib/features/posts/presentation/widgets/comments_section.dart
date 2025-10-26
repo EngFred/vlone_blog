@@ -12,6 +12,7 @@ class CommentsSection extends StatelessWidget {
   final void Function(CommentEntity) onReply;
   final bool scrollable;
   final bool showCountHeader;
+  final String currentUserId; // ✅ Added currentUserId
 
   const CommentsSection({
     super.key,
@@ -19,16 +20,15 @@ class CommentsSection extends StatelessWidget {
     required this.onReply,
     this.scrollable = false,
     this.showCountHeader = true,
+    required this.currentUserId, // ✅ Required in constructor
   });
 
   Widget _buildHeader(BuildContext context) {
     final theme = Theme.of(context);
-
     // Fallback text if count is null
     final countText = commentsCount != null
         ? 'Comments ($commentsCount)'
         : 'Comments';
-
     return Container(
       decoration: BoxDecoration(
         border: Border(
@@ -101,13 +101,11 @@ class CommentsSection extends StatelessWidget {
 
         if (state is CommentsLoaded) {
           final commentList = state.comments;
-
           if (commentList.isEmpty) {
             final emptyWidget = const EmptyStateWidget(
               icon: Icons.chat_bubble_outline,
               message: 'Be the first to comment',
             );
-
             if (scrollable) {
               return ListView(
                 padding: EdgeInsets.zero,
@@ -131,7 +129,6 @@ class CommentsSection extends StatelessWidget {
               ],
             );
           }
-
           // ----- SCROLLABLE MODE: build a single ListView
           if (scrollable) {
             return ListView.builder(
@@ -141,20 +138,18 @@ class CommentsSection extends StatelessWidget {
               itemBuilder: (context, index) {
                 // Adjust index check based on whether the header is the first item
                 if (showCountHeader && index == 0) return headerWidget;
-
                 final commentIndex = showCountHeader ? index - 1 : index;
                 final comment = commentList[commentIndex];
-
                 return CommentTile(
                   key: ValueKey(comment.id),
                   comment: comment,
                   onReply: onReply,
                   depth: 0,
+                  currentUserId: currentUserId, // ✅ Passed down
                 );
               },
             );
           }
-
           // ----- NON-SCROLLABLE MODE
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -172,6 +167,7 @@ class CommentsSection extends StatelessWidget {
                     comment: comment,
                     onReply: onReply,
                     depth: 0,
+                    currentUserId: currentUserId, // ✅ Passed down
                   );
                 },
               ),

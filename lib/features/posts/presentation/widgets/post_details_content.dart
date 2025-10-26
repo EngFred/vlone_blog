@@ -6,7 +6,7 @@ import 'package:vlone_blog_app/features/posts/presentation/widgets/post_media.da
 
 class PostDetailsContent extends StatelessWidget {
   final PostEntity post;
-  final String userId; // Pass current user ID for delete check
+  final String userId;
   final VoidCallback onCommentTap;
   const PostDetailsContent({
     super.key,

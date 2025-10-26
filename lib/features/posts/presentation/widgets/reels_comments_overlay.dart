@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/comment_input_field.dart';
@@ -61,92 +62,100 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    final screenW = MediaQuery.of(context).size.width;
-    final panelWidth = min(350.0, screenW * 0.9);
+    return BlocSelector<AuthBloc, AuthState, String?>(
+      selector: (state) =>
+          (state is AuthAuthenticated) ? state.user.profileImageUrl : null,
+      builder: (context, userAvatarUrl) {
+        final screenW = MediaQuery.of(context).size.width;
+        final panelWidth = min(350.0, screenW * 0.9);
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Stack(
-        children: [
-          // Dismiss overlay
-          GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              width: double.infinity,
-              height: double.infinity,
-              color: Colors.black.withOpacity(0.5),
-            ),
-          ),
-          // Comments panel (right)
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: panelWidth,
-            child: Material(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              elevation: 8,
-              borderRadius: const BorderRadius.horizontal(
-                left: Radius.circular(20),
-              ),
-              child: SafeArea(
-                child: Column(
-                  children: [
-                    // Header
-                    Container(
-                      padding: const EdgeInsets.all(16.0),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(
-                            color: Theme.of(context).dividerColor,
-                          ),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
-                          Expanded(
-                            child: Text(
-                              '${widget.post.commentsCount} Comments',
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Comments list (scrollable)
-                    Expanded(
-                      child: CommentsSection(
-                        commentsCount: null,
-                        showCountHeader: false,
-                        onReply: (comment) {
-                          setState(() => _replyingTo = comment);
-                          _focusNode.requestFocus();
-                        },
-                        scrollable: true,
-                      ),
-                    ),
-
-                    // Input
-                    CommentInputField(
-                      post: widget.post,
-                      controller: _commentController,
-                      focusNode: _focusNode,
-                      replyingTo: _replyingTo,
-                      onSend: _addComment,
-                      onCancelReply: () => setState(() => _replyingTo = null),
-                    ),
-                  ],
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Stack(
+            children: [
+              // Dismiss overlay
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  color: Colors.black.withOpacity(0.5),
                 ),
               ),
-            ),
+              // Comments panel (right)
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: panelWidth,
+                child: Material(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  elevation: 8,
+                  borderRadius: const BorderRadius.horizontal(
+                    left: Radius.circular(20),
+                  ),
+                  child: SafeArea(
+                    child: Column(
+                      children: [
+                        // Header
+                        Container(
+                          padding: const EdgeInsets.all(16.0),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(
+                                color: Theme.of(context).dividerColor,
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.close),
+                                onPressed: () => Navigator.of(context).pop(),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  '${widget.post.commentsCount} Comments',
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Comments list (scrollable)
+                        Expanded(
+                          child: CommentsSection(
+                            commentsCount: null,
+                            showCountHeader: false,
+                            onReply: (comment) {
+                              setState(() => _replyingTo = comment);
+                              _focusNode.requestFocus();
+                            },
+                            scrollable: true,
+                            currentUserId: widget.userId,
+                          ),
+                        ),
+
+                        // Input
+                        CommentInputField(
+                          userAvatarUrl: userAvatarUrl,
+                          controller: _commentController,
+                          focusNode: _focusNode,
+                          replyingTo: _replyingTo,
+                          onSend: _addComment,
+                          onCancelReply: () =>
+                              setState(() => _replyingTo = null),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

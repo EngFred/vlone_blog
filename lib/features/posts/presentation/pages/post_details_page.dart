@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
+import 'package:vlone_blog_app/features/auth/domain/entities/user_entity.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
@@ -39,7 +40,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   @override
   void initState() {
     super.initState();
-
     if (widget.post != null) {
       _post = widget.post!;
       // We will subscribe to comments only *after* we confirm the userId in build
@@ -217,27 +217,26 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Get the userId safely using a BlocSelector
-    return BlocSelector<AuthBloc, AuthState, String?>(
+    // Get the user safely using a BlocSelector
+    return BlocSelector<AuthBloc, AuthState, UserEntity?>(
       selector: (state) {
-        return (state is AuthAuthenticated) ? state.user.id : null;
+        return (state is AuthAuthenticated) ? state.user : null;
       },
-      builder: (context, userId) {
-        // This builder re-runs when userId becomes available
-        if (userId == null) {
+      builder: (context, user) {
+        // This builder re-runs when user becomes available
+        if (user == null) {
           // Waiting for AuthBloc to provide user.
           return Scaffold(
             appBar: AppBar(title: Text('Post')),
             body: LoadingIndicator(),
           );
         }
-
         // --- Logic moved from initState ---
-        // We have the userId. Check if this is the first time.
+        // We have the user. Check if this is the first time.
         if (_userId == null) {
-          // This is the first build with a valid userId.
+          // This is the first build with a valid user.
           // Set our state and trigger initial fetches.
-          _userId = userId;
+          _userId = user.id;
           if (widget.post == null) {
             _fetchPost();
           } else {
@@ -245,7 +244,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
             _subscribeToCommentsIfNeeded();
           }
         }
-
         // The rest of your original build method
         return WillPopScope(
           onWillPop: () async {
@@ -303,6 +301,8 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                                   SliverToBoxAdapter(
                                     child: CommentsSection(
                                       commentsCount: _post!.commentsCount,
+                                      currentUserId:
+                                          _userId!, // ✅ Pass currentUserId
                                       onReply: (comment) {
                                         setState(() => _replyingTo = comment);
                                         _focusNode.requestFocus();
@@ -313,7 +313,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                               ),
                             ),
                             CommentInputField(
-                              post: _post!,
+                              userAvatarUrl: user.profileImageUrl,
                               controller: _commentController,
                               focusNode: _focusNode,
                               replyingTo: _replyingTo,

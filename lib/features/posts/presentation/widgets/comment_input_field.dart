@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
-import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 
 class CommentInputField extends StatelessWidget {
-  final PostEntity post;
+  final String? userAvatarUrl;
   final TextEditingController controller;
   final FocusNode focusNode;
   final CommentEntity? replyingTo;
@@ -12,7 +11,7 @@ class CommentInputField extends StatelessWidget {
 
   const CommentInputField({
     super.key,
-    required this.post,
+    required this.userAvatarUrl,
     required this.controller,
     required this.focusNode,
     required this.replyingTo,
@@ -83,10 +82,10 @@ class CommentInputField extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 18, // Slightly smaller for better proportion
-                    backgroundImage: post.avatarUrl != null
-                        ? NetworkImage(post.avatarUrl!)
+                    backgroundImage: userAvatarUrl != null
+                        ? NetworkImage(userAvatarUrl!)
                         : null,
-                    child: post.avatarUrl == null
+                    child: userAvatarUrl == null
                         ? const Icon(Icons.person, size: 18)
                         : null,
                   ),

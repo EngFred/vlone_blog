@@ -9,6 +9,7 @@ import 'package:vlone_blog_app/features/posts/presentation/pages/create_post_pag
 import 'package:vlone_blog_app/features/posts/presentation/pages/post_details_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/edit_profile_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
+import 'package:vlone_blog_app/features/profile/presentation/pages/user_profile_page.dart';
 import 'package:vlone_blog_app/core/pages/main_page.dart';
 import 'package:vlone_blog_app/features/auth/presentation/pages/login_page.dart';
 import 'package:vlone_blog_app/features/auth/presentation/pages/signup_page.dart';
@@ -83,12 +84,48 @@ final GoRouter appRouter = GoRouter(
           path: Constants.usersRoute,
           builder: (context, state) => const UsersPage(),
         ),
+        // ✅ Bottom nav profile page route
+        // "me" is just a route identifier, we resolve it to actual userId
         GoRoute(
-          path: Constants.profileRoute + '/:userId',
-          builder: (context, state) =>
-              ProfilePage(userId: state.pathParameters['userId']!),
+          path: '${Constants.profileRoute}/me',
+          builder: (context, state) {
+            final supabase = sl<SupabaseClient>();
+            final currentUserId = supabase.auth.currentUser?.id;
+            if (currentUserId == null) {
+              AppLogger.error('No current user found for profile/me route');
+              return const Scaffold(
+                body: Center(
+                  child: Text('Unable to load profile. Please log in again.'),
+                ),
+              );
+            }
+            // ✅ Pass the actual userId, not "me"
+            return ProfilePage(userId: currentUserId);
+          },
         ),
       ],
+    ),
+    // ✅ Standalone user profile route (outside ShellRoute)
+    // This handles viewing other users' profiles
+    GoRoute(
+      path: '${Constants.profileRoute}/:userId',
+      builder: (context, state) {
+        final userId = state.pathParameters['userId']!;
+        final supabase = sl<SupabaseClient>();
+        final currentUserId = supabase.auth.currentUser?.id;
+
+        // If viewing own profile from a direct link, redirect to /profile/me for bottom nav
+        if (currentUserId != null && currentUserId == userId) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            GoRouter.of(context).go('${Constants.profileRoute}/me');
+          });
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        return UserProfilePage(userId: userId);
+      },
     ),
   ],
   errorBuilder: (context, state) {
@@ -110,10 +147,6 @@ final GoRouter appRouter = GoRouter(
         state.uri.path == Constants.loginRoute ||
         state.uri.path == Constants.signupRoute;
 
-    // ✅ OPTIMIZED: Simplified redirect logic
-    // No longer fetches user profile here - AuthBloc already did that
-    // This eliminates one redundant profile fetch during startup
-
     // If no session and trying to access protected route, go to login
     if (!isLoggedIn && !isAuthRoute) {
       AppLogger.warning('No session found, redirecting to login');
@@ -121,8 +154,6 @@ final GoRouter appRouter = GoRouter(
     }
 
     // If has session and trying to access auth pages, redirect to feed
-    // ✅ PERFORMANCE: Trust the session - don't re-fetch user profile
-    // AuthBloc already validated the user during CheckAuthStatusEvent
     if (isLoggedIn && isAuthRoute) {
       AppLogger.info('User has valid session, redirecting to feed');
       return Constants.feedRoute;

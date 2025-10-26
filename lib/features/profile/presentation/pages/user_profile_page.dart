@@ -1,13 +1,11 @@
-// lib/features/profile/presentation/pages/profile_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
-import 'package:vlone_blog_app/core/constants/constants.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
-import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
@@ -17,80 +15,83 @@ import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_pos
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 
-enum ProfileMenuOption { edit, logout }
-
-class ProfilePage extends StatefulWidget {
+/// Standalone profile page for viewing other users' profiles
+/// This page is NOT part of the bottom navigation bar
+class UserProfilePage extends StatefulWidget {
   final String userId;
-  const ProfilePage({super.key, required this.userId});
+  const UserProfilePage({super.key, required this.userId});
 
   @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  State<UserProfilePage> createState() => _UserProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _UserProfilePageState extends State<UserProfilePage> {
+  String? _currentUserId;
   bool _isOwnProfile = false;
-  String? _userId;
   final List<PostEntity> _userPosts = [];
   bool _isUserPostsLoading = false;
   String? _userPostsError;
   bool? _isFollowing;
   bool _isProcessingFollow = false;
-  // Track the currently loaded profile to detect stale data
-  String? _loadedProfileUserId;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _initializeProfile();
+    _loadCurrentUser();
+  }
+
+  Future<void> _loadCurrentUser() async {
+    try {
+      final supabase = sl<SupabaseClient>();
+      final sessionUserId = supabase.auth.currentUser?.id;
+
+      if (sessionUserId == null) {
+        AppLogger.error('No user session found in UserProfilePage');
+        return;
       }
-    });
-  }
 
-  /// Initialize or reinitialize profile when needed
-  void _initializeProfile() {
-    setState(() {
-      _isOwnProfile = true;
-      _userId = widget.userId;
-    });
+      if (mounted) {
+        setState(() {
+          _currentUserId = sessionUserId;
+          _isOwnProfile = sessionUserId == widget.userId;
+        });
 
-    // Only load if this is a new userId (prevents duplicate loads)
-    if (_loadedProfileUserId != widget.userId) {
-      _loadedProfileUserId = widget.userId;
+        // Fetch profile data
+        context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
 
-      // Stop previous real-time subscription
-      context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
+        // Start real-time updates
+        context.read<ProfileBloc>().add(
+          StartProfileRealtimeEvent(widget.userId),
+        );
 
-      // Clear old data
-      _userPosts.clear();
-      _userPostsError = null;
-      _isUserPostsLoading = false;
+        // Fetch user posts
+        context.read<PostsBloc>().add(
+          GetUserPostsEvent(
+            profileUserId: widget.userId,
+            currentUserId: sessionUserId,
+          ),
+        );
 
-      // Start fresh for new user
-      context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
-      context.read<ProfileBloc>().add(StartProfileRealtimeEvent(widget.userId));
-
-      AppLogger.info('ProfilePage: Initialized for userId: ${widget.userId}');
-    }
-  }
-
-  /// ✅ FIX: Detect when component prop changes (e.g., route back from another profile)
-  /// This is called when the parent widget (MainPage) rebuilds with a different userId
-  @override
-  void didUpdateWidget(ProfilePage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    // If userId changed (e.g., from bottom nav navigation), reinitialize
-    if (oldWidget.userId != widget.userId) {
-      AppLogger.info(
-        'ProfilePage userId changed from ${oldWidget.userId} to ${widget.userId}',
-      );
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _initializeProfile();
+        // If viewing another user's profile, check follow status
+        if (!_isOwnProfile) {
+          context.read<FollowersBloc>().add(
+            GetFollowStatusEvent(
+              followerId: sessionUserId,
+              followingId: widget.userId,
+            ),
+          );
         }
-      });
+
+        AppLogger.info(
+          'UserProfilePage: Initialized for userId: ${widget.userId}, currentUser: $sessionUserId',
+        );
+      }
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Error loading current user in UserProfilePage: $e',
+        error: e,
+        stackTrace: stackTrace,
+      );
     }
   }
 
@@ -123,72 +124,19 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _onFollowToggle(bool newFollowing) {
-    if (_isProcessingFollow) return;
+    if (_isProcessingFollow || _currentUserId == null) return;
+
     setState(() {
       _isProcessingFollow = true;
       _isFollowing = newFollowing;
     });
+
     context.read<FollowersBloc>().add(
       FollowUserEvent(
-        followerId: _userId!,
+        followerId: _currentUserId!,
         followingId: widget.userId,
         isFollowing: newFollowing,
       ),
-    );
-  }
-
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        final theme = Theme.of(dialogContext);
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          title: Row(
-            children: [
-              Icon(Icons.warning, color: Colors.orange),
-              const SizedBox(width: 8),
-              const Text('Logout Confirmation'),
-            ],
-          ),
-          content: const Text(
-            'Are you sure you want to log out? You will need to sign in again to access your account.',
-            style: TextStyle(fontSize: 16),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                context.read<AuthBloc>().add(LogoutEvent());
-                if (context.mounted) {
-                  SnackbarUtils.showInfo(context, 'Logging out...');
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.error,
-                foregroundColor: theme.colorScheme.onError,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text(
-                'Logout',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -255,54 +203,10 @@ class _ProfilePageState extends State<ProfilePage> {
         title: const Text('Profile'),
         centerTitle: false,
         backgroundColor: Theme.of(context).colorScheme.surface,
-        actions: [
-          if (_isOwnProfile)
-            PopupMenuButton<ProfileMenuOption>(
-              icon: Icon(
-                Icons.more_vert,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-              onSelected: (value) {
-                switch (value) {
-                  case ProfileMenuOption.edit:
-                    context.push(
-                      '${Constants.profileRoute}/${widget.userId}/edit',
-                    );
-                    break;
-                  case ProfileMenuOption.logout:
-                    _showLogoutDialog(context);
-                    break;
-                }
-              },
-              itemBuilder: (menuContext) {
-                final iconColor = Theme.of(menuContext).colorScheme.onSurface;
-                final textStyle = Theme.of(menuContext).textTheme.bodyMedium;
-
-                return [
-                  PopupMenuItem<ProfileMenuOption>(
-                    value: ProfileMenuOption.edit,
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit, color: iconColor),
-                        const SizedBox(width: 8),
-                        Text('Edit Profile', style: textStyle),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem<ProfileMenuOption>(
-                    value: ProfileMenuOption.logout,
-                    child: Row(
-                      children: [
-                        Icon(Icons.logout, color: iconColor),
-                        const SizedBox(width: 8),
-                        Text('Logout', style: textStyle),
-                      ],
-                    ),
-                  ),
-                ];
-              },
-            ),
-        ],
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: MultiBlocListener(
         listeners: [
@@ -310,7 +214,7 @@ class _ProfilePageState extends State<ProfilePage> {
             listener: (context, state) {
               if (state is ProfileDataLoaded) {
                 AppLogger.info(
-                  'Profile updated via real-time stream: ${state.profile.username}',
+                  'User profile updated via real-time stream: ${state.profile.username}',
                 );
               }
             },
@@ -345,15 +249,6 @@ class _ProfilePageState extends State<ProfilePage> {
                     _isUserPostsLoading = false;
                   });
                 }
-              } else if (state is PostCreated) {
-                if (_isOwnProfile && mounted) {
-                  final exists = _userPosts.any((p) => p.id == state.post.id);
-                  if (!exists) {
-                    setState(() {
-                      _userPosts.insert(0, state.post);
-                    });
-                  }
-                }
               } else if (state is UserPostsError) {
                 if (mounted) {
                   setState(() {
@@ -370,8 +265,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 if (index != -1 && mounted) {
                   setState(() => _userPosts.removeAt(index));
                 }
-              } else if (state is PostsError) {
-                AppLogger.error('PostsError in ProfilePage: ${state.message}');
               }
             },
           ),
@@ -415,7 +308,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 }
               } else if (state is FollowersError) {
                 if (mounted) {
-                  if (_isProcessingFollow) {
+                  if (_isProcessingFollow && _isFollowing != null) {
                     setState(() {
                       _isFollowing = !_isFollowing!;
                       _isProcessingFollow = false;
@@ -445,17 +338,19 @@ class _ProfilePageState extends State<ProfilePage> {
             if (state is ProfileDataLoaded) {
               return RefreshIndicator(
                 onRefresh: () async {
-                  context.read<PostsBloc>().add(
-                    GetUserPostsEvent(
-                      profileUserId: widget.userId,
-                      currentUserId: _userId!,
-                    ),
-                  );
-                  if (mounted) {
-                    setState(() {
-                      _userPosts.clear();
-                      _userPostsError = null;
-                    });
+                  if (_currentUserId != null) {
+                    context.read<PostsBloc>().add(
+                      GetUserPostsEvent(
+                        profileUserId: widget.userId,
+                        currentUserId: _currentUserId!,
+                      ),
+                    );
+                    if (mounted) {
+                      setState(() {
+                        _userPosts.clear();
+                        _userPostsError = null;
+                      });
+                    }
                   }
                 },
                 child: SingleChildScrollView(
@@ -471,23 +366,22 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       ProfilePostsList(
                         posts: _userPosts,
-                        userId: _userId ?? '',
+                        userId: _currentUserId ?? '',
                         isLoading: _isUserPostsLoading,
                         error: _userPostsError,
                         onRetry: () {
-                          if (mounted) {
+                          if (mounted && _currentUserId != null) {
                             setState(() {
                               _userPostsError = null;
                               _isUserPostsLoading = true;
                             });
+                            context.read<PostsBloc>().add(
+                              GetUserPostsEvent(
+                                profileUserId: widget.userId,
+                                currentUserId: _currentUserId!,
+                              ),
+                            );
                           }
-
-                          context.read<PostsBloc>().add(
-                            GetUserPostsEvent(
-                              profileUserId: widget.userId,
-                              currentUserId: _userId!,
-                            ),
-                          );
                         },
                       ),
                     ],

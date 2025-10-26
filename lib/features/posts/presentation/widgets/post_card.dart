@@ -27,7 +27,7 @@ class _PostCardState extends State<PostCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            PostHeader(post: widget.post),
+            PostHeader(post: widget.post, currentUserId: widget.userId),
             if (widget.post.content != null)
               Padding(
                 padding: const EdgeInsets.symmetric(
