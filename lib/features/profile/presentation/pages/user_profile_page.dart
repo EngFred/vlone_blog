@@ -17,6 +17,7 @@ import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bl
 
 /// Standalone profile page for viewing other users' profiles
 /// This page is NOT part of the bottom navigation bar
+// lib/features/profile/presentation/pages/user_profile_page.dart
 class UserProfilePage extends StatefulWidget {
   final String userId;
   const UserProfilePage({super.key, required this.userId});
@@ -56,15 +57,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
           _isOwnProfile = sessionUserId == widget.userId;
         });
 
-        // Fetch profile data
+        // Request profile + posts. Do NOT start/stop realtime here.
         context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
-
-        // Start real-time updates
-        context.read<ProfileBloc>().add(
-          StartProfileRealtimeEvent(widget.userId),
-        );
-
-        // Fetch user posts
         context.read<PostsBloc>().add(
           GetUserPostsEvent(
             profileUserId: widget.userId,
@@ -72,7 +66,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
           ),
         );
 
-        // If viewing another user's profile, check follow status
         if (!_isOwnProfile) {
           context.read<FollowersBloc>().add(
             GetFollowStatusEvent(
@@ -86,18 +79,18 @@ class _UserProfilePageState extends State<UserProfilePage> {
           'UserProfilePage: Initialized for userId: ${widget.userId}, currentUser: $sessionUserId',
         );
       }
-    } catch (e, stackTrace) {
+    } catch (e, st) {
       AppLogger.error(
         'Error loading current user in UserProfilePage: $e',
         error: e,
-        stackTrace: stackTrace,
+        stackTrace: st,
       );
     }
   }
 
   @override
   void dispose() {
-    context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
+    // No explicit StopProfileRealtimeEvent here — centralized RealtimeService handles lifecycle.
     super.dispose();
   }
 
@@ -125,12 +118,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   void _onFollowToggle(bool newFollowing) {
     if (_isProcessingFollow || _currentUserId == null) return;
-
     setState(() {
       _isProcessingFollow = true;
       _isFollowing = newFollowing;
     });
-
     context.read<FollowersBloc>().add(
       FollowUserEvent(
         followerId: _currentUserId!,
@@ -212,11 +203,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
         listeners: [
           BlocListener<ProfileBloc, ProfileState>(
             listener: (context, state) {
-              if (state is ProfileDataLoaded) {
+              if (state is ProfileDataLoaded)
                 AppLogger.info(
                   'User profile updated via real-time stream: ${state.profile.username}',
                 );
-              }
             },
           ),
           BlocListener<PostsBloc, PostsState>(
@@ -224,7 +214,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               if (state is UserPostsLoading) {
                 if (mounted) setState(() => _isUserPostsLoading = true);
               } else if (state is UserPostsLoaded) {
-                if (mounted) {
+                if (mounted)
                   setState(() {
                     _userPosts.clear();
                     _userPostsError = null;
@@ -248,31 +238,28 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     );
                     _isUserPostsLoading = false;
                   });
-                }
               } else if (state is UserPostsError) {
-                if (mounted) {
+                if (mounted)
                   setState(() {
                     _userPostsError = state.message;
                     _isUserPostsLoading = false;
                   });
-                }
-              } else if (state is RealtimePostUpdate) {
+              } else if (state is RealtimePostUpdate)
                 _handleRealtimePostUpdate(state);
-              } else if (state is PostDeleted) {
+              else if (state is PostDeleted) {
                 final index = _userPosts.indexWhere(
                   (p) => p.id == state.postId,
                 );
-                if (index != -1 && mounted) {
+                if (index != -1 && mounted)
                   setState(() => _userPosts.removeAt(index));
-                }
               }
             },
           ),
           BlocListener<LikesBloc, LikesState>(
             listener: (context, state) {
-              if (state is LikeUpdated) {
+              if (state is LikeUpdated)
                 _applyLikeUpdate(state.postId, state.isLiked);
-              } else if (state is LikeError) {
+              else if (state is LikeError) {
                 _revertLike(state.postId, state.previousState);
                 SnackbarUtils.showError(context, state.message);
               }
@@ -280,9 +267,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
           ),
           BlocListener<FavoritesBloc, FavoritesState>(
             listener: (context, state) {
-              if (state is FavoriteUpdated) {
+              if (state is FavoriteUpdated)
                 _applyFavoriteUpdate(state.postId, state.isFavorited);
-              } else if (state is FavoriteError) {
+              else if (state is FavoriteError) {
                 _revertFavorite(state.postId, state.previousState);
                 SnackbarUtils.showError(context, state.message);
               }
@@ -292,28 +279,21 @@ class _UserProfilePageState extends State<UserProfilePage> {
             listener: (context, state) {
               if (state is FollowStatusLoaded &&
                   state.followingId == widget.userId) {
-                if (mounted) {
-                  setState(() => _isFollowing = state.isFollowing);
-                }
+                if (mounted) setState(() => _isFollowing = state.isFollowing);
               } else if (state is UserFollowed &&
                   state.followedUserId == widget.userId) {
-                if (mounted) {
+                if (mounted)
                   setState(() {
                     _isFollowing = state.isFollowing;
                     _isProcessingFollow = false;
                   });
-                  AppLogger.info(
-                    'Follow action completed. Profile counts will update via real-time stream.',
-                  );
-                }
               } else if (state is FollowersError) {
                 if (mounted) {
-                  if (_isProcessingFollow && _isFollowing != null) {
+                  if (_isProcessingFollow && _isFollowing != null)
                     setState(() {
                       _isFollowing = !_isFollowing!;
                       _isProcessingFollow = false;
                     });
-                  }
                   SnackbarUtils.showError(context, state.message);
                 }
               }
@@ -322,19 +302,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
         ],
         child: BlocBuilder<ProfileBloc, ProfileState>(
           builder: (context, state) {
-            if (state is ProfileLoading || state is ProfileInitial) {
+            if (state is ProfileLoading || state is ProfileInitial)
               return const Center(child: LoadingIndicator());
-            }
-            if (state is ProfileError) {
+            if (state is ProfileError)
               return CustomErrorWidget(
                 message: state.message,
-                onRetry: () {
-                  context.read<ProfileBloc>().add(
-                    GetProfileDataEvent(widget.userId),
-                  );
-                },
+                onRetry: () => context.read<ProfileBloc>().add(
+                  GetProfileDataEvent(widget.userId),
+                ),
               );
-            }
             if (state is ProfileDataLoaded) {
               return RefreshIndicator(
                 onRefresh: () async {
@@ -345,12 +321,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         currentUserId: _currentUserId!,
                       ),
                     );
-                    if (mounted) {
+                    if (mounted)
                       setState(() {
                         _userPosts.clear();
                         _userPostsError = null;
                       });
-                    }
                   }
                 },
                 child: SingleChildScrollView(

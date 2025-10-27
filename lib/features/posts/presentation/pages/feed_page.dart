@@ -26,10 +26,11 @@ class FeedPage extends StatefulWidget {
 class _FeedPageState extends State<FeedPage>
     with AutomaticKeepAliveClientMixin {
   final List<PostEntity> _posts = [];
-  bool _realtimeStarted = false;
   bool _notificationsSubscribed = false;
+
   @override
   bool get wantKeepAlive => true;
+
   @override
   void initState() {
     super.initState();
@@ -37,9 +38,10 @@ class _FeedPageState extends State<FeedPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userId = context.read<AuthBloc>().cachedUser?.id;
       if (userId != null) {
-        _startRealtimeListeners(userId);
-        _subscribeNotifications();
+        // Only request feed; RealtimeService and PostsBloc real-time listeners
+        // are started globally from main.dart on auth.
         context.read<PostsBloc>().add(GetFeedEvent(userId));
+        _subscribeNotifications();
       } else {
         AppLogger.warning(
           'FeedPage: userId null at init; waiting for AuthBloc',
@@ -65,28 +67,6 @@ class _FeedPageState extends State<FeedPage>
     }
   }
 
-  void _startRealtimeListeners(String userId) {
-    if (!_realtimeStarted && mounted) {
-      AppLogger.info(
-        'Starting real-time listeners from FeedPage for user $userId',
-      );
-      context.read<PostsBloc>().add(StartRealtimeListenersEvent(userId));
-      // Likes and Favorites streams are now started from ReelsPage
-      // or other relevant pages, not globally from FeedPage
-      // to avoid unnecessary listeners.
-      // We will let the listeners in FeedList widgets trigger their BLoCs.
-      _realtimeStarted = true;
-    }
-  }
-
-  void _stopRealtimeListeners() {
-    if (_realtimeStarted && mounted) {
-      AppLogger.info('Stopping real-time listeners from FeedPage');
-      context.read<PostsBloc>().add(StopRealtimeListenersEvent());
-      _realtimeStarted = false;
-    }
-  }
-
   void _updatePosts(List<PostEntity> newPosts) {
     if (!mounted) return;
     final oldIds = _posts.map((p) => p.id).toSet();
@@ -109,7 +89,9 @@ class _FeedPageState extends State<FeedPage>
     }
   }
 
-  void _applyPostUpdate(String postId, {bool? isLiked, bool? isFavorited}) {
+  /// Only update boolean flags (isLiked/isFavorited) here.
+  /// Counts are authoritative and come from RealtimePostUpdate (PostsBloc).
+  void _applyPostFlags(String postId, {bool? isLiked, bool? isFavorited}) {
     final index = _posts.indexWhere((p) => p.id == postId);
     if (index == -1 || !mounted) return;
     final old = _posts[index];
@@ -127,6 +109,11 @@ class _FeedPageState extends State<FeedPage>
     if (currentUserId == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+
+    final postsState = context.watch<PostsBloc>().state;
+    final bool realtimeActive =
+        postsState is FeedLoaded && postsState.isRealtimeActive;
+
     return Scaffold(
       appBar: AppBar(
         title: const UserGreetingTitle(),
@@ -137,7 +124,7 @@ class _FeedPageState extends State<FeedPage>
         ),
         actions: [
           const NotificationIconWithBadge(),
-          if (_realtimeStarted)
+          if (realtimeActive)
             Padding(
               padding: const EdgeInsets.only(right: 16.0),
               child: Center(
@@ -179,6 +166,8 @@ class _FeedPageState extends State<FeedPage>
                   'Post created successfully!',
                 );
               } else if (state is RealtimePostUpdate) {
+                // Authoritative counts (server-driven). Overwrite counts to keep
+                // all UI surfaces consistent.
                 final index = _posts.indexWhere((p) => p.id == state.postId);
                 if (index != -1 && mounted) {
                   final post = _posts[index];
@@ -205,55 +194,43 @@ class _FeedPageState extends State<FeedPage>
                   setState(() => _posts.removeAt(index));
               } else if (state is PostsError) {
                 AppLogger.error('PostsError in FeedPage: ${state.message}');
-                // if (mounted) SnackbarUtils.showError(context, state.message);
               }
             },
           ),
+
+          // LikesBloc: only sync the boolean flag at page-level.
+          // Optimistic deltas are handled by item widgets (PostCard).
           BlocListener<LikesBloc, LikesState>(
             listener: (context, state) {
-              if (state is LikeSuccess) {
-                // Optimistic update
-                _applyPostUpdate(state.postId, isLiked: state.isLiked);
-              } else if (state is LikeUpdated) {
-                // Real-time update (eventual consistency)
-                _applyPostUpdate(state.postId, isLiked: state.isLiked);
+              if (state is LikeUpdated) {
+                _applyPostFlags(state.postId, isLiked: state.isLiked);
+              } else if (state is LikeSuccess) {
+                _applyPostFlags(state.postId, isLiked: state.isLiked);
               } else if (state is LikeError) {
                 AppLogger.error('Like error in FeedPage: ${state.message}');
-                // Revert optimistic update on failure
                 if (state.shouldRevert) {
-                  _applyPostUpdate(state.postId, isLiked: state.previousState);
-                  // if (mounted) {
-                  //   SnackbarUtils.showError(
-                  //     context,
-                  //     'Failed to ${state.previousState ? 'unlike' : 'like'} post.',
-                  //   );
-                  // }
+                  _applyPostFlags(state.postId, isLiked: state.previousState);
                 }
               }
             },
           ),
+
+          // FavoritesBloc: only sync the boolean flag at page-level.
+          // Counts are server-authoritative and will be applied by RealtimePostUpdate.
           BlocListener<FavoritesBloc, FavoritesState>(
             listener: (context, state) {
               if (state is FavoriteSuccess) {
-                // Optimistic update
-                _applyPostUpdate(state.postId, isFavorited: state.isFavorited);
+                _applyPostFlags(state.postId, isFavorited: state.isFavorited);
               } else if (state is FavoriteUpdated) {
-                // Real-time update (eventual consistency)
-                _applyPostUpdate(state.postId, isFavorited: state.isFavorited);
+                // Do not change counts here — item widgets manage optimistic counts.
+                _applyPostFlags(state.postId, isFavorited: state.isFavorited);
               } else if (state is FavoriteError) {
                 AppLogger.error('Favorite error in FeedPage: ${state.message}');
-                // Revert optimistic update on failure
                 if (state.shouldRevert) {
-                  _applyPostUpdate(
+                  _applyPostFlags(
                     state.postId,
                     isFavorited: state.previousState,
                   );
-                  // if (mounted) {
-                  //   SnackbarUtils.showError(
-                  //     context,
-                  //     'Failed to ${state.previousState ? 'unfavorite' : 'favorite'} post.',
-                  //   );
-                  // }
                 }
               }
             },
@@ -262,23 +239,21 @@ class _FeedPageState extends State<FeedPage>
         child: RefreshIndicator(
           onRefresh: () async {
             AppLogger.info('Refreshing feed for user: $currentUserId');
-            _stopRealtimeListeners();
             final bloc = context.read<PostsBloc>();
             bloc.add(GetFeedEvent(currentUserId));
             await bloc.stream.firstWhere(
               (state) => state is FeedLoaded || state is PostsError,
             );
-            _startRealtimeListeners(currentUserId);
           },
           child: Builder(
             builder: (context) {
-              if (_posts.isNotEmpty) {
+              if (_posts.isNotEmpty)
                 return FeedList(posts: _posts, userId: currentUserId);
-              }
+
               final postsState = context.watch<PostsBloc>().state;
-              if (postsState is PostsLoading || postsState is PostsInitial) {
+              if (postsState is PostsLoading || postsState is PostsInitial)
                 return const LoadingIndicator();
-              }
+
               if (postsState is FeedLoaded) {
                 if (postsState.posts.isEmpty) {
                   return const EmptyStateWidget(
@@ -288,6 +263,7 @@ class _FeedPageState extends State<FeedPage>
                 }
                 return FeedList(posts: postsState.posts, userId: currentUserId);
               }
+
               if (postsState is PostsError) {
                 return CustomErrorWidget(
                   message: postsState.message,
@@ -296,6 +272,7 @@ class _FeedPageState extends State<FeedPage>
                   ),
                 );
               }
+
               return const LoadingIndicator();
             },
           ),
@@ -311,7 +288,6 @@ class _FeedPageState extends State<FeedPage>
   @override
   void dispose() {
     AppLogger.info('Disposing FeedPage');
-    _stopRealtimeListeners();
     super.dispose();
   }
 }

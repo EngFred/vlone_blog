@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'package:bloc/bloc.dart';
+
 import 'package:equatable/equatable.dart';
-import 'package:vlone_blog_app/core/usecases/usecase.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 import 'package:vlone_blog_app/features/comments/domain/repositories/comments_repository.dart';
@@ -17,8 +18,10 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
   final GetCommentsUseCase getCommentsUseCase;
   final StreamCommentsUseCase streamCommentsUseCase;
   final CommentsRepository repository;
+  final RealtimeService realtimeService;
 
   StreamSubscription? _commentsStreamSubscription;
+  StreamSubscription? _rtCommentsSub;
   String? _currentPostId;
 
   CommentsBloc({
@@ -26,6 +29,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     required this.getCommentsUseCase,
     required this.streamCommentsUseCase,
     required this.repository,
+    required this.realtimeService,
   }) : super(CommentsInitial()) {
     on<GetCommentsEvent>(_onGetComments);
     on<AddCommentEvent>(_onAddComment);
@@ -33,7 +37,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     on<StopCommentsStreamEvent>(_onStopCommentsStream);
     on<_RealtimeCommentReceivedEvent>(_onRealtimeCommentReceived);
 
-    // Keep legacy event for backwards compatibility
+    // Legacy compatibility
     on<SubscribeToCommentsEvent>((event, emit) {
       add(StartCommentsStreamEvent(event.postId));
     });
@@ -51,7 +55,6 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     emit(CommentsLoading());
 
     final result = await getCommentsUseCase(event.postId);
-
     result.fold(
       (failure) {
         AppLogger.error('Get comments failed: ${failure.message}');
@@ -69,7 +72,6 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     Emitter<CommentsState> emit,
   ) async {
     AppLogger.info('AddCommentEvent triggered for post: ${event.postId}');
-
     final result = await addCommentUseCase(
       AddCommentParams(
         postId: event.postId,
@@ -86,11 +88,6 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
       },
       (_) {
         AppLogger.info('Comment added successfully. Stream will update UI.');
-        // We no longer emit `CommentAdded` here.
-        // The state remains `CommentsLoaded` (or whatever it was).
-        // The real-time stream listener `_onRealtimeCommentReceived`
-        // will handle emitting the new `CommentsLoaded` state.
-        // This prevents the UI from flickering to an empty state.
       },
     );
   }
@@ -103,14 +100,13 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
       'Starting comments real-time stream for post: ${event.postId}',
     );
 
-    // ✅ Emit the loading state your UI already understands
+    // Keep per-post repository stream for accurate comment tree updates
     emit(CommentsLoading());
 
     _currentPostId = event.postId;
 
     await _commentsStreamSubscription?.cancel();
 
-    // [Your existing stream listening logic remains unchanged]
     _commentsStreamSubscription = repository
         .getCommentsStream(event.postId)
         .listen(
@@ -121,33 +117,49 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
             add(_RealtimeCommentReceivedEvent(event.postId, rootComments));
           },
           onError: (error) {
-            AppLogger.error('Comments stream error: $error', error: error);
+            AppLogger.error(
+              'Comments stream error (repo): $error',
+              error: error,
+            );
             emit(CommentsError(error.toString()));
           },
         );
 
-    // [Your existing global stream logic remains unchanged]
-    streamCommentsUseCase(NoParams()).listen(
-      (either) {
-        either.fold(
-          (failure) =>
-              AppLogger.error('Real-time comment error: ${failure.message}'),
-          (commentData) {
-            final postId = commentData['post_id'] as String;
-            if (postId == _currentPostId) {
-              AppLogger.info('Real-time: New comment on current post: $postId');
-            }
-          },
-        );
+    // Additionally, subscribe to the unified global comments stream from RealtimeService.
+    // This lets the app receive comment notifications that may be produced elsewhere.
+    _rtCommentsSub?.cancel();
+    _rtCommentsSub = realtimeService.onComment.listen(
+      (commentData) {
+        try {
+          // commentData expected to contain 'post_id' and 'comment' or similar
+          final postId =
+              commentData['post_id'] ??
+              commentData['postId'] ??
+              commentData['post_id'];
+          if (postId is String && postId == _currentPostId) {
+            // Depending on the shape you emit from server, you might get a full comment object or a map.
+            // Here we rely on repository stream to carry the canonical tree; this global stream can be used
+            // for lightweight notifications or incremental updates. We'll trigger a reload for simplicity.
+            AppLogger.info(
+              'RealtimeService: comment event detected for current post: $postId — refreshing via repo stream',
+            );
+            // Let repo stream drive UI; no manual merge here.
+          } else {
+            AppLogger.info(
+              'RealtimeService: comment event for other post: $postId',
+            );
+          }
+        } catch (e) {
+          AppLogger.error('Error handling realtime commentData: $e', error: e);
+        }
       },
-      onError: (error) {
-        AppLogger.error('Global comments stream error: $error', error: error);
-      },
+      onError: (err) => AppLogger.error(
+        'CommentsBloc: RealtimeService.onComment error: $err',
+        error: err,
+      ),
     );
 
-    // ⛔️ REMOVE this line. The state is already Loading,
-    // and will become Loaded when the stream fires.
-    // emit(CommentsStreamStarted(event.postId));
+    // Do not emit CommentsStreamStarted here — repo stream will emit CommentsLoaded shortly.
   }
 
   Future<void> _onStopCommentsStream(
@@ -157,6 +169,8 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     AppLogger.info('Stopping comments real-time stream');
     await _commentsStreamSubscription?.cancel();
     _commentsStreamSubscription = null;
+    await _rtCommentsSub?.cancel();
+    _rtCommentsSub = null;
     _currentPostId = null;
     emit(CommentsStreamStopped());
   }
@@ -165,7 +179,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     _RealtimeCommentReceivedEvent event,
     Emitter<CommentsState> emit,
   ) {
-    AppLogger.info('Real-time comments received for post: ${event.postId}');
+    AppLogger.info('Realtime comments received for post: ${event.postId}');
     emit(CommentsLoaded(event.comments));
   }
 
@@ -173,6 +187,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
   Future<void> close() {
     AppLogger.info('Closing CommentsBloc - cancelling subscription');
     _commentsStreamSubscription?.cancel();
+    _rtCommentsSub?.cancel();
     return super.close();
   }
 }

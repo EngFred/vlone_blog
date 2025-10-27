@@ -23,8 +23,7 @@ class PostActions extends StatelessWidget {
   static const Duration _defaultDebounce = Duration(milliseconds: 500);
 
   void _share(BuildContext context) {
-    final postId = post.id;
-    context.read<PostsBloc>().add(SharePostEvent(postId));
+    context.read<PostsBloc>().add(SharePostEvent(post.id));
   }
 
   void _handleComment(BuildContext context) {
@@ -37,87 +36,70 @@ class PostActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Base values from PostEntity (from PostsBloc)
+    final baseIsLiked = post.isLiked;
+    final baseLikesCount = post.likesCount;
+    final baseIsFavorited = post.isFavorited;
+    final baseFavoritesCount = post.favoritesCount;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       child: Row(
-        // Spread the main actions to the left and favorite to the right
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             children: [
-              // ================== LIKE BUTTON FIX ==================
-              BlocBuilder<LikesBloc, LikesState>(
-                // Only rebuild if the state update is for THIS post
-                buildWhen: (prev, curr) {
-                  if (curr is LikesInitial) return true;
-                  if (curr is LikeUpdated && curr.postId == post.id)
-                    return true;
-                  if (curr is LikeError &&
-                      curr.postId == post.id &&
-                      curr.shouldRevert)
-                    return true;
-                  return false;
-                },
-                builder: (context, state) {
-                  // 1. Get baseline state from the PostEntity (from PostsBloc)
-                  bool isLiked = post.isLiked;
-                  int likesCount = post.likesCount;
-
-                  // 2. Override with optimistic state from LikesBloc if it exists
-                  if (state is LikeUpdated && state.postId == post.id) {
-                    isLiked = state.isLiked;
-                  } else if (state is LikeError &&
-                      state.postId == post.id &&
-                      state.shouldRevert) {
-                    isLiked = state.previousState;
-                  }
-
-                  // 3. The likesCount is purposefully NOT updated optimistically here.
-                  // We let the PostsBloc's real-time stream update the count,
-                  // which fixes the "count updates but icon doesn't" bug.
-                  // This builder is only responsible for the icon's boolean state.
-
-                  return DebouncedInkWell(
-                    actionKey: 'like_${post.id}',
-                    duration: _defaultDebounce,
-                    onTap: () {
-                      // 4. Send the *inverse* of the *current UI state*
-                      context.read<LikesBloc>().add(
-                        LikePostEvent(
-                          postId: post.id,
-                          userId: userId,
-                          isLiked: !isLiked, // Use the derived 'isLiked'
-                        ),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(8.0),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4.0,
-                      vertical: 4.0,
+              // ==================== LIKE BUTTON ====================
+              DebouncedInkWell(
+                actionKey: 'like_${post.id}',
+                duration: _defaultDebounce,
+                onTap: () {
+                  // Fire the domain action
+                  context.read<LikesBloc>().add(
+                    LikePostEvent(
+                      postId: post.id,
+                      userId: userId,
+                      isLiked: !baseIsLiked,
+                      previousState: baseIsLiked,
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          isLiked ? Icons.favorite : Icons.favorite_border,
-                          size: 24,
-                        ),
-                        if (likesCount > 0)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 4.0),
-                            // Use the count from the PostEntity
-                            child: Text(likesCount.toString()),
-                          ),
-                      ],
+                  );
+
+                  // Immediately update central posts list optimistically so pages/feeds reflect the change.
+                  final int delta = (!baseIsLiked) ? 1 : -1;
+                  context.read<PostsBloc>().add(
+                    OptimisticPostUpdate(
+                      postId: post.id,
+                      deltaLikes: delta,
+                      deltaFavorites: 0,
+                      isLiked: !baseIsLiked,
+                      isFavorited: null,
                     ),
                   );
                 },
+                borderRadius: BorderRadius.circular(8.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 4.0,
+                  vertical: 4.0,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      baseIsLiked ? Icons.favorite : Icons.favorite_border,
+                      size: 24,
+                    ),
+                    if (baseLikesCount > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4.0),
+                        child: Text(baseLikesCount.toString()),
+                      ),
+                  ],
+                ),
               ),
 
-              // ================ END LIKE BUTTON FIX ================
               const SizedBox(width: 20),
 
-              // Comment (DebouncedInkWell)
+              // ==================== COMMENT BUTTON ====================
               DebouncedInkWell(
                 actionKey: 'comment_nav_${post.id}',
                 duration: _defaultDebounce,
@@ -139,9 +121,10 @@ class PostActions extends StatelessWidget {
                   ],
                 ),
               ),
+
               const SizedBox(width: 20),
 
-              // Share (DebouncedInkWell)
+              // ==================== SHARE BUTTON ====================
               DebouncedInkWell(
                 actionKey: 'share_${post.id}',
                 duration: _defaultDebounce,
@@ -166,9 +149,8 @@ class PostActions extends StatelessWidget {
             ],
           ),
 
-          // ================== FAVORITE BUTTON FIX ==================
+          // ==================== FAVORITE BUTTON (BLOC) ====================
           BlocBuilder<FavoritesBloc, FavoritesState>(
-            // Only rebuild if the state update is for THIS post
             buildWhen: (prev, curr) {
               if (curr is FavoritesInitial) return true;
               if (curr is FavoriteUpdated && curr.postId == post.id)
@@ -180,31 +162,42 @@ class PostActions extends StatelessWidget {
               return false;
             },
             builder: (context, state) {
-              // 1. Get baseline state from the PostEntity
-              bool isFavorited = post.isFavorited;
-              int favoritesCount = post.favoritesCount;
+              // Use post as source-of-truth for counts to avoid double-applying delta.
+              bool isFavorited = baseIsFavorited;
+              int favoritesCount = baseFavoritesCount;
 
-              // 2. Override with optimistic state from FavoritesBloc
               if (state is FavoriteUpdated && state.postId == post.id) {
                 isFavorited = state.isFavorited;
+                // DO NOT apply state.delta here (PostCard handles local count).
               } else if (state is FavoriteError &&
                   state.postId == post.id &&
                   state.shouldRevert) {
                 isFavorited = state.previousState;
               }
 
-              // 3. Count is handled by PostsBloc real-time stream.
-
               return DebouncedInkWell(
                 actionKey: 'favorite_${post.id}',
                 duration: _defaultDebounce,
                 onTap: () {
-                  // 4. Send the *inverse* of the *current UI state*
+                  // Fire the domain action
                   context.read<FavoritesBloc>().add(
                     FavoritePostEvent(
                       postId: post.id,
                       userId: userId,
-                      isFavorited: !isFavorited, // Use derived 'isFavorited'
+                      isFavorited: !isFavorited,
+                      previousState: isFavorited,
+                    ),
+                  );
+
+                  // Immediately update central posts list optimistically
+                  final int deltaFav = (!isFavorited) ? 1 : -1;
+                  context.read<PostsBloc>().add(
+                    OptimisticPostUpdate(
+                      postId: post.id,
+                      deltaLikes: 0,
+                      deltaFavorites: deltaFav,
+                      isLiked: null,
+                      isFavorited: !isFavorited,
                     ),
                   );
                 },
@@ -230,7 +223,6 @@ class PostActions extends StatelessWidget {
               );
             },
           ),
-          // =============== END FAVORITE BUTTON FIX ===============
         ],
       ),
     );

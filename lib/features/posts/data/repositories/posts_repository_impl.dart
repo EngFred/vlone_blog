@@ -182,8 +182,6 @@ class PostsRepositoryImpl implements PostsRepository {
     }
   }
 
-  // 🔥 REMOVED: streamComments (Moved to CommentsRepository)
-
   @override
   Stream<Either<Failure, String>> streamPostDeletions() {
     try {

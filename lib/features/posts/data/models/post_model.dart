@@ -42,14 +42,34 @@ class PostModel {
   });
 
   factory PostModel.fromMap(Map<String, dynamic> map) {
-    // 💡 FIX: Determine the source of profile data.
-    // Check if it's the flat RPC structure (username at top level)
-    final isRpcFlat = map.containsKey('username');
+    Map<String, dynamic>? profileSource;
+    if (map.containsKey('username')) {
+      profileSource = map;
+    } else {
+      final p = map['profiles'];
+      if (p is Map<String, dynamic>) profileSource = p;
+    }
 
-    // Assign the map source: either the entire map (RPC) or the nested 'profiles' sub-map (standard select)
-    final profileSource = isRpcFlat
-        ? map
-        : (map['profiles'] as Map<String, dynamic>?);
+    int safeInt(dynamic v) {
+      if (v == null) return 0;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v) ?? 0;
+      return 0;
+    }
+
+    DateTime parseDate(dynamic v) {
+      if (v == null) return DateTime.fromMillisecondsSinceEpoch(0);
+      if (v is DateTime) return v;
+      if (v is String) {
+        try {
+          return DateTime.parse(v);
+        } catch (_) {
+          return DateTime.fromMillisecondsSinceEpoch(0);
+        }
+      }
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
 
     return PostModel(
       id: map['id'] as String,
@@ -58,22 +78,18 @@ class PostModel {
       mediaUrl: map['media_url'] as String?,
       mediaType: map['media_type'] as String?,
       thumbnailUrl: map['thumbnail_url'] as String?,
-      likesCount: map['likes_count'] as int? ?? 0,
-      commentsCount: map['comments_count'] as int? ?? 0,
-      favoritesCount: map['favorites_count'] as int? ?? 0,
-      sharesCount: map['shares_count'] as int? ?? 0,
-      createdAt: DateTime.parse(map['created_at'] as String),
+      likesCount: safeInt(map['likes_count']),
+      commentsCount: safeInt(map['comments_count']),
+      favoritesCount: safeInt(map['favorites_count']),
+      sharesCount: safeInt(map['shares_count']),
+      createdAt: parseDate(map['created_at']),
       updatedAt: map['updated_at'] != null
-          ? DateTime.parse(map['updated_at'] as String)
+          ? parseDate(map['updated_at'])
           : null,
       isPublic: map['is_public'] as bool? ?? true,
-      viewsCount: map['views_count'] as int? ?? 0,
-
-      // These fields are returned by the RPC as top-level keys, but are safe to check here
+      viewsCount: safeInt(map['views_count']),
       isLiked: map['is_liked'] as bool? ?? false,
       isFavorited: map['is_favorited'] as bool? ?? false,
-
-      // Extract profile data from the determined source
       username: profileSource?['username'] as String?,
       avatarUrl: profileSource?['profile_image_url'] as String?,
     );

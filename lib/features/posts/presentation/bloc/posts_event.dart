@@ -141,3 +141,20 @@ class _RealtimePostDeletedEvent extends PostsEvent {
   @override
   List<Object?> get props => [postId];
 }
+
+// posts_event.dart (add)
+class OptimisticPostUpdate extends PostsEvent {
+  final String postId;
+  final int deltaLikes;
+  final int deltaFavorites;
+  final bool? isLiked;
+  final bool? isFavorited;
+
+  const OptimisticPostUpdate({
+    required this.postId,
+    this.deltaLikes = 0,
+    this.deltaFavorites = 0,
+    this.isLiked,
+    this.isFavorited,
+  });
+}

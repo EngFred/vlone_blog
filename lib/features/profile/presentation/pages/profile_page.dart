@@ -34,68 +34,63 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _userPostsError;
   bool? _isFollowing;
   bool _isProcessingFollow = false;
-  // Track the currently loaded profile to detect stale data
   String? _loadedProfileUserId;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _initializeProfile();
-      }
+      if (mounted) _initializeProfile();
     });
   }
 
-  /// Initialize or reinitialize profile when needed
   void _initializeProfile() {
     setState(() {
       _isOwnProfile = true;
       _userId = widget.userId;
     });
 
-    // Only load if this is a new userId (prevents duplicate loads)
     if (_loadedProfileUserId != widget.userId) {
       _loadedProfileUserId = widget.userId;
 
-      // Stop previous real-time subscription
-      context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
+      // NOTE:
+      // We intentionally DO NOT start/stop realtime here.
+      // RealtimeService should be started centrally (main.dart).
+      // Feature blocs should subscribe to RealtimeService (via DI) so pages don't drive low-level listeners.
 
-      // Clear old data
       _userPosts.clear();
       _userPostsError = null;
       _isUserPostsLoading = false;
 
-      // Start fresh for new user
       context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
-      context.read<ProfileBloc>().add(StartProfileRealtimeEvent(widget.userId));
+      // profile realtime should be handled by ProfileBloc itself via RealtimeService
+      context.read<PostsBloc>().add(
+        GetUserPostsEvent(
+          profileUserId: widget.userId,
+          currentUserId: _userId ?? '',
+        ),
+      );
 
       AppLogger.info('ProfilePage: Initialized for userId: ${widget.userId}');
     }
   }
 
-  /// ✅ FIX: Detect when component prop changes (e.g., route back from another profile)
-  /// This is called when the parent widget (MainPage) rebuilds with a different userId
   @override
   void didUpdateWidget(ProfilePage oldWidget) {
     super.didUpdateWidget(oldWidget);
-
-    // If userId changed (e.g., from bottom nav navigation), reinitialize
     if (oldWidget.userId != widget.userId) {
       AppLogger.info(
         'ProfilePage userId changed from ${oldWidget.userId} to ${widget.userId}',
       );
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _initializeProfile();
-        }
+        if (mounted) _initializeProfile();
       });
     }
   }
 
   @override
   void dispose() {
-    context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
+    // Do NOT stop realtime here: the centralized RealtimeService is managed at app-level.
     super.dispose();
   }
 
@@ -129,65 +124,10 @@ class _ProfilePageState extends State<ProfilePage> {
     });
     context.read<FollowersBloc>().add(
       FollowUserEvent(
-        followerId: _userId!,
+        followerId: _userId ?? '',
         followingId: widget.userId,
         isFollowing: newFollowing,
       ),
-    );
-  }
-
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        final theme = Theme.of(dialogContext);
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          title: Row(
-            children: [
-              Icon(Icons.warning, color: Colors.orange),
-              const SizedBox(width: 8),
-              const Text('Logout Confirmation'),
-            ],
-          ),
-          content: const Text(
-            'Are you sure you want to log out? You will need to sign in again to access your account.',
-            style: TextStyle(fontSize: 16),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                context.read<AuthBloc>().add(LogoutEvent());
-                if (context.mounted) {
-                  SnackbarUtils.showInfo(context, 'Logging out...');
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.error,
-                foregroundColor: theme.colorScheme.onError,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text(
-                'Logout',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -269,14 +209,71 @@ class _ProfilePageState extends State<ProfilePage> {
                     );
                     break;
                   case ProfileMenuOption.logout:
-                    _showLogoutDialog(context);
+                    // keep existing logout behavior from original file
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (dialogContext) {
+                        final theme = Theme.of(dialogContext);
+                        return AlertDialog(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          title: Row(
+                            children: [
+                              Icon(Icons.warning, color: Colors.orange),
+                              const SizedBox(width: 8),
+                              const Text('Logout Confirmation'),
+                            ],
+                          ),
+                          content: const Text(
+                            'Are you sure you want to log out? You will need to sign in again to access your account.',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(),
+                              child: Text(
+                                'Cancel',
+                                style: TextStyle(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                            ElevatedButton(
+                              onPressed: () {
+                                Navigator.of(dialogContext).pop();
+                                context.read<AuthBloc>().add(LogoutEvent());
+                                if (context.mounted) {
+                                  SnackbarUtils.showInfo(
+                                    context,
+                                    'Logging out...',
+                                  );
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: theme.colorScheme.error,
+                                foregroundColor: theme.colorScheme.onError,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: const Text(
+                                'Logout',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    );
                     break;
                 }
               },
               itemBuilder: (menuContext) {
                 final iconColor = Theme.of(menuContext).colorScheme.onSurface;
                 final textStyle = Theme.of(menuContext).textTheme.bodyMedium;
-
                 return [
                   PopupMenuItem<ProfileMenuOption>(
                     value: ProfileMenuOption.edit,
@@ -314,6 +311,7 @@ class _ProfilePageState extends State<ProfilePage> {
               }
             },
           ),
+
           BlocListener<PostsBloc, PostsState>(
             listener: (context, state) {
               if (state is UserPostsLoading) {
@@ -347,11 +345,7 @@ class _ProfilePageState extends State<ProfilePage> {
               } else if (state is PostCreated) {
                 if (_isOwnProfile && mounted) {
                   final exists = _userPosts.any((p) => p.id == state.post.id);
-                  if (!exists) {
-                    setState(() {
-                      _userPosts.insert(0, state.post);
-                    });
-                  }
+                  if (!exists) setState(() => _userPosts.insert(0, state.post));
                 }
               } else if (state is UserPostsError) {
                 if (mounted) {
@@ -374,6 +368,7 @@ class _ProfilePageState extends State<ProfilePage> {
               }
             },
           ),
+
           BlocListener<LikesBloc, LikesState>(
             listener: (context, state) {
               if (state is LikeUpdated) {
@@ -384,6 +379,7 @@ class _ProfilePageState extends State<ProfilePage> {
               }
             },
           ),
+
           BlocListener<FavoritesBloc, FavoritesState>(
             listener: (context, state) {
               if (state is FavoriteUpdated) {
@@ -394,13 +390,12 @@ class _ProfilePageState extends State<ProfilePage> {
               }
             },
           ),
+
           BlocListener<FollowersBloc, FollowersState>(
             listener: (context, state) {
               if (state is FollowStatusLoaded &&
                   state.followingId == widget.userId) {
-                if (mounted) {
-                  setState(() => _isFollowing = state.isFollowing);
-                }
+                if (mounted) setState(() => _isFollowing = state.isFollowing);
               } else if (state is UserFollowed &&
                   state.followedUserId == widget.userId) {
                 if (mounted) {
@@ -408,13 +403,10 @@ class _ProfilePageState extends State<ProfilePage> {
                     _isFollowing = state.isFollowing;
                     _isProcessingFollow = false;
                   });
-                  AppLogger.info(
-                    'Follow action completed. Profile counts will update via real-time stream.',
-                  );
                 }
               } else if (state is FollowersError) {
                 if (mounted) {
-                  if (_isProcessingFollow) {
+                  if (_isProcessingFollow && _isFollowing != null) {
                     setState(() {
                       _isFollowing = !_isFollowing!;
                       _isProcessingFollow = false;
@@ -434,11 +426,9 @@ class _ProfilePageState extends State<ProfilePage> {
             if (state is ProfileError) {
               return CustomErrorWidget(
                 message: state.message,
-                onRetry: () {
-                  context.read<ProfileBloc>().add(
-                    GetProfileDataEvent(widget.userId),
-                  );
-                },
+                onRetry: () => context.read<ProfileBloc>().add(
+                  GetProfileDataEvent(widget.userId),
+                ),
               );
             }
             if (state is ProfileDataLoaded) {
@@ -447,7 +437,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   context.read<PostsBloc>().add(
                     GetUserPostsEvent(
                       profileUserId: widget.userId,
-                      currentUserId: _userId!,
+                      currentUserId: _userId ?? '',
                     ),
                   );
                   if (mounted) {
@@ -474,17 +464,15 @@ class _ProfilePageState extends State<ProfilePage> {
                         isLoading: _isUserPostsLoading,
                         error: _userPostsError,
                         onRetry: () {
-                          if (mounted) {
+                          if (mounted)
                             setState(() {
                               _userPostsError = null;
                               _isUserPostsLoading = true;
                             });
-                          }
-
                           context.read<PostsBloc>().add(
                             GetUserPostsEvent(
                               profileUserId: widget.userId,
-                              currentUserId: _userId!,
+                              currentUserId: _userId ?? '',
                             ),
                           );
                         },

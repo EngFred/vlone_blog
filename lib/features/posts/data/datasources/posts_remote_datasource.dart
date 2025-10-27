@@ -12,16 +12,33 @@ import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
+/// PostsRemoteDataSource
+///
+/// This file is the improved production-ready remote data source for posts.
+/// Improvements in this revision:
+///  - Ensures buffered new-post IDs are flushed when the stream is cancelled
+///  - Adds a client-side max batch size and immediate flush when reached
+///  - Adds RPC retry with exponential backoff for transient errors
+///  - Keeps the coalescing/batching logic but hardened against races
+///  - Defensive checks when pushing to controllers
+
 class PostsRemoteDataSource {
   final SupabaseClient client;
 
   // Store channel references for cleanup
-  RealtimeChannel? _postsChannel;
+  RealtimeChannel? _postsUpdatesChannel;
   RealtimeChannel? _postDeletionsChannel;
+  RealtimeChannel? _postsInsertsChannel;
 
-  // Stream controllers for manual stream management (lazily initialized)
+  // Stream controllers (single broadcast controllers reused by callers)
   StreamController<Map<String, dynamic>>? _postsController;
   StreamController<String>? _postDeletionsController;
+  StreamController<PostModel>? _newPostsController;
+
+  /// Client-side batch and debounce tuning
+  static const int _maxBatchSize = 50; // maximum IDs per batch RPC
+  static const Duration _coalesceWindow = Duration(milliseconds: 300);
+  static const int _rpcMaxAttempts = 3;
 
   PostsRemoteDataSource(this.client);
 
@@ -159,6 +176,40 @@ class PostsRemoteDataSource {
     }
   }
 
+  // ------------------ RPC helpers ------------------
+
+  List _normalizeRpcList(dynamic resp) {
+    if (resp == null) return <dynamic>[];
+    if (resp is List) return resp;
+    if (resp is Map) return [resp];
+    return <dynamic>[];
+  }
+
+  Future<dynamic> _callRpcWithRetry(
+    String name, {
+    Map<String, dynamic>? params,
+  }) async {
+    int attempt = 0;
+    int delayMs = 200;
+    while (true) {
+      try {
+        attempt++;
+        if (params != null) {
+          return await client.rpc(name, params: params);
+        } else {
+          return await client.rpc(name);
+        }
+      } catch (e) {
+        if (attempt >= _rpcMaxAttempts) rethrow;
+        AppLogger.warning(
+          'RPC $name failed on attempt $attempt: $e — retrying in ${delayMs}ms',
+        );
+        await Future.delayed(Duration(milliseconds: delayMs));
+        delayMs *= 2; // exponential backoff
+      }
+    }
+  }
+
   // ==================== RPC for Feed Retrieval ====================
 
   /// Fetches the main feed using the `get_feed_with_user_status` RPC for efficiency.
@@ -167,21 +218,19 @@ class PostsRemoteDataSource {
       AppLogger.info('Fetching feed via RPC for user: $currentUserId');
 
       // Call the consolidated Postgres function
-      final response = await client.rpc(
+      final response = await _callRpcWithRetry(
         'get_feed_with_user_status',
         params: {'current_user_id': currentUserId},
       );
 
-      if (response is List && response.isEmpty) {
-        return [];
-      }
+      final rows = _normalizeRpcList(response);
+      if (rows.isEmpty) return [];
 
-      AppLogger.info(
-        'Feed fetched with ${(response as List).length} posts via RPC',
-      );
+      AppLogger.info('Feed fetched with ${rows.length} posts via RPC');
 
-      // Model handles the flat RPC structure directly now
-      return (response).map((map) => PostModel.fromMap(map)).toList();
+      return rows
+          .map((map) => PostModel.fromMap(map as Map<String, dynamic>))
+          .toList();
     } catch (e) {
       AppLogger.error('Error fetching feed via RPC: $e', error: e);
       throw ServerException(e.toString());
@@ -193,22 +242,19 @@ class PostsRemoteDataSource {
     try {
       AppLogger.info('Fetching reels (video posts) via RPC');
 
-      // Call the consolidated Postgres function for reels (media_type = 'video')
-      final response = await client.rpc(
+      final response = await _callRpcWithRetry(
         'get_posts_with_user_status',
         params: {'p_current_user_id': currentUserId, 'p_media_type': 'video'},
       );
 
-      if (response is List && response.isEmpty) {
-        return [];
-      }
+      final rows = _normalizeRpcList(response);
+      if (rows.isEmpty) return [];
 
-      AppLogger.info(
-        'Reels fetched with ${(response as List).length} posts via RPC',
-      );
+      AppLogger.info('Reels fetched with ${rows.length} posts via RPC');
 
-      // Model handles the flat RPC structure directly now
-      return (response).map((map) => PostModel.fromMap(map)).toList();
+      return rows
+          .map((map) => PostModel.fromMap(map as Map<String, dynamic>))
+          .toList();
     } catch (e) {
       AppLogger.error('Error fetching reels via RPC: $e', error: e);
       throw ServerException(e.toString());
@@ -223,8 +269,7 @@ class PostsRemoteDataSource {
     try {
       AppLogger.info('Fetching user posts for $profileUserId via RPC');
 
-      // Call the consolidated Postgres function filtering by user ID
-      final response = await client.rpc(
+      final response = await _callRpcWithRetry(
         'get_posts_with_user_status',
         params: {
           'p_current_user_id': currentUserId,
@@ -232,15 +277,14 @@ class PostsRemoteDataSource {
         },
       );
 
-      if (response is List && response.isEmpty) {
-        return [];
-      }
+      final rows = _normalizeRpcList(response);
+      if (rows.isEmpty) return [];
 
-      AppLogger.info(
-        'User posts fetched with ${(response as List).length} posts via RPC',
-      );
+      AppLogger.info('User posts fetched with ${rows.length} posts via RPC');
 
-      return (response).map((map) => PostModel.fromMap(map)).toList();
+      return rows
+          .map((map) => PostModel.fromMap(map as Map<String, dynamic>))
+          .toList();
     } catch (e) {
       AppLogger.error('Error fetching user posts via RPC: $e', error: e);
       throw ServerException(e.toString());
@@ -257,20 +301,15 @@ class PostsRemoteDataSource {
         'Fetching post: $postId using updated get_post_with_profile RPC',
       );
 
-      //Use the new 2-parameter overloaded function signature for efficiency.
-      final response = await client.rpc(
+      final response = await _callRpcWithRetry(
         'get_post_with_profile',
-        params: {
-          // Parameters match the new function signature in SQL
-          'p_post_id': postId,
-          'p_current_user_id': currentUserId,
-        },
+        params: {'p_post_id': postId, 'p_current_user_id': currentUserId},
       );
 
-      // The RPC returns a list (even if it's just one item).
-      if (response is List && response.isNotEmpty) {
-        AppLogger.info('Post fetched successfully: ${response.first['id']}');
-        return PostModel.fromMap(response.first as Map<String, dynamic>);
+      final rows = _normalizeRpcList(response);
+      if (rows.isNotEmpty) {
+        AppLogger.info('Post fetched successfully: ${rows.first['id']}');
+        return PostModel.fromMap(rows.first as Map<String, dynamic>);
       } else {
         AppLogger.error('No post found for ID: $postId');
         throw const ServerException('Post not found or unauthorized');
@@ -294,7 +333,7 @@ class PostsRemoteDataSource {
       await Share.share(shareUrl);
 
       // RPC call is atomic and safe
-      await client.rpc(
+      await _callRpcWithRetry(
         'increment_post_shares',
         params: {'post_id_param': postId},
       );
@@ -328,125 +367,230 @@ class PostsRemoteDataSource {
     }
   }
 
-  /// Stream for new posts being created. Uses the **original one-parameter** `get_post_with_profile` RPC.
+  // ==================== Realtime streams ====================
+
+  /// Stream for new posts being created.
+  ///
+  /// Coalesces incoming insert events into a short buffer window (300ms)
+  /// and attempts to fetch multiple posts in a single batched RPC call
+  /// (`get_posts_batch`). If the batch RPC is not available the code falls
+  /// back to fetching each post individually.
   Stream<PostModel> streamNewPosts() {
-    AppLogger.info(
-      'Setting up real-time stream for new posts (using 1-param RPC)',
-    );
+    AppLogger.info('Setting up real-time stream for new posts (coalesced)');
 
-    return client
-        .from('posts')
-        .stream(primaryKey: ['id'])
-        .order('created_at', ascending: false)
-        .asyncMap((data) async {
-          if (data.isEmpty) return null;
+    // Reuse existing controller if present
+    if (_newPostsController != null && !_newPostsController!.isClosed) {
+      AppLogger.info('Returning existing new posts stream');
+      return _newPostsController!.stream;
+    }
 
-          final latestPost = data.first;
-          final postId = latestPost['id'] as String;
+    _newPostsController = StreamController<PostModel>.broadcast();
 
-          try {
-            //The stream uses the original 1-parameter function signature.
-            final response = await client.rpc(
-              'get_post_with_profile',
-              params: {'post_id': postId},
-            );
+    final channel = client.channel('realtime:posts:inserts');
+    _postsInsertsChannel = channel;
 
-            if (response is List && response.isNotEmpty) {
-              final postMap = response.first as Map<String, dynamic>;
-              // Manually inject default status fields for the model to work
-              postMap['is_liked'] = false;
-              postMap['is_favorited'] = false;
-              return PostModel.fromMap(postMap);
+    final List<String> idBuffer = [];
+    Timer? flushTimer;
+    bool isFlushing = false;
+
+    Future<void> flushIds() async {
+      if (isFlushing) return;
+      isFlushing = true;
+      final ids = List<String>.from(idBuffer);
+      idBuffer.clear();
+      flushTimer = null;
+      if (ids.isEmpty) {
+        isFlushing = false;
+        return;
+      }
+
+      // Split into chunks to respect _maxBatchSize
+      for (int i = 0; i < ids.length; i += _maxBatchSize) {
+        final end = (i + _maxBatchSize < ids.length)
+            ? i + _maxBatchSize
+            : ids.length;
+        final chunk = ids.sublist(i, end);
+
+        try {
+          final batchResponse = await _callRpcWithRetry(
+            'get_posts_batch',
+            params: {'p_post_ids': chunk},
+          );
+          final rows = _normalizeRpcList(batchResponse);
+          for (final r in rows) {
+            try {
+              final map = r as Map<String, dynamic>;
+              map['is_liked'] = map['is_liked'] ?? false;
+              map['is_favorited'] = map['is_favorited'] ?? false;
+              if (!(_newPostsController?.isClosed ?? true)) {
+                _newPostsController!.add(PostModel.fromMap(map));
+              }
+            } catch (e, st) {
+              AppLogger.error(
+                'Error parsing batched post map: $e',
+                error: e,
+                stackTrace: st,
+              );
             }
-
-            AppLogger.warning(
-              'RPC get_post_with_profile returned no data for $postId',
-            );
-            return null;
-          } catch (e) {
-            AppLogger.error(
-              'Error fetching complete post data via RPC: $e',
-              error: e,
-            );
-            return null;
           }
-        })
-        .where((post) => post != null)
-        .cast<PostModel>()
-        .handleError((error) {
-          AppLogger.error('Error in new posts stream: $error', error: error);
-        });
+        } catch (e) {
+          AppLogger.warning(
+            'Batch RPC failed, falling back to per-id fetch for chunk: $e',
+          );
+          for (final id in chunk) {
+            try {
+              final resp = await _callRpcWithRetry(
+                'get_post_with_profile',
+                params: {'post_id': id},
+              );
+              final rows = _normalizeRpcList(resp);
+              if (rows.isNotEmpty) {
+                final map = rows.first as Map<String, dynamic>;
+                map['is_liked'] = map['is_liked'] ?? false;
+                map['is_favorited'] = map['is_favorited'] ?? false;
+                if (!(_newPostsController?.isClosed ?? true)) {
+                  _newPostsController!.add(PostModel.fromMap(map));
+                }
+              }
+            } catch (e2) {
+              AppLogger.error(
+                'Failed to fetch post $id during fallback: $e2',
+                error: e2,
+              );
+            }
+          }
+        }
+      }
+
+      isFlushing = false;
+    }
+
+    channel
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'posts',
+          callback: (payload) {
+            try {
+              final newRec = payload.newRecord;
+              final id = (newRec['id'] ?? '') as String;
+              if (id.isEmpty) return;
+
+              idBuffer.add(id);
+
+              // If we've hit max batch size, flush immediately (avoid waiting)
+              if (idBuffer.length >= _maxBatchSize) {
+                if (flushTimer != null) {
+                  flushTimer!.cancel();
+                  flushTimer = null;
+                }
+                // Fire-and-forget flush
+                unawaited(flushIds());
+                return;
+              }
+
+              if (flushTimer == null) {
+                flushTimer = Timer(_coalesceWindow, () {
+                  unawaited(flushIds());
+                });
+              }
+            } catch (e, st) {
+              AppLogger.error(
+                'Error handling new post payload: $e',
+                error: e,
+                stackTrace: st,
+              );
+            }
+          },
+        )
+        .subscribe();
+
+    // Unsubscribe when no listeners remain
+    _newPostsController!.onCancel = () async {
+      try {
+        // Ensure any pending ids are flushed before unsubscribing
+        if (flushTimer != null) {
+          try {
+            flushTimer!.cancel();
+          } catch (_) {}
+          await flushIds();
+        }
+
+        if (!(_newPostsController?.hasListener ?? false)) {
+          await _postsInsertsChannel?.unsubscribe();
+          _postsInsertsChannel = null;
+          if (!(_newPostsController?.isClosed ?? true))
+            await _newPostsController?.close();
+          _newPostsController = null;
+        }
+      } catch (e) {
+        AppLogger.warning('Error cleaning up new posts stream: $e');
+      }
+    };
+
+    return _newPostsController!.stream;
   }
 
   /// Stream for post updates (likes_count, comments_count, etc.)
   Stream<Map<String, dynamic>> streamPostUpdates() {
     AppLogger.info('Setting up real-time stream for post updates');
 
-    // If already created, return existing stream
     if (_postsController != null && !_postsController!.isClosed) {
       AppLogger.info('Returning existing posts updates stream');
       return _postsController!.stream;
     }
 
-    // Create the controller before subscribing so callbacks can reference it safely
     _postsController = StreamController<Map<String, dynamic>>.broadcast();
 
-    // Create channel and subscribe
-    final channel = client.channel(
-      'posts_updates_${DateTime.now().millisecondsSinceEpoch}',
-    );
+    final channel = client.channel('realtime:posts:updates');
+    _postsUpdatesChannel = channel;
 
-    _postsChannel = channel
+    channel
         .onPostgresChanges(
           event: PostgresChangeEvent.update,
           schema: 'public',
           table: 'posts',
           callback: (payload) {
             try {
-              AppLogger.info(
-                'Post update received: ${payload.newRecord['id']}',
-              );
+              final newRec = payload.newRecord;
+              final id = newRec['id'] as String?;
+              if (id == null) return;
 
               final data = {
-                'id': payload.newRecord['id'],
-                'likes_count': payload.newRecord['likes_count'],
-                'comments_count': payload.newRecord['comments_count'],
-                'favorites_count': payload.newRecord['favorites_count'],
-                'shares_count': payload.newRecord['shares_count'],
+                'id': id,
+                'likes_count': newRec['likes_count'],
+                'comments_count': newRec['comments_count'],
+                'favorites_count': newRec['favorites_count'],
+                'shares_count': newRec['shares_count'],
               };
 
-              if (!(_postsController?.isClosed ?? true)) {
-                _postsController!.add(data);
-              }
+              if (!(_postsController?.isClosed ?? true))
+                _postsController!.add(Map<String, dynamic>.from(data));
             } catch (e, st) {
               AppLogger.error(
                 'Error handling post update payload: $e',
                 error: e,
                 stackTrace: st,
               );
-              if (!(_postsController?.isClosed ?? true)) {
+              if (!(_postsController?.isClosed ?? true))
                 _postsController!.addError(ServerException(e.toString()));
-              }
             }
           },
         )
         .subscribe();
 
-    // Cleanup when last listener cancels: cancel channel & close controller
     _postsController!.onCancel = () async {
-      await Future.delayed(const Duration(milliseconds: 50));
-      if (!(_postsController?.hasListener ?? false)) {
-        try {
-          await _postsChannel?.unsubscribe();
-        } catch (_) {}
-        try {
-          if (!(_postsController?.isClosed ?? true)) {
+      try {
+        if (!(_postsController?.hasListener ?? false)) {
+          await _postsUpdatesChannel?.unsubscribe();
+          _postsUpdatesChannel = null;
+          if (!(_postsController?.isClosed ?? true))
             await _postsController?.close();
-          }
-        } catch (_) {}
-        _postsChannel = null;
-        _postsController = null;
-        AppLogger.info('Posts updates stream cancelled and cleaned up');
+          _postsController = null;
+          AppLogger.info('Posts updates stream cancelled and cleaned up');
+        }
+      } catch (e) {
+        AppLogger.warning('Error cancelling posts updates stream: $e');
       }
     };
 
@@ -460,27 +604,23 @@ class PostsRemoteDataSource {
     if (_postDeletionsController != null &&
         !_postDeletionsController!.isClosed) {
       AppLogger.info('Returning existing post deletions stream');
-      return _postDeletionsController!.stream.handleError((error) {
-        AppLogger.error('Error in post deletions stream: $error', error: error);
-      });
+      return _postDeletionsController!.stream;
     }
 
     _postDeletionsController = StreamController<String>.broadcast();
 
-    final channel = client.channel(
-      'post_deletions_${DateTime.now().millisecondsSinceEpoch}',
-    );
+    final channel = client.channel('realtime:posts:deletions');
+    _postDeletionsChannel = channel;
 
-    _postDeletionsChannel = channel
+    channel
         .onPostgresChanges(
           event: PostgresChangeEvent.delete,
           schema: 'public',
           table: 'posts',
           callback: (payload) {
             try {
-              final deletedPostId = payload.oldRecord['id'] as String;
-              AppLogger.info('Post deletion detected: $deletedPostId');
-
+              final deletedPostId = payload.oldRecord['id'] as String?;
+              if (deletedPostId == null) return;
               if (!(_postDeletionsController?.isClosed ?? true)) {
                 _postDeletionsController!.add(deletedPostId);
               }
@@ -501,35 +641,34 @@ class PostsRemoteDataSource {
         .subscribe();
 
     _postDeletionsController!.onCancel = () async {
-      await Future.delayed(const Duration(milliseconds: 50));
-      if (!(_postDeletionsController?.hasListener ?? false)) {
-        try {
+      try {
+        if (!(_postDeletionsController?.hasListener ?? false)) {
           await _postDeletionsChannel?.unsubscribe();
-        } catch (_) {}
-        try {
-          if (!(_postDeletionsController?.isClosed ?? true)) {
+          _postDeletionsChannel = null;
+          if (!(_postDeletionsController?.isClosed ?? true))
             await _postDeletionsController?.close();
-          }
-        } catch (_) {}
-        _postDeletionsChannel = null;
-        _postDeletionsController = null;
-        AppLogger.info('Post deletions stream cancelled and cleaned up');
+          _postDeletionsController = null;
+          AppLogger.info('Post deletions stream cancelled and cleaned up');
+        }
+      } catch (e) {
+        AppLogger.warning('Error cancelling post deletions stream: $e');
       }
     };
 
-    return _postDeletionsController!.stream.handleError((error) {
-      AppLogger.error('Error in post deletions stream: $error', error: error);
-    });
+    return _postDeletionsController!.stream;
   }
 
   /// Cleanup method to unsubscribe from all channels
   void dispose() {
     AppLogger.info('Disposing PostsRemoteDataSource - cleaning up channels');
     try {
-      _postsChannel?.unsubscribe();
+      _postsUpdatesChannel?.unsubscribe();
     } catch (_) {}
     try {
       _postDeletionsChannel?.unsubscribe();
+    } catch (_) {}
+    try {
+      _postsInsertsChannel?.unsubscribe();
     } catch (_) {}
 
     try {
@@ -537,6 +676,9 @@ class PostsRemoteDataSource {
     } catch (_) {}
     try {
       _postDeletionsController?.close();
+    } catch (_) {}
+    try {
+      _newPostsController?.close();
     } catch (_) {}
   }
 }

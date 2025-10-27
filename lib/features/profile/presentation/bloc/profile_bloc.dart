@@ -1,14 +1,15 @@
+// lib/features/profile/presentation/bloc/profile_bloc.dart
 import 'dart:async';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/features/profile/data/models/profile_model.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 import 'package:vlone_blog_app/features/profile/domain/usecases/get_profile_usecase.dart';
-import 'package:vlone_blog_app/features/profile/domain/usecases/stream_profile_updates_usecase.dart';
 import 'package:vlone_blog_app/features/profile/domain/usecases/update_profile_usecase.dart';
 
 part 'profile_event.dart';
@@ -17,15 +18,15 @@ part 'profile_state.dart';
 class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   final GetProfileUseCase getProfileUseCase;
   final UpdateProfileUseCase updateProfileUseCase;
-  final StreamProfileUpdatesUseCase streamProfileUpdatesUseCase;
+  final RealtimeService realtimeService;
 
-  // Stream subscription for real-time
-  StreamSubscription? _profileUpdatesSubscription;
+  // Stream subscription for real-time profile updates (per bloc instance)
+  StreamSubscription<Map<String, dynamic>>? _profileUpdatesSub;
 
   ProfileBloc({
     required this.getProfileUseCase,
     required this.updateProfileUseCase,
-    required this.streamProfileUpdatesUseCase,
+    required this.realtimeService,
   }) : super(ProfileInitial()) {
     on<GetProfileDataEvent>(_onGetProfile);
     on<UpdateProfileEvent>(_onUpdateProfile);
@@ -57,7 +58,6 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     Emitter<ProfileState> emit,
   ) async {
     AppLogger.info('UpdateProfileEvent: ${event.userId}');
-    // Emit loading to indicate update in progress
     emit(ProfileLoading());
 
     final result = await updateProfileUseCase(
@@ -87,42 +87,36 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     Emitter<ProfileState> emit,
   ) async {
     AppLogger.info(
-      'Starting real-time profile updates for user: ${event.userId}',
+      'ProfileBloc: subscribing to RealtimeService profile updates',
     );
 
-    await _profileUpdatesSubscription?.cancel();
+    await _profileUpdatesSub?.cancel();
 
-    _profileUpdatesSubscription = streamProfileUpdatesUseCase(event.userId)
-        .listen(
-          (either) {
-            either.fold(
-              (failure) => AppLogger.error(
-                'Real-time profile update error: ${failure.message}',
-              ),
-              (updateData) {
-                AppLogger.info(
-                  'Real-time: Profile update received for: ${updateData['id']}',
-                );
-                add(_RealtimeProfileUpdatedEvent(updateData));
-              },
-            );
-          },
-          onError: (error) {
-            AppLogger.error(
-              'Profile updates stream error: $error',
-              error: error,
-            );
-          },
-        );
+    _profileUpdatesSub = realtimeService.onProfileUpdate.listen(
+      (updateData) {
+        try {
+          add(_RealtimeProfileUpdatedEvent(updateData));
+        } catch (e) {
+          AppLogger.error(
+            'ProfileBloc: error processing realtime update: $e',
+            error: e,
+          );
+        }
+      },
+      onError: (err) => AppLogger.error(
+        'ProfileBloc: RealtimeService.onProfileUpdate error: $err',
+        error: err,
+      ),
+    );
   }
 
   Future<void> _onStopProfileRealtime(
     StopProfileRealtimeEvent event,
     Emitter<ProfileState> emit,
   ) async {
-    AppLogger.info('Stopping real-time profile updates');
-    await _profileUpdatesSubscription?.cancel();
-    _profileUpdatesSubscription = null;
+    AppLogger.info('ProfileBloc: stopping profile realtime subscription');
+    await _profileUpdatesSub?.cancel();
+    _profileUpdatesSub = null;
   }
 
   void _onRealtimeProfileUpdated(
@@ -131,19 +125,28 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   ) {
     final currentState = state;
     if (currentState is ProfileDataLoaded) {
-      // Create updated profile from data
-      final updatedProfile = ProfileModel.fromMap(event.updateData).toEntity();
-      emit(ProfileDataLoaded(profile: updatedProfile));
-      AppLogger.info(
-        'Profile updated in real-time for user: ${updatedProfile.id}',
-      );
+      // Create updated profile from data (expecting a map shape)
+      try {
+        final updatedProfile = ProfileModel.fromMap(
+          event.updateData,
+        ).toEntity();
+        emit(ProfileDataLoaded(profile: updatedProfile));
+        AppLogger.info(
+          'Profile updated in real-time for user: ${updatedProfile.id}',
+        );
+      } catch (e) {
+        AppLogger.error(
+          'ProfileBloc: failed to parse realtime profile update: $e',
+          error: e,
+        );
+      }
     }
   }
 
   @override
   Future<void> close() {
     AppLogger.info('Closing ProfileBloc - cancelling subscriptions');
-    _profileUpdatesSubscription?.cancel();
+    _profileUpdatesSub?.cancel();
     return super.close();
   }
 }

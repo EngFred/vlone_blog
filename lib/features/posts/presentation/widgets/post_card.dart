@@ -21,7 +21,7 @@ class PostCard extends StatefulWidget {
 
 class _PostCardState extends State<PostCard> {
   static const double _kMediaDefaultHeight = 420.0;
-  // Use a local mutable variable to hold the current post state
+  // local copy of the post so we can mutate quickly on optimistic updates
   late PostEntity _currentPost;
 
   @override
@@ -30,10 +30,10 @@ class _PostCardState extends State<PostCard> {
     _currentPost = widget.post;
   }
 
-  // Update the local state if the parent's widget.post changes (e.g., from a realtime post update)
   @override
   void didUpdateWidget(covariant PostCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // If parent updates the post (e.g., server real-time), accept it
     if (widget.post != oldWidget.post) {
       _currentPost = widget.post;
     }
@@ -43,26 +43,35 @@ class _PostCardState extends State<PostCard> {
   Widget build(BuildContext context) {
     return BlocProvider.value(
       value: context.read<PostsBloc>(),
-      // Add MultiBlocListener here to listen for optimistic updates
       child: MultiBlocListener(
         listeners: [
+          // Likes listener (keeps previous behavior)
           BlocListener<LikesBloc, LikesState>(
-            listenWhen: (prev, current) =>
-                current is LikeUpdated && current.postId == _currentPost.id,
+            listenWhen: (prev, curr) {
+              // Only listen for updates/error for this post
+              if (curr is LikeUpdated && curr.postId == _currentPost.id)
+                return true;
+              if (curr is LikeError &&
+                  curr.postId == _currentPost.id &&
+                  curr.shouldRevert)
+                return true;
+              return false;
+            },
             listener: (context, state) {
-              if (state is LikeUpdated) {
+              if (state is LikeUpdated && state.postId == _currentPost.id) {
                 AppLogger.info(
-                  'PostCard received LikeUpdated for post: ${_currentPost.id}. Optimistic UI change.',
+                  'PostCard received LikeUpdated for post: ${_currentPost.id}. Applying optimistic/server-corrected update.',
                 );
                 setState(() {
+                  // apply isLiked directly
+                  final newIsLiked = state.isLiked;
+                  // adjust likes count by delta, ensure non-negative
+                  final newLikesCount = (_currentPost.likesCount + state.delta)
+                      .clamp(0, double.infinity)
+                      .toInt();
                   _currentPost = _currentPost.copyWith(
-                    isLiked: state.isLiked,
-                    // Increment/decrement the count to reflect the optimistic update
-                    likesCount: state.isLiked
-                        ? _currentPost.likesCount + 1
-                        : _currentPost.likesCount > 0
-                        ? _currentPost.likesCount - 1
-                        : 0,
+                    isLiked: newIsLiked,
+                    likesCount: newLikesCount,
                   );
                 });
               } else if (state is LikeError &&
@@ -71,55 +80,66 @@ class _PostCardState extends State<PostCard> {
                 AppLogger.info(
                   'PostCard received LikeError for post: ${_currentPost.id}. Reverting UI.',
                 );
-                // Revert the state on error
                 setState(() {
+                  // revert to previousState and reverse the optimistic delta
+                  final prev = state.previousState;
+                  final revertedLikes = (_currentPost.likesCount - state.delta)
+                      .clamp(0, double.infinity)
+                      .toInt();
                   _currentPost = _currentPost.copyWith(
-                    isLiked: state.previousState,
-                    // Revert count as well
-                    likesCount: state.previousState
-                        ? _currentPost.likesCount + 1
-                        : _currentPost.likesCount > 0
-                        ? _currentPost.likesCount - 1
-                        : 0,
+                    isLiked: prev,
+                    likesCount: revertedLikes,
                   );
                 });
               }
             },
           ),
+
+          // FAVORITES listener - FIXED listenWhen to include errors
           BlocListener<FavoritesBloc, FavoritesState>(
-            listenWhen: (prev, current) =>
-                current is FavoriteUpdated && current.postId == _currentPost.id,
+            listenWhen: (prev, curr) {
+              // Allow both success updates and error-with-revert for this post
+              if (curr is FavoriteUpdated && curr.postId == _currentPost.id)
+                return true;
+              if (curr is FavoriteError &&
+                  curr.postId == _currentPost.id &&
+                  curr.shouldRevert)
+                return true;
+              return false;
+            },
             listener: (context, state) {
-              if (state is FavoriteUpdated) {
-                AppLogger.info(
-                  'PostCard received FavoriteUpdated for post: ${_currentPost.id}. Optimistic UI change.',
-                );
+              if (state is FavoriteUpdated && state.postId == _currentPost.id) {
+                // Single place that applies optimistic/server-corrected delta to local post
                 setState(() {
+                  final newIsFav = state.isFavorited;
+                  final newFavoritesCount = newIsFav
+                      ? _currentPost.favoritesCount +
+                            (state.delta != 0 ? state.delta : 0)
+                      : (_currentPost.favoritesCount > 0
+                            ? _currentPost.favoritesCount -
+                                  (state.delta != 0 ? state.delta : 0)
+                            : 0);
                   _currentPost = _currentPost.copyWith(
-                    isFavorited: state.isFavorited,
-                    favoritesCount: state.isFavorited
-                        ? _currentPost.favoritesCount + 1
-                        : _currentPost.favoritesCount > 0
-                        ? _currentPost.favoritesCount - 1
-                        : 0,
+                    isFavorited: newIsFav,
+                    favoritesCount: newFavoritesCount,
                   );
                 });
               } else if (state is FavoriteError &&
                   state.postId == _currentPost.id &&
                   state.shouldRevert) {
-                AppLogger.info(
-                  'PostCard received FavoriteError for post: ${_currentPost.id}. Reverting UI.',
-                );
-                // Revert the state on error
+                // Revert the optimistic update centrally
                 setState(() {
+                  final prev = state.previousState;
+                  final revertedCount = prev
+                      ? _currentPost.favoritesCount +
+                            (state.delta != 0 ? state.delta : 0)
+                      : (_currentPost.favoritesCount > 0
+                            ? _currentPost.favoritesCount -
+                                  (state.delta != 0 ? state.delta : 0)
+                            : 0);
                   _currentPost = _currentPost.copyWith(
-                    isFavorited: state.previousState,
-                    // Revert count as well
-                    favoritesCount: state.previousState
-                        ? _currentPost.favoritesCount + 1
-                        : _currentPost.favoritesCount > 0
-                        ? _currentPost.favoritesCount - 1
-                        : 0,
+                    isFavorited: prev,
+                    favoritesCount: revertedCount,
                   );
                 });
               }
@@ -144,13 +164,8 @@ class _PostCardState extends State<PostCard> {
                 ),
               if (_currentPost.mediaUrl != null) const SizedBox(height: 8),
               if (_currentPost.mediaUrl != null)
-                PostMedia(
-                  post: _currentPost,
-                  // Apply default height for non-reels so images match videos
-                  height: _kMediaDefaultHeight,
-                ),
+                PostMedia(post: _currentPost, height: _kMediaDefaultHeight),
               const SizedBox(height: 8),
-              // Use the local state here
               PostActions(post: _currentPost, userId: widget.userId),
               const SizedBox(height: 8),
             ],

@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
-import 'package:vlone_blog_app/core/usecases/usecase.dart';
+import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
@@ -13,8 +14,6 @@ import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_usecase.d
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_reels_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_user_posts_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/stream_post_deletions_usecase.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/stream_posts_usecase.dart';
 
 part 'posts_event.dart';
 part 'posts_state.dart';
@@ -28,15 +27,15 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   final GetPostUseCase getPostUseCase;
   final DeletePostUseCase deletePostUseCase;
 
-  // Real-time use cases
-  final StreamNewPostsUseCase streamNewPostsUseCase;
-  final StreamPostUpdatesUseCase streamPostUpdatesUseCase;
-  final StreamPostDeletionsUseCase streamPostDeletionsUseCase;
+  // The single source-of-truth realtime service
+  final RealtimeService realtimeService;
 
-  // Stream subscriptions for cleanup
-  StreamSubscription? _newPostsSubscription;
-  StreamSubscription? _postUpdatesSubscription;
-  StreamSubscription? _postDeletionsSubscription;
+  // Subscriptions to RealtimeService's broadcast streams (per bloc instance)
+  StreamSubscription<PostEntity>? _realtimeNewPostSub;
+  StreamSubscription<Map<String, dynamic>>? _realtimePostUpdateSub;
+  StreamSubscription<String>? _realtimePostDeletedSub;
+
+  bool _isSubscribedToService = false;
 
   PostsBloc({
     required this.createPostUseCase,
@@ -46,10 +45,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     required this.sharePostUseCase,
     required this.getPostUseCase,
     required this.deletePostUseCase,
-    required this.streamNewPostsUseCase,
-    required this.streamPostUpdatesUseCase,
-    required this.streamPostDeletionsUseCase,
+    required this.realtimeService,
   }) : super(const PostsInitial()) {
+    // Core handlers
     on<CreatePostEvent>(_onCreatePost);
     on<GetFeedEvent>(_onGetFeed);
     on<GetReelsEvent>(_onGetReels);
@@ -58,7 +56,10 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     on<DeletePostEvent>(_onDeletePost);
     on<SharePostEvent>(_onSharePost);
 
-    // Real-time event handlers
+    // Optimistic update handler (added)
+    on<OptimisticPostUpdate>(_onOptimisticPostUpdate);
+
+    // Real-time handlers (subscribe/unsubscribe to RealtimeService)
     on<StartRealtimeListenersEvent>(_onStartRealtimeListeners);
     on<StopRealtimeListenersEvent>(_onStopRealtimeListeners);
     on<_RealtimePostReceivedEvent>(_onRealtimePostReceived);
@@ -66,6 +67,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     on<_RealtimePostDeletedEvent>(_onRealtimePostDeleted);
   }
 
+  // -------------------------
+  // Core use-case handlers
+  // -------------------------
   Future<void> _onCreatePost(
     CreatePostEvent event,
     Emitter<PostsState> emit,
@@ -235,111 +239,183 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     );
   }
 
-  // ==================== REAL-TIME HANDLERS ====================
+  // -------------------------
+  // Optimistic update handler
+  // -------------------------
+  Future<void> _onOptimisticPostUpdate(
+    OptimisticPostUpdate event,
+    Emitter<PostsState> emit,
+  ) async {
+    try {
+      final currentState = state;
 
+      List<PostEntity> _apply(List<PostEntity> list) {
+        return list.map((p) {
+          if (p.id != event.postId) return p;
+
+          final int newLikes = (p.likesCount + (event.deltaLikes))
+              .clamp(0, double.infinity)
+              .toInt();
+          final int newFavorites = (p.favoritesCount + (event.deltaFavorites))
+              .clamp(0, double.infinity)
+              .toInt();
+
+          return p.copyWith(
+            likesCount: newLikes,
+            favoritesCount: newFavorites,
+            isLiked: event.isLiked ?? p.isLiked,
+            isFavorited: event.isFavorited ?? p.isFavorited,
+          );
+        }).toList();
+      }
+
+      if (currentState is FeedLoaded) {
+        final updated = _apply(currentState.posts);
+        emit(
+          FeedLoaded(updated, isRealtimeActive: currentState.isRealtimeActive),
+        );
+        return;
+      }
+
+      if (currentState is ReelsLoaded) {
+        final updated = _apply(currentState.posts);
+        emit(
+          ReelsLoaded(updated, isRealtimeActive: currentState.isRealtimeActive),
+        );
+        return;
+      }
+
+      if (currentState is UserPostsLoaded) {
+        final updated = _apply(currentState.posts);
+        emit(UserPostsLoaded(updated));
+        return;
+      }
+
+      // If other states carry a posts list, handle them similarly.
+      // Otherwise do nothing (optimistic change applies only to list states).
+    } catch (e, st) {
+      AppLogger.error(
+        'Optimistic update failed in PostsBloc: $e',
+        error: e,
+        stackTrace: st,
+      );
+      // swallow — server updates will correct any mismatch
+    }
+  }
+
+  // -------------------------
+  // Real-time handlers (via RealtimeService)
+  // -------------------------
+
+  /// Subscribe to the RealtimeService broadcast streams.
   Future<void> _onStartRealtimeListeners(
     StartRealtimeListenersEvent event,
     Emitter<PostsState> emit,
   ) async {
-    AppLogger.info('Starting real-time listeners');
+    if (_isSubscribedToService) {
+      AppLogger.info(
+        'PostsBloc: already subscribed to RealtimeService streams',
+      );
+      return;
+    }
 
-    // Cancel existing subscriptions
-    await _cancelAllSubscriptions();
+    AppLogger.info('PostsBloc: subscribing to RealtimeService streams');
 
     // Subscribe to new posts
-    _newPostsSubscription = streamNewPostsUseCase(NoParams()).listen(
-      (either) {
-        either.fold(
-          (failure) =>
-              AppLogger.error('Real-time new post error: ${failure.message}'),
-          (post) {
-            AppLogger.info('Real-time: New post received: ${post.id}');
-            add(_RealtimePostReceivedEvent(post));
-          },
-        );
+    _realtimeNewPostSub = realtimeService.onNewPost.listen(
+      (post) {
+        add(_RealtimePostReceivedEvent(post));
       },
-      onError: (error) {
-        AppLogger.error('New posts stream error: $error', error: error);
-      },
+      onError: (e) =>
+          AppLogger.error('RealtimeService onNewPost error: $e', error: e),
     );
 
-    // Subscribe to post updates (counts)
-    _postUpdatesSubscription = streamPostUpdatesUseCase(NoParams()).listen(
-      (either) {
-        either.fold(
-          (failure) => AppLogger.error(
-            'Real-time post update error: ${failure.message}',
+    // Subscribe to post updates
+    _realtimePostUpdateSub = realtimeService.onPostUpdate.listen(
+      (updateData) {
+        int? safeParseInt(dynamic value) {
+          if (value == null) return null;
+          if (value is int) return value;
+          return int.tryParse(value.toString().split('.').first);
+        }
+
+        add(
+          _RealtimePostUpdatedEvent(
+            postId: updateData['id'] as String,
+            likesCount: safeParseInt(updateData['likes_count']),
+            commentsCount: safeParseInt(updateData['comments_count']),
+            favoritesCount: safeParseInt(updateData['favorites_count']),
+            sharesCount: safeParseInt(updateData['shares_count']),
           ),
-          (updateData) {
-            AppLogger.info(
-              'Real-time: Post update received for: ${updateData['id']}',
-            );
-
-            // Helper function to safely parse values that should be integers
-            int? safeParseInt(dynamic value) {
-              if (value == null) return null;
-              if (value is int) return value;
-              return int.tryParse(value.toString().split('.').first);
-            }
-
-            add(
-              _RealtimePostUpdatedEvent(
-                postId: updateData['id'] as String,
-                likesCount: safeParseInt(updateData['likes_count']),
-                commentsCount: safeParseInt(updateData['comments_count']),
-                favoritesCount: safeParseInt(updateData['favorites_count']),
-                sharesCount: safeParseInt(updateData['shares_count']),
-              ),
-            );
-          },
         );
       },
-      onError: (error) {
-        AppLogger.error('Post updates stream error: $error', error: error);
-      },
+      onError: (e) =>
+          AppLogger.error('RealtimeService onPostUpdate error: $e', error: e),
     );
 
-    // Subscribe to post deletions
-    _postDeletionsSubscription = streamPostDeletionsUseCase(NoParams()).listen(
-      (either) {
-        either.fold(
-          (failure) => AppLogger.error(
-            'Real-time post deletion error: ${failure.message}',
-          ),
-          (postId) {
-            AppLogger.info('Real-time: Post deleted: $postId');
-            add(_RealtimePostDeletedEvent(postId));
-          },
-        );
+    // Subscribe to deletions
+    _realtimePostDeletedSub = realtimeService.onPostDeleted.listen(
+      (postId) {
+        add(_RealtimePostDeletedEvent(postId));
       },
-      onError: (error) {
-        AppLogger.error('Post deletions stream error: $error', error: error);
-      },
+      onError: (e) =>
+          AppLogger.error('RealtimeService onPostDeleted error: $e', error: e),
     );
 
-    AppLogger.info('Real-time listeners started successfully');
+    _isSubscribedToService = true;
 
-    // Re-emit current state with real-time active flag
+    // Re-emit state marking realtime active if appropriate
     if (state is FeedLoaded) {
-      emit(FeedLoaded((state as FeedLoaded).posts, isRealtimeActive: true));
+      emit(
+        FeedLoaded(
+          (state as FeedLoaded).posts,
+          isRealtimeActive: realtimeService.isStarted,
+        ),
+      );
     } else if (state is ReelsLoaded) {
-      emit(ReelsLoaded((state as ReelsLoaded).posts, isRealtimeActive: true));
+      emit(
+        ReelsLoaded(
+          (state as ReelsLoaded).posts,
+          isRealtimeActive: realtimeService.isStarted,
+        ),
+      );
     }
+
+    AppLogger.info('PostsBloc: subscribed to RealtimeService');
   }
 
+  /// Unsubscribe from RealtimeService (does NOT stop the service).
   Future<void> _onStopRealtimeListeners(
     StopRealtimeListenersEvent event,
     Emitter<PostsState> emit,
   ) async {
-    AppLogger.info('Stopping real-time listeners');
-    await _cancelAllSubscriptions();
+    if (!_isSubscribedToService) {
+      AppLogger.info('PostsBloc: stop requested but not subscribed');
+      return;
+    }
 
-    // Re-emit current state with real-time inactive flag
+    AppLogger.info('PostsBloc: unsubscribing from RealtimeService streams');
+    try {
+      await _realtimeNewPostSub?.cancel();
+      await _realtimePostUpdateSub?.cancel();
+      await _realtimePostDeletedSub?.cancel();
+    } catch (e) {
+      AppLogger.warning('Error cancelling RealtimeService subs: $e');
+    } finally {
+      _realtimeNewPostSub = null;
+      _realtimePostUpdateSub = null;
+      _realtimePostDeletedSub = null;
+      _isSubscribedToService = false;
+    }
+
+    // Re-emit state marking realtime inactive if appropriate
     if (state is FeedLoaded) {
       emit(FeedLoaded((state as FeedLoaded).posts, isRealtimeActive: false));
     } else if (state is ReelsLoaded) {
       emit(ReelsLoaded((state as ReelsLoaded).posts, isRealtimeActive: false));
     }
+
+    AppLogger.info('PostsBloc: unsubscribed from RealtimeService');
   }
 
   Future<void> _onRealtimePostReceived(
@@ -348,22 +424,27 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   ) async {
     final currentState = state;
 
-    // Add new post to feed if we're in FeedLoaded state
     if (currentState is FeedLoaded) {
       final exists = currentState.posts.any((p) => p.id == event.post.id);
       if (!exists) {
         final updatedPosts = [event.post, ...currentState.posts];
-        emit(FeedLoaded(updatedPosts, isRealtimeActive: true));
+        emit(
+          FeedLoaded(updatedPosts, isRealtimeActive: realtimeService.isStarted),
+        );
         AppLogger.info('New post added to feed: ${event.post.id}');
       }
     }
 
-    // Similar logic for ReelsLoaded if it's a video post
     if (currentState is ReelsLoaded && event.post.mediaType == 'video') {
       final exists = currentState.posts.any((p) => p.id == event.post.id);
       if (!exists) {
         final updatedPosts = [event.post, ...currentState.posts];
-        emit(ReelsLoaded(updatedPosts, isRealtimeActive: true));
+        emit(
+          ReelsLoaded(
+            updatedPosts,
+            isRealtimeActive: realtimeService.isStarted,
+          ),
+        );
         AppLogger.info('New reel added: ${event.post.id}');
       }
     }
@@ -375,58 +456,42 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   ) {
     final currentState = state;
 
+    List<PostEntity> _applyUpdate(List<PostEntity> posts) {
+      return posts.map((post) {
+        if (post.id == event.postId) {
+          return post.copyWith(
+            likesCount: event.likesCount ?? post.likesCount,
+            commentsCount: event.commentsCount ?? post.commentsCount,
+            favoritesCount: event.favoritesCount ?? post.favoritesCount,
+            sharesCount: event.sharesCount ?? post.sharesCount,
+          );
+        }
+        return post;
+      }).toList();
+    }
+
     if (currentState is FeedLoaded) {
-      final updatedPosts = currentState.posts.map((post) {
-        if (post.id == event.postId) {
-          return post.copyWith(
-            likesCount: event.likesCount ?? post.likesCount,
-            commentsCount: event.commentsCount ?? post.commentsCount,
-            favoritesCount: event.favoritesCount ?? post.favoritesCount,
-            sharesCount: event.sharesCount ?? post.sharesCount,
-          );
-        }
-        return post;
-      }).toList();
-
-      emit(FeedLoaded(updatedPosts, isRealtimeActive: true));
+      emit(
+        FeedLoaded(
+          _applyUpdate(currentState.posts),
+          isRealtimeActive: realtimeService.isStarted,
+        ),
+      );
       AppLogger.info('Post counts updated for: ${event.postId}');
-    }
-
-    if (currentState is ReelsLoaded) {
-      final updatedPosts = currentState.posts.map((post) {
-        if (post.id == event.postId) {
-          return post.copyWith(
-            likesCount: event.likesCount ?? post.likesCount,
-            commentsCount: event.commentsCount ?? post.commentsCount,
-            favoritesCount: event.favoritesCount ?? post.favoritesCount,
-            sharesCount: event.sharesCount ?? post.sharesCount,
-          );
-        }
-        return post;
-      }).toList();
-
-      emit(ReelsLoaded(updatedPosts, isRealtimeActive: true));
+    } else if (currentState is ReelsLoaded) {
+      emit(
+        ReelsLoaded(
+          _applyUpdate(currentState.posts),
+          isRealtimeActive: realtimeService.isStarted,
+        ),
+      );
       AppLogger.info('Reel counts updated for: ${event.postId}');
-    }
-
-    if (currentState is UserPostsLoaded) {
-      final updatedPosts = currentState.posts.map((post) {
-        if (post.id == event.postId) {
-          return post.copyWith(
-            likesCount: event.likesCount ?? post.likesCount,
-            commentsCount: event.commentsCount ?? post.commentsCount,
-            favoritesCount: event.favoritesCount ?? post.favoritesCount,
-            sharesCount: event.sharesCount ?? post.sharesCount,
-          );
-        }
-        return post;
-      }).toList();
-
-      emit(UserPostsLoaded(updatedPosts));
+    } else if (currentState is UserPostsLoaded) {
+      emit(UserPostsLoaded(_applyUpdate(currentState.posts)));
       AppLogger.info('User post counts updated for: ${event.postId}');
     }
 
-    // Emit update notification for widgets that need granular updates
+    // Also emit granular update for widgets
     emit(
       RealtimePostUpdate(
         postId: event.postId,
@@ -446,43 +511,35 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
     if (currentState is FeedLoaded) {
       final updatedPosts = currentState.posts
-          .where((post) => post.id != event.postId)
+          .where((p) => p.id != event.postId)
           .toList();
-      emit(FeedLoaded(updatedPosts, isRealtimeActive: true));
+      emit(
+        FeedLoaded(updatedPosts, isRealtimeActive: realtimeService.isStarted),
+      );
       AppLogger.info('Post removed from feed: ${event.postId}');
-    }
-
-    if (currentState is ReelsLoaded) {
+    } else if (currentState is ReelsLoaded) {
       final updatedPosts = currentState.posts
-          .where((post) => post.id != event.postId)
+          .where((p) => p.id != event.postId)
           .toList();
-      emit(ReelsLoaded(updatedPosts, isRealtimeActive: true));
+      emit(
+        ReelsLoaded(updatedPosts, isRealtimeActive: realtimeService.isStarted),
+      );
       AppLogger.info('Reel removed: ${event.postId}');
-    }
-
-    if (currentState is UserPostsLoaded) {
+    } else if (currentState is UserPostsLoaded) {
       final updatedPosts = currentState.posts
-          .where((post) => post.id != event.postId)
+          .where((p) => p.id != event.postId)
           .toList();
       emit(UserPostsLoaded(updatedPosts));
       AppLogger.info('User post removed: ${event.postId}');
     }
   }
 
-  Future<void> _cancelAllSubscriptions() async {
-    await _newPostsSubscription?.cancel();
-    await _postUpdatesSubscription?.cancel();
-    await _postDeletionsSubscription?.cancel();
-
-    _newPostsSubscription = null;
-    _postUpdatesSubscription = null;
-    _postDeletionsSubscription = null;
-  }
-
   @override
   Future<void> close() {
-    AppLogger.info('Closing PostsBloc - cancelling all subscriptions');
-    _cancelAllSubscriptions();
+    AppLogger.info('Closing PostsBloc - cancelling realtime subscriptions');
+    unawaited(_realtimeNewPostSub?.cancel());
+    unawaited(_realtimePostUpdateSub?.cancel());
+    unawaited(_realtimePostDeletedSub?.cancel());
     return super.close();
   }
 }

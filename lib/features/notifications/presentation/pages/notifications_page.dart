@@ -12,12 +12,13 @@ class NotificationsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) =>
-          sl<NotificationsBloc>()..add(NotificationsSubscribeStream()),
+    // NOTE:
+    // We do not dispatch NotificationsSubscribeStream from the page.
+    // The NotificationsBloc should auto-subscribe when created (see DI or bloc constructor).
+    return BlocProvider<NotificationsBloc>(
+      create: (context) => sl<NotificationsBloc>(),
       child: BlocBuilder<NotificationsBloc, NotificationsState>(
         builder: (context, state) {
-          // Determine state variables from the loaded state
           final bool isSelectionMode =
               state is NotificationsLoaded && state.isSelectionMode;
           final int selectedCount = state is NotificationsLoaded
@@ -28,7 +29,6 @@ class NotificationsPage extends StatelessWidget {
 
           return Scaffold(
             appBar: AppBar(
-              // Show context-aware AppBar
               centerTitle: false,
               backgroundColor: Theme.of(context).colorScheme.surface,
               iconTheme: IconThemeData(
@@ -43,18 +43,16 @@ class NotificationsPage extends StatelessWidget {
                         );
                       },
                     )
-                  : null, // Use default back button
+                  : null,
               title: Text(
                 isSelectionMode ? '$selectedCount Selected' : 'Notifications',
               ),
               actions: [
                 if (isSelectionMode)
-                  // Show Delete button in selection mode
                   IconButton(
                     icon: const Icon(Icons.delete_outline),
                     onPressed: selectedCount > 0
                         ? () {
-                            // --- Show confirmation dialog ---
                             showDialog(
                               context: context,
                               builder: (dialogContext) => AlertDialog(
@@ -66,18 +64,18 @@ class NotificationsPage extends StatelessWidget {
                                 ),
                                 actions: [
                                   TextButton(
-                                    child: const Text('Cancel'),
                                     onPressed: () =>
                                         Navigator.of(dialogContext).pop(),
+                                    child: const Text('Cancel'),
                                   ),
                                   TextButton(
-                                    child: const Text('Delete'),
                                     onPressed: () {
                                       Navigator.of(dialogContext).pop();
                                       context.read<NotificationsBloc>().add(
                                         NotificationsDeleteSelected(),
                                       );
                                     },
+                                    child: const Text('Delete'),
                                   ),
                                 ],
                               ),
@@ -86,19 +84,15 @@ class NotificationsPage extends StatelessWidget {
                         : null,
                   )
                 else
-                  // Show Mark All Read button in normal mode
                   BlocBuilder<NotificationsBloc, NotificationsState>(
                     builder: (context, state) {
                       final bool canMarkAll =
                           state is NotificationsLoaded && state.unreadCount > 0;
-
                       return TextButton(
                         onPressed: canMarkAll
-                            ? () {
-                                context.read<NotificationsBloc>().add(
-                                  NotificationsMarkAllAsRead(),
-                                );
-                              }
+                            ? () => context.read<NotificationsBloc>().add(
+                                NotificationsMarkAllAsRead(),
+                              )
                             : null,
                         child: Text(
                           'Mark All Read',
@@ -113,18 +107,15 @@ class NotificationsPage extends StatelessWidget {
                   ),
               ],
             ),
-            // Stack to show loading indicator over the list
             body: Stack(
               children: [
                 BlocBuilder<NotificationsBloc, NotificationsState>(
                   builder: (context, state) {
-                    // Loading State
                     if (state is NotificationsLoading ||
                         state is NotificationsInitial) {
                       return const LoadingIndicator();
                     }
 
-                    // Error State
                     if (state is NotificationsError) {
                       return CustomErrorWidget(
                         message: state.message,
@@ -136,9 +127,7 @@ class NotificationsPage extends StatelessWidget {
                       );
                     }
 
-                    // Loaded State
                     if (state is NotificationsLoaded) {
-                      // Empty State
                       if (state.notifications.isEmpty) {
                         return const EmptyStateWidget(
                           message: 'You have no notifications yet.',
@@ -146,7 +135,6 @@ class NotificationsPage extends StatelessWidget {
                         );
                       }
 
-                      // List of Notifications
                       return ListView.builder(
                         itemCount: state.notifications.length,
                         itemBuilder: (context, index) {
@@ -162,14 +150,11 @@ class NotificationsPage extends StatelessWidget {
                       );
                     }
 
-                    // Fallback
                     return const Center(
                       child: Text('An unexpected error occurred.'),
                     );
                   },
                 ),
-
-                // Deleting Overlay
                 if (isDeleting)
                   Container(
                     color: Colors.black.withOpacity(0.3),

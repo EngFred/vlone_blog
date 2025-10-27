@@ -10,32 +10,30 @@ abstract class LikesEvent extends Equatable {
 class LikePostEvent extends LikesEvent {
   final String postId;
   final String userId;
-  final bool isLiked;
+  final bool isLiked; // the target state the user requested
+  final bool previousState; // explicit UI state before the tap
 
   const LikePostEvent({
     required this.postId,
     required this.userId,
     required this.isLiked,
+    required this.previousState,
   });
 
   @override
-  List<Object?> get props => [postId, userId, isLiked];
+  List<Object?> get props => [postId, userId, isLiked, previousState];
 }
 
 class StartLikesStreamEvent extends LikesEvent {
   final String userId;
-
   const StartLikesStreamEvent(this.userId);
 
   @override
   List<Object?> get props => [userId];
 }
 
-class StopLikesStreamEvent extends LikesEvent {
-  const StopLikesStreamEvent();
-}
+class StopLikesStreamEvent extends LikesEvent {}
 
-// Internal event for real-time updates
 class _RealtimeLikeReceivedEvent extends LikesEvent {
   final String postId;
   final String userId;

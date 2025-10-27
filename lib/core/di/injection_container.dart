@@ -1,5 +1,6 @@
 import 'package:get_it/get_it.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:vlone_blog_app/core/service/realtime_service.dart';
 
 // Auth
 import 'package:vlone_blog_app/features/auth/data/datasources/auth_remote_datasource.dart';
@@ -89,7 +90,7 @@ import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart'
 
 final sl = GetIt.instance;
 
-/// ✅ OPTIMIZED: Accept pre-initialized SupabaseClient to avoid duplicate initialization
+///Accept pre-initialized SupabaseClient to avoid duplicate initialization
 /// This function is now called from main() AFTER Supabase.initialize()
 Future<void> init({SupabaseClient? supabaseClient}) async {
   await initAuth(supabaseClient: supabaseClient);
@@ -201,9 +202,7 @@ Future<void> initPosts() async {
       sharePostUseCase: sl<SharePostUseCase>(),
       getPostUseCase: sl<GetPostUseCase>(),
       deletePostUseCase: sl<DeletePostUseCase>(),
-      streamNewPostsUseCase: sl<StreamNewPostsUseCase>(),
-      streamPostUpdatesUseCase: sl<StreamPostUpdatesUseCase>(),
-      streamPostDeletionsUseCase: sl<StreamPostDeletionsUseCase>(),
+      realtimeService: sl<RealtimeService>(),
     ),
   );
 }
@@ -227,7 +226,7 @@ Future<void> initLikes() async {
   sl.registerFactory<LikesBloc>(
     () => LikesBloc(
       likePostUseCase: sl<LikePostUseCase>(),
-      streamLikesUseCase: sl<StreamLikesUseCase>(),
+      realtimeService: sl<RealtimeService>(),
     ),
   );
 }
@@ -254,7 +253,7 @@ Future<void> initFavorites() async {
   sl.registerFactory<FavoritesBloc>(
     () => FavoritesBloc(
       favoritePostUseCase: sl<FavoritePostUseCase>(),
-      streamFavoritesUseCase: sl<StreamFavoritesUseCase>(),
+      realtimeService: sl<RealtimeService>(),
     ),
   );
 }
@@ -284,6 +283,7 @@ Future<void> initComments() async {
       getCommentsUseCase: sl<GetCommentsUseCase>(),
       streamCommentsUseCase: sl<StreamCommentsUseCase>(),
       repository: sl<CommentsRepository>(),
+      realtimeService: sl<RealtimeService>(),
     ),
   );
 }
@@ -311,7 +311,7 @@ Future<void> initProfile() async {
     () => ProfileBloc(
       getProfileUseCase: sl<GetProfileUseCase>(),
       updateProfileUseCase: sl<UpdateProfileUseCase>(),
-      streamProfileUpdatesUseCase: sl<StreamProfileUpdatesUseCase>(),
+      realtimeService: sl<RealtimeService>(),
     ),
   );
 }
@@ -394,6 +394,24 @@ Future<void> initNotifications() async {
       markAllAsReadUseCase: sl<MarkAllAsReadUseCase>(),
       getUnreadCountStreamUseCase: sl<GetUnreadCountStreamUseCase>(),
       deleteNotificationsUseCase: sl<DeleteNotificationsUseCase>(),
+      realtimeService: sl<RealtimeService>(),
+    ),
+  );
+}
+
+Future<void> initRealtime() async {
+  // Ensure the stream usecases are already registered (or register them here).
+  sl.registerLazySingleton<RealtimeService>(
+    () => RealtimeService(
+      streamNewPostsUseCase: sl<StreamNewPostsUseCase>(),
+      streamPostUpdatesUseCase: sl<StreamPostUpdatesUseCase>(),
+      streamPostDeletionsUseCase: sl<StreamPostDeletionsUseCase>(),
+      streamLikesUseCase: sl<StreamLikesUseCase>(),
+      streamFavoritesUseCase: sl<StreamFavoritesUseCase>(),
+      streamProfileUpdatesUseCase: sl<StreamProfileUpdatesUseCase>(),
+      streamCommentsUseCase: sl<StreamCommentsUseCase>(),
+      streamNotificationsUseCase: sl<GetNotificationsStreamUseCase>(),
+      streamUnreadCountUseCase: sl<GetUnreadCountStreamUseCase>(),
     ),
   );
 }

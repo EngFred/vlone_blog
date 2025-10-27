@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
+import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/theme/app_theme.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -42,6 +43,8 @@ void main() async {
 
   // Call initAuth early, right after Supabase
   await di.initAuth(supabaseClient: Supabase.instance.client);
+
+  await di.initRealtime();
 
   // Parallelize Workmanager and other feature inits
   await Future.wait([
@@ -171,7 +174,7 @@ class MyApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         builder: (context, child) {
           return BlocListener<AuthBloc, AuthState>(
-            listener: (context, state) {
+            listener: (context, state) async {
               try {
                 ScaffoldMessenger.of(context).clearSnackBars();
               } catch (e) {
@@ -187,12 +190,46 @@ class MyApp extends StatelessWidget {
                 // Remove splash once we confirm auth and user is available
                 FlutterNativeSplash.remove();
                 appRouter.go(Constants.feedRoute);
+
+                // START RealtimeService ONCE at app-level for the authenticated user.
+                // The service will create one set of backend subscriptions and
+                // publish them as broadcast streams.
+                try {
+                  final realtime = di.sl<RealtimeService>();
+                  if (!realtime.isStarted) {
+                    await realtime.start(state.user.id);
+                    AppLogger.info(
+                      'RealtimeService started from MyApp for user ${state.user.id}',
+                    );
+                  } else {
+                    AppLogger.info('RealtimeService already started');
+                  }
+                } catch (e, st) {
+                  AppLogger.error(
+                    'Failed to start RealtimeService from MyApp: $e',
+                    error: e,
+                    stackTrace: st,
+                  );
+                }
               } else if (state is AuthUnauthenticated) {
                 AppLogger.info(
                   'AuthBloc: User unauthenticated, navigating to login',
                 );
                 FlutterNativeSplash.remove();
                 appRouter.go(Constants.loginRoute);
+
+                // Stop realtime service when user logs out
+                try {
+                  final realtime = di.sl<RealtimeService>();
+                  if (realtime.isStarted) {
+                    await realtime.stop();
+                    AppLogger.info('RealtimeService stopped after logout');
+                  }
+                } catch (e) {
+                  AppLogger.warning(
+                    'Failed to stop RealtimeService on logout: $e',
+                  );
+                }
               }
             },
             child: child ?? const SizedBox.shrink(),

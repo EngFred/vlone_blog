@@ -30,7 +30,7 @@ class PostDetailsPage extends StatefulWidget {
 
 class _PostDetailsPageState extends State<PostDetailsPage> {
   PostEntity? _post;
-  String? _userId; // This will be set by the BlocSelector in build
+  String? _userId;
   final TextEditingController _commentController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   CommentEntity? _replyingTo;
@@ -40,12 +40,8 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   @override
   void initState() {
     super.initState();
-    if (widget.post != null) {
-      _post = widget.post!;
-      // We will subscribe to comments only *after* we confirm the userId in build
-    } else {
-      // We will fetch the post only *after* we confirm the userId in build
-    }
+    if (widget.post != null) _post = widget.post;
+    // We no longer subscribe to comments here immediately — we wait until we have a userId (see build())
   }
 
   @override
@@ -55,7 +51,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     super.dispose();
   }
 
-  // This is now called *after* we have a userId
   void _fetchPost() {
     if (_userId != null && widget.post == null && mounted) {
       AppLogger.info(
@@ -67,7 +62,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     }
   }
 
-  // This is now called *after* we have a userId
   void _subscribeToCommentsIfNeeded() {
     if (!_subscribedToComments && mounted && _userId != null) {
       AppLogger.info('Subscribing to comments for post ${widget.postId}');
@@ -106,7 +100,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
         _commentController.text.trim().isEmpty ||
         _isDeleting)
       return;
-
     context.read<CommentsBloc>().add(
       AddCommentEvent(
         postId: widget.postId,
@@ -123,14 +116,11 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   void _postsBlocListener(BuildContext context, PostsState state) {
     if (state is PostLoaded && state.post.id == widget.postId) {
       setState(() => _post = state.post);
-      // Now that the post is loaded, subscribe to comments
       _subscribeToCommentsIfNeeded();
     } else if (state is RealtimePostUpdate) {
       _handleRealtimePostUpdate(state);
     } else if (state is PostDeleting && state.postId == widget.postId) {
-      if (mounted && !_isDeleting) {
-        setState(() => _isDeleting = true);
-      }
+      if (mounted && !_isDeleting) setState(() => _isDeleting = true);
     } else if (state is PostDeleteError && state.postId == widget.postId) {
       if (mounted) {
         setState(() => _isDeleting = false);
@@ -181,7 +171,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
           );
         });
       }
-      // SnackbarUtils.showError(context, state.message);
     }
   }
 
@@ -211,40 +200,29 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
           );
         });
       }
-      // SnackbarUtils.showError(context, state.message);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Get the user safely using a BlocSelector
     return BlocSelector<AuthBloc, AuthState, UserEntity?>(
-      selector: (state) {
-        return (state is AuthAuthenticated) ? state.user : null;
-      },
+      selector: (state) => (state is AuthAuthenticated) ? state.user : null,
       builder: (context, user) {
-        // This builder re-runs when user becomes available
         if (user == null) {
-          // Waiting for AuthBloc to provide user.
           return Scaffold(
-            appBar: AppBar(title: Text('Post')),
-            body: LoadingIndicator(),
+            appBar: AppBar(title: const Text('Post')),
+            body: const LoadingIndicator(),
           );
         }
-        // --- Logic moved from initState ---
-        // We have the user. Check if this is the first time.
+
         if (_userId == null) {
-          // This is the first build with a valid user.
-          // Set our state and trigger initial fetches.
           _userId = user.id;
-          if (widget.post == null) {
+          if (widget.post == null)
             _fetchPost();
-          } else {
-            // If post was passed, we can now safely subscribe
+          else
             _subscribeToCommentsIfNeeded();
-          }
         }
-        // The rest of your original build method
+
         return WillPopScope(
           onWillPop: () async {
             if (_isDeleting) {
@@ -279,8 +257,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                       listener: _favoritesBlocListener,
                     ),
                   ],
-                  // We check _post here. If we are fetching, _post will be null,
-                  // and the LoadingIndicator will show, which is correct.
                   child: _post == null
                       ? const LoadingIndicator()
                       : Column(
@@ -301,8 +277,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                                   SliverToBoxAdapter(
                                     child: CommentsSection(
                                       commentsCount: _post!.commentsCount,
-                                      currentUserId:
-                                          _userId!, // ✅ Pass currentUserId
+                                      currentUserId: _userId!,
                                       onReply: (comment) {
                                         setState(() => _replyingTo = comment);
                                         _focusNode.requestFocus();
