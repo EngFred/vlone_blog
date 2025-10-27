@@ -1,4 +1,3 @@
-// comments_section.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';

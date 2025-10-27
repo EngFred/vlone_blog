@@ -37,41 +37,74 @@ class ReelActions extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        // Like
-        DebouncedInkWell(
-          actionKey: 'reel_like_${post.id}',
-          duration: _debounce,
-          onTap: () {
-            context.read<LikesBloc>().add(
-              LikePostEvent(
-                postId: post.id,
-                userId: userId,
-                isLiked: !post.isLiked,
+        // ================== LIKE BUTTON FIX ==================
+        BlocBuilder<LikesBloc, LikesState>(
+          // Only rebuild if the state update is for THIS post
+          buildWhen: (prev, curr) {
+            if (curr is LikesInitial) return true;
+            if (curr is LikeUpdated && curr.postId == post.id) return true;
+            if (curr is LikeError &&
+                curr.postId == post.id &&
+                curr.shouldRevert)
+              return true;
+            return false;
+          },
+          builder: (context, state) {
+            // 1. Get baseline state from the PostEntity (from PostsBloc)
+            bool isLiked = post.isLiked;
+            int likesCount = post.likesCount;
+
+            // 2. Override with optimistic state from LikesBloc if it exists
+            if (state is LikeUpdated && state.postId == post.id) {
+              isLiked = state.isLiked;
+            } else if (state is LikeError &&
+                state.postId == post.id &&
+                state.shouldRevert) {
+              isLiked = state.previousState;
+            }
+
+            // 3. The likesCount is purposefully NOT updated optimistically here.
+            // We let the PostsBloc's real-time stream update the count.
+            // This builder is only responsible for the icon's boolean state.
+
+            return DebouncedInkWell(
+              actionKey: 'reel_like_${post.id}',
+              duration: _debounce,
+              onTap: () {
+                // 4. Send the *inverse* of the *current UI state*
+                context.read<LikesBloc>().add(
+                  LikePostEvent(
+                    postId: post.id,
+                    userId: userId,
+                    isLiked: !isLiked, // Use the derived 'isLiked'
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(24),
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+              child: Column(
+                children: [
+                  Icon(
+                    isLiked ? Icons.favorite : Icons.favorite_border,
+                    color: isLiked ? Colors.red : Colors.white,
+                    size: 32,
+                  ),
+                  Text(
+                    '$likesCount', // Use count from PostEntity
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
             );
           },
-          borderRadius: BorderRadius.circular(24),
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-          child: Column(
-            children: [
-              Icon(
-                post.isLiked ? Icons.favorite : Icons.favorite_border,
-                color: post.isLiked ? Colors.red : Colors.white,
-                size: 32,
-              ),
-              Text(
-                '${post.likesCount}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
         ),
+        // ================ END LIKE BUTTON FIX ================
         const SizedBox(height: 20),
 
-        // Comment
+        // Comment (No state logic, this is fine)
         DebouncedInkWell(
           actionKey: 'reel_comment_${post.id}',
           duration: _debounce,
@@ -97,41 +130,72 @@ class ReelActions extends StatelessWidget {
         ),
         const SizedBox(height: 20),
 
-        // Favorite
-        DebouncedInkWell(
-          actionKey: 'reel_fav_${post.id}',
-          duration: _debounce,
-          onTap: () {
-            context.read<FavoritesBloc>().add(
-              FavoritePostEvent(
-                postId: post.id,
-                userId: userId,
-                isFavorited: !post.isFavorited,
+        // ================== FAVORITE BUTTON FIX ==================
+        BlocBuilder<FavoritesBloc, FavoritesState>(
+          // Only rebuild if the state update is for THIS post
+          buildWhen: (prev, curr) {
+            if (curr is FavoritesInitial) return true;
+            if (curr is FavoriteUpdated && curr.postId == post.id) return true;
+            if (curr is FavoriteError &&
+                curr.postId == post.id &&
+                curr.shouldRevert)
+              return true;
+            return false;
+          },
+          builder: (context, state) {
+            // 1. Get baseline state from PostEntity
+            bool isFavorited = post.isFavorited;
+            int favoritesCount = post.favoritesCount;
+
+            // 2. Override with optimistic state from FavoritesBloc
+            if (state is FavoriteUpdated && state.postId == post.id) {
+              isFavorited = state.isFavorited;
+            } else if (state is FavoriteError &&
+                state.postId == post.id &&
+                state.shouldRevert) {
+              isFavorited = state.previousState;
+            }
+
+            // 3. Count (favoritesCount) is handled by PostsBloc stream via PostEntity
+
+            return DebouncedInkWell(
+              actionKey: 'reel_fav_${post.id}',
+              duration: _debounce,
+              onTap: () {
+                // 4. Send the *inverse* of the *current UI state*
+                context.read<FavoritesBloc>().add(
+                  FavoritePostEvent(
+                    postId: post.id,
+                    userId: userId,
+                    isFavorited: !isFavorited, // Use derived 'isFavorited'
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(24),
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+              child: Column(
+                children: [
+                  Icon(
+                    isFavorited ? Icons.bookmark : Icons.bookmark_border,
+                    color: isFavorited ? Colors.amber : Colors.white,
+                    size: 32,
+                  ),
+                  Text(
+                    '$favoritesCount', // Use count from PostEntity
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
             );
           },
-          borderRadius: BorderRadius.circular(24),
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-          child: Column(
-            children: [
-              Icon(
-                post.isFavorited ? Icons.bookmark : Icons.bookmark_border,
-                color: post.isFavorited ? Colors.amber : Colors.white,
-                size: 32,
-              ),
-              Text(
-                '${post.favoritesCount}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
         ),
+        // =============== END FAVORITE BUTTON FIX ===============
         const SizedBox(height: 20),
 
-        // Share
+        // Share (No state logic, this is fine)
         DebouncedInkWell(
           actionKey: 'reel_share_${post.id}',
           duration: _debounce,

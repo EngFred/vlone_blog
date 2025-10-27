@@ -1,4 +1,3 @@
-// lib/features/likes/presentation/bloc/likes_event.dart
 part of 'likes_bloc.dart';
 
 abstract class LikesEvent extends Equatable {

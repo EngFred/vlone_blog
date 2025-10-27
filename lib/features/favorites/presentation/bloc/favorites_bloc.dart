@@ -16,6 +16,11 @@ class FavoritesBloc extends Bloc<FavoritesEvent, FavoritesState> {
   StreamSubscription? _favoritesSubscription;
   String? _currentUserId;
 
+  // ================== FIX ==================
+  // This Set will track which post IDs are currently being processed.
+  final Set<String> _processingFavorites = {};
+  // ================ END FIX ================
+
   FavoritesBloc({
     required this.favoritePostUseCase,
     required this.streamFavoritesUseCase,
@@ -30,51 +35,84 @@ class FavoritesBloc extends Bloc<FavoritesEvent, FavoritesState> {
     FavoritePostEvent event,
     Emitter<FavoritesState> emit,
   ) async {
-    AppLogger.info(
-      'FavoritePostEvent triggered for post: ${event.postId}, favorite: ${event.isFavorited}',
-    );
+    // ================== FIX ==================
+    // If we are already processing a favorite for this post, drop the event.
+    if (_processingFavorites.contains(event.postId)) {
+      AppLogger.warning(
+        'Dropping FavoritePostEvent for ${event.postId}: already processing.',
+      );
+      return;
+    }
+    // ================ END FIX ================
 
-    // Emit optimistic update
-    emit(
-      FavoriteUpdated(
-        postId: event.postId,
-        userId: event.userId,
-        isFavorited: event.isFavorited,
-      ),
-    );
+    try {
+      // ================== FIX ==================
+      // Add this post to the set to "lock" it.
+      _processingFavorites.add(event.postId);
+      // ================ END FIX ================
 
-    final result = await favoritePostUseCase(
-      FavoritePostParams(
-        postId: event.postId,
-        userId: event.userId,
-        isFavorited: event.isFavorited,
-      ),
-    );
+      AppLogger.info(
+        'FavoritePostEvent triggered for post: ${event.postId}, favorite: ${event.isFavorited}',
+      );
 
-    result.fold(
-      (failure) {
-        AppLogger.error('Favorite post failed: ${failure.message}');
-        // Emit error with revert flag
-        emit(
-          FavoriteError(
-            postId: event.postId,
-            message: failure.message,
-            shouldRevert: true,
-            previousState: !event.isFavorited,
-          ),
-        );
-      },
-      (_) {
-        AppLogger.info('Post favorited/unfavorited successfully');
-        emit(
-          FavoriteSuccess(
-            postId: event.postId,
-            userId: event.userId,
-            isFavorited: event.isFavorited,
-          ),
-        );
-      },
-    );
+      // Emit optimistic update
+      emit(
+        FavoriteUpdated(
+          postId: event.postId,
+          userId: event.userId,
+          isFavorited: event.isFavorited,
+        ),
+      );
+
+      final result = await favoritePostUseCase(
+        FavoritePostParams(
+          postId: event.postId,
+          userId: event.userId,
+          isFavorited: event.isFavorited,
+        ),
+      );
+
+      result.fold(
+        (failure) {
+          AppLogger.error('Favorite post failed: ${failure.message}');
+          // Emit error with revert flag
+          emit(
+            FavoriteError(
+              postId: event.postId,
+              message: failure.message,
+              shouldRevert: true,
+              previousState: !event.isFavorited,
+            ),
+          );
+        },
+        (_) {
+          AppLogger.info('Post favorited/unfavorited successfully');
+          emit(
+            FavoriteSuccess(
+              postId: event.postId,
+              userId: event.userId,
+              isFavorited: event.isFavorited,
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      // Handle any unexpected errors
+      AppLogger.error('Unexpected error in _onFavoritePost: $e');
+      emit(
+        FavoriteError(
+          postId: event.postId,
+          message: e.toString(),
+          shouldRevert: true,
+          previousState: !event.isFavorited,
+        ),
+      );
+    } finally {
+      // ================== FIX ==================
+      // ALWAYS remove the post from the set to "unlock" it.
+      _processingFavorites.remove(event.postId);
+      // ================ END FIX ================
+    }
   }
 
   Future<void> _onStartFavoritesStream(
@@ -93,16 +131,31 @@ class FavoritesBloc extends Bloc<FavoritesEvent, FavoritesState> {
               AppLogger.error('Real-time favorite error: ${failure.message}'),
           (favoriteData) {
             final isFavorited = favoriteData['event'] == 'INSERT';
+
+            // --- SAFELY PARSE THE DATA ---
+            final postId = favoriteData['post_id'];
+            final userId = favoriteData['user_id'];
+
             AppLogger.info(
-              'Real-time: Favorite ${isFavorited ? 'added' : 'removed'} on post: ${favoriteData['post_id']}',
+              'Real-time: Favorite ${isFavorited ? 'added' : 'removed'} on post: $postId',
             );
-            add(
-              _RealtimeFavoriteReceivedEvent(
-                postId: favoriteData['post_id'] as String,
-                userId: favoriteData['user_id'] as String,
-                isFavorited: isFavorited,
-              ),
-            );
+
+            // --- ADD NULL CHECK TO PREVENT CRASH ---
+            if (postId is String && userId is String) {
+              // Only proceed if data is valid
+              add(
+                _RealtimeFavoriteReceivedEvent(
+                  postId: postId,
+                  userId: userId,
+                  isFavorited: isFavorited,
+                ),
+              );
+            } else {
+              // Log the bad data but DO NOT crash
+              AppLogger.warning(
+                'Real-time favorite event received with null or invalid data. PostID: $postId, UserID: $userId. Skipping event.',
+              );
+            }
           },
         );
       },

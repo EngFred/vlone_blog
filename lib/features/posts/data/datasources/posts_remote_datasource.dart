@@ -328,8 +328,6 @@ class PostsRemoteDataSource {
     }
   }
 
-  // ==================== REAL-TIME STREAMS ====================
-
   /// Stream for new posts being created. Uses the **original one-parameter** `get_post_with_profile` RPC.
   Stream<PostModel> streamNewPosts() {
     AppLogger.info(
