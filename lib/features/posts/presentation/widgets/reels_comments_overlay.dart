@@ -80,6 +80,18 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
     _focusNode.unfocus();
   }
 
+  /// Helper to count total comments recursively (same logic as CommentsSection)
+  int _countAllComments(List<CommentEntity> comments) {
+    int total = 0;
+    for (final comment in comments) {
+      total++; // count this comment
+      if (comment.replies.isNotEmpty) {
+        total += _countAllComments(comment.replies); // count all replies
+      }
+    }
+    return total;
+  }
+
   @override
   void dispose() {
     _commentController.dispose();
@@ -143,12 +155,31 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                                 child: Row(
                                   children: [
                                     Expanded(
-                                      child: Text(
-                                        '${widget.post.commentsCount} Comments',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.titleMedium,
-                                      ),
+                                      // Use BlocSelector to reactively update comment count
+                                      child:
+                                          BlocSelector<
+                                            CommentsBloc,
+                                            CommentsState,
+                                            int
+                                          >(
+                                            selector: (state) {
+                                              if (state is CommentsLoaded) {
+                                                return _countAllComments(
+                                                  state.comments,
+                                                );
+                                              }
+                                              // Fallback to post's static count if not loaded yet
+                                              return widget.post.commentsCount;
+                                            },
+                                            builder: (context, commentCount) {
+                                              return Text(
+                                                '$commentCount Comment${commentCount != 1 ? 's' : ''}',
+                                                style: Theme.of(
+                                                  context,
+                                                ).textTheme.titleMedium,
+                                              );
+                                            },
+                                          ),
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.close),

@@ -63,9 +63,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     on<NotificationsToggleSelection>(_onToggleSelection);
   }
 
-  /// Handles the initial subscription event for the notifications list.
-  /// We subscribe both to legacy usecase stream (for backward compatibility)
-  /// and to the RealtimeService broadcast (preferred).
   void _onSubscribeStream(
     NotificationsSubscribeStream event,
     Emitter<NotificationsState> emit,
