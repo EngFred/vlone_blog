@@ -21,6 +21,9 @@ class _CreatePostPageState extends State<CreatePostPage> {
   String? _mediaType;
   bool _isPostButtonEnabled = false;
 
+  // New: show full-screen overlay while media is being prepared
+  bool _isProcessingMedia = false;
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +55,15 @@ class _CreatePostPageState extends State<CreatePostPage> {
       _mediaType = type;
     });
     _validatePost();
+  }
+
+  // Called by MediaUploadWidget to toggle the full-screen processing overlay
+  void _onProcessingChanged(bool processing) {
+    if (mounted) {
+      setState(() {
+        _isProcessingMedia = processing;
+      });
+    }
   }
 
   @override
@@ -105,7 +117,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
                             );
                           }
                         : null,
-                    // *** FIX: Reverted to simple Text as loading is handled by overlay ***
+                    // Loading is handled by overlay and bloc state; keep text simple
                     child: const Text('Post'),
                   ),
                 );
@@ -146,15 +158,23 @@ class _CreatePostPageState extends State<CreatePostPage> {
                           minLines: 3,
                         ),
                         const SizedBox(height: 20),
-                        MediaUploadWidget(onMediaSelected: _onMediaSelected),
+                        // Pass the processing callback to the widget so it can toggle the page overlay
+                        MediaUploadWidget(
+                          onMediaSelected: _onMediaSelected,
+                          onProcessing: _onProcessingChanged,
+                        ),
                       ],
                     ),
                   ),
                 ),
 
-                // 2. Loading Overlay (conditional)
+                // 2. Loading Overlay for post upload (covers screen)
                 if (isLoading)
-                  const SavingLoadingOverlay(message: 'Uploading Post...'),
+                  const SavingLoadingOverlay(message: 'Uploading post...'),
+
+                // 3. Loading Overlay for media processing (covers screen, above main content)
+                if (_isProcessingMedia)
+                  const SavingLoadingOverlay(message: 'Processing video...'),
               ],
             );
           },

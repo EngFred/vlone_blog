@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-// Import 'compute' from flutter/foundation
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -13,13 +12,8 @@ import 'package:vlone_blog_app/core/utils/helpers.dart';
 import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:vlone_blog_app/core/utils/video_compressor.dart';
 
-// -----------------------------------------------------------------------------
-// Helper class and function for running thumbnail generation in an isolate.
-//
-// 'compute' requires a top-level or static function and can only take one
-// argument. This class bundles the two paths we need.
-// -----------------------------------------------------------------------------
 class _ThumbnailRequest {
   final String videoPath;
   final String tempPath;
@@ -27,8 +21,6 @@ class _ThumbnailRequest {
   _ThumbnailRequest({required this.videoPath, required this.tempPath});
 }
 
-/// This function will be run in a separate isolate via 'compute'.
-/// It CANNOT use 'path_provider' or other platform channels directly.
 Future<String?> _generateThumbnailInIsolate(_ThumbnailRequest request) async {
   try {
     // This is the CPU-intensive part
@@ -80,9 +72,33 @@ class PostsRemoteDataSource {
       String? thumbnailUrl;
 
       if (mediaFile != null) {
+        // Use a local variable that may be replaced by a compressed file.
+        File fileToUpload = mediaFile;
+
+        try {
+          final compressed = await VideoCompressor.compressIfNeeded(
+            fileToUpload,
+          );
+          if (compressed.path != fileToUpload.path) {
+            AppLogger.info(
+              'createPost: using compressed video at ${compressed.path}',
+            );
+            fileToUpload = compressed;
+          } else {
+            AppLogger.info(
+              'createPost: compression skipped or no size reduction; using original',
+            );
+          }
+        } catch (e, st) {
+          AppLogger.warning(
+            'createPost: compression failed, proceeding with original file: $e',
+          );
+        }
+
         if (mediaType == 'video') {
           // Assuming getVideoDuration is available from helpers.dart
-          final duration = await getVideoDuration(mediaFile);
+          // Use fileToUpload (compressed or original) when measuring duration.
+          final duration = await getVideoDuration(fileToUpload);
           if (duration > Constants.maxVideoDurationSeconds) {
             AppLogger.warning(
               'Video duration exceeds limit: $duration seconds',
@@ -92,14 +108,14 @@ class PostsRemoteDataSource {
         }
 
         mediaUrl = await _uploadFileToStorage(
-          file: mediaFile,
+          file: fileToUpload,
           userId: userId,
           folder: 'posts/media',
         );
 
         if (mediaType == 'video') {
-          // ✅ UPDATED: This call now uses 'compute' internally
-          final thumbPath = await _generateThumbnailFile(mediaFile);
+          // This call now uses 'compute' internally and uses the final fileToUpload
+          final thumbPath = await _generateThumbnailFile(fileToUpload);
 
           if (thumbPath != null) {
             final thumbFile = File(thumbPath);
@@ -158,7 +174,11 @@ class PostsRemoteDataSource {
     final uploadPath = '$folder/$userId/$fileName';
 
     try {
-      AppLogger.info('Uploading file to path: $uploadPath');
+      final fileSize = await file.length();
+      AppLogger.info(
+        'Uploading file to path: $uploadPath (size=${fileSize} bytes)',
+      );
+      // Supabase .upload expects a File for mobile; keep your prior call
       await client.storage.from('posts').upload(uploadPath, file);
       final url = client.storage.from('posts').getPublicUrl(uploadPath);
       AppLogger.info('File uploaded successfully, url: $url');
@@ -169,25 +189,33 @@ class PostsRemoteDataSource {
         error: e,
       );
 
-      final tempDir = await getTemporaryDirectory();
-      final tempPath = '${tempDir.path}/$fileName';
-      await file.copy(tempPath);
+      // Save a local copy so the background worker can retry from disk
+      try {
+        final tempDir = await getTemporaryDirectory();
+        final tempPath = '${tempDir.path}/$fileName';
+        await file.copy(tempPath);
 
-      Workmanager().registerOneOffTask(
-        'upload_post_media_$fileName',
-        'upload_media',
-        inputData: {
-          'bucket': 'posts',
-          'uploadPath': uploadPath,
-          'filePath': tempPath,
-        },
-      );
+        // Schedule background upload via WorkManager
+        Workmanager().registerOneOffTask(
+          'upload_post_media_$fileName',
+          'upload_media',
+          inputData: {
+            'bucket': 'posts',
+            'uploadPath': uploadPath,
+            'filePath': tempPath,
+          },
+        );
+      } catch (copyError) {
+        AppLogger.warning(
+          'Failed to create local copy for background upload: $copyError',
+        );
+      }
 
       throw ServerException('Upload started in background: $e');
     }
   }
 
-  // ✅ UPDATED: This method now orchestrates the 'compute' call
+  //This method now orchestrates the 'compute' call
   Future<String?> _generateThumbnailFile(File videoFile) async {
     try {
       // 1. Get temp directory path (must be on main thread)

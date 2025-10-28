@@ -21,6 +21,8 @@ class SnackbarUtils {
                 child: Text(
                   message,
                   style: const TextStyle(fontSize: 14, color: Colors.white),
+                  maxLines: 2, // Added line limit
+                  overflow: TextOverflow.ellipsis, // Added overflow handling
                 ),
               ),
             ],
@@ -59,6 +61,8 @@ class SnackbarUtils {
                 child: Text(
                   message,
                   style: const TextStyle(fontSize: 14, color: Colors.white),
+                  maxLines: 2, // Added line limit
+                  overflow: TextOverflow.ellipsis, // Added overflow handling
                 ),
               ),
             ],
@@ -90,6 +94,8 @@ class SnackbarUtils {
                 child: Text(
                   message,
                   style: const TextStyle(fontSize: 14, color: Colors.white),
+                  maxLines: 2, // Added line limit
+                  overflow: TextOverflow.ellipsis, // Added overflow handling
                 ),
               ),
             ],
@@ -121,6 +127,8 @@ class SnackbarUtils {
                 child: Text(
                   message,
                   style: const TextStyle(fontSize: 14, color: Colors.white),
+                  maxLines: 2, // Added line limit
+                  overflow: TextOverflow.ellipsis, // Added overflow handling
                 ),
               ),
             ],

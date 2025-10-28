@@ -15,7 +15,16 @@ import 'trimmer_view.dart';
 class MediaUploadWidget extends StatefulWidget {
   final Function(File?, String?) onMediaSelected;
 
-  const MediaUploadWidget({super.key, required this.onMediaSelected});
+  /// Optional callback used to notify parent that media processing (duration fetch,
+  /// video initialization, trimming flow) is underway. Parent should show a
+  /// full-screen overlay when true.
+  final void Function(bool isProcessing)? onProcessing;
+
+  const MediaUploadWidget({
+    super.key,
+    required this.onMediaSelected,
+    this.onProcessing,
+  });
 
   @override
   State<MediaUploadWidget> createState() => _MediaUploadWidgetState();
@@ -26,7 +35,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
   String? _mediaType;
   VideoPlayerController? _videoController;
   bool _isPreviewPlaying = false;
-  bool _isLoadingMedia = false;
+  // bool _isLoadingMedia = false; // Removed or ignored as per request
 
   Future<void> _pickMedia(ImageSource source, bool isImage) async {
     final picker = ImagePicker();
@@ -52,6 +61,9 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
     await _videoController?.dispose();
     _videoController = null;
 
+    // Notify parent that processing is starting (show full-screen overlay)
+    widget.onProcessing?.call(true);
+
     if (mediaType == 'image') {
       // Images: Quick validation and set (no duration check needed)
       try {
@@ -62,7 +74,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
             _mediaFile = file;
             _mediaType = mediaType;
             _isPreviewPlaying = false;
-            _isLoadingMedia = false;
+            // _isLoadingMedia = false; // Removed
           });
         }
         widget.onMediaSelected(file, mediaType);
@@ -74,19 +86,22 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
             'Failed to load image. It may be in the cloud or in an unsupported format.',
           );
         }
+      } finally {
+        // Done processing (hide overlay)
+        widget.onProcessing?.call(false);
       }
     } else {
       // Videos: Duration check + auto-trim if needed
       try {
+        // 1) Fetch duration (overlay should be visible while this is running)
         final duration = await getVideoDuration(file); // Returns int (seconds)
         final double maxAllowed = Constants.maxVideoDurationSeconds
             .toDouble(); // Use your constant
         File finalFile = file;
-        bool needsAutoTrim =
-            duration > maxAllowed; // Direct int > double comparison
+        bool needsAutoTrim = duration > maxAllowed;
 
         if (needsAutoTrim) {
-          // UX: Warn user, then auto-open trim with 0-60s preset
+          // UX: Warn user, then auto-open trim with 0-maxAllowed preset
           if (mounted) {
             SnackbarUtils.showWarning(
               context,
@@ -94,7 +109,10 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
             );
           }
 
-          // Auto-nav to trim view, pre-set to 0-60s (no lock—button will enforce)
+          // hide overlay before navigating to trimming screen so trimmed view can appear normally
+          widget.onProcessing?.call(false);
+
+          // Auto-nav to trim view, pre-set to 0-maxAllowed (user must save to return a trimmed file)
           final trimmedPath = await Navigator.of(context).push<String?>(
             MaterialPageRoute(
               builder: (context) => TrimmerView(
@@ -106,26 +124,30 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
             ),
           );
 
+          // If user canceled trimming, do not set media
           if (trimmedPath == null) {
-            // User cancelled: Don't set media, return early
             return;
           }
 
-          finalFile = File(trimmedPath); // Use trimmed version
+          // Use trimmed file
+          finalFile = File(trimmedPath);
+
+          // after returning from trim, show processing overlay again while we initialize the preview
+          widget.onProcessing?.call(true);
         }
 
-        // Set file (trimmed or original) and load preview
+        // 2) Set file (trimmed or original) and initialize preview player
         if (mounted) {
           setState(() {
             _mediaFile = finalFile;
             _mediaType = mediaType;
             _isPreviewPlaying = false;
-            _isLoadingMedia = true; // Show loader while initializing
+            // _isLoadingMedia = true; // Removed internal loading
           });
         }
         widget.onMediaSelected(finalFile, mediaType);
 
-        // Init video controller for preview
+        // Init video controller for preview (overlay stays visible until this finishes)
         _videoController = VideoPlayerController.file(finalFile);
         await _videoController!.initialize();
         _videoController!.addListener(() {
@@ -138,9 +160,9 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
           }
         });
 
-        if (mounted) {
-          setState(() => _isLoadingMedia = false);
-        }
+        // if (mounted) {
+        //   setState(() => _isLoadingMedia = false); // Removed
+        // }
       } catch (e) {
         debugPrint('Error initializing video: $e');
         if (mounted) {
@@ -151,12 +173,15 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
           setState(() {
             _mediaFile = null;
             _mediaType = null;
-            _isLoadingMedia = false;
+            // _isLoadingMedia = false; // Removed
           });
           widget.onMediaSelected(null, null);
         }
         await _videoController?.dispose();
         _videoController = null;
+      } finally {
+        // Done processing – hide overlay regardless of success/failure
+        widget.onProcessing?.call(false);
       }
     }
   }
@@ -175,7 +200,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
       _mediaFile = null;
       _mediaType = null;
       _isPreviewPlaying = false;
-      _isLoadingMedia = false;
+      // _isLoadingMedia = false; // Removed
     });
     widget.onMediaSelected(null, null);
   }
@@ -208,6 +233,9 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
         maxAllowed,
       ); // Cap initial for UX
 
+      // Show processing overlay while we navigate / initialize after trimming
+      widget.onProcessing?.call(true);
+
       final trimmedFilePath = await Navigator.of(context).push<String?>(
         MaterialPageRoute<String?>(
           builder: (context) => TrimmerView(
@@ -218,6 +246,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
           ),
         ),
       );
+
       if (trimmedFilePath != null) {
         await _videoController?.dispose();
         final newFile = File(trimmedFilePath);
@@ -229,6 +258,9 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
         });
         widget.onMediaSelected(_mediaFile, _mediaType);
       }
+
+      // Done processing after the trimmed video preview initializes (or immediately if cancelled)
+      widget.onProcessing?.call(false);
     }
   }
 
@@ -242,8 +274,8 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
   Widget build(BuildContext context) {
     return _mediaFile == null
         ? MediaPlaceholder(onTap: _showPickOptions)
-        : _isLoadingMedia
-        ? const Center(child: CircularProgressIndicator())
+        // If media is selected, ignore _isLoadingMedia and show MediaPreview.
+        // The full-screen overlay (controlled by onProcessing) handles the loading state.
         : MediaPreview(
             file: _mediaFile!,
             mediaType: _mediaType!,
