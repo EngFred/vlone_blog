@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
-import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
 import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_tile.dart';
+import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
+import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 
 class CommentsSection extends StatelessWidget {
   final int? commentsCount;
@@ -14,6 +14,8 @@ class CommentsSection extends StatelessWidget {
   final bool showCountHeader;
   final String currentUserId;
   final ScrollController? controller;
+  final Map<String, GlobalKey> commentKeys; // Received from parent
+  final String? highlightedCommentId;
 
   const CommentsSection({
     super.key,
@@ -23,6 +25,8 @@ class CommentsSection extends StatelessWidget {
     this.showCountHeader = true,
     required this.currentUserId,
     this.controller,
+    required this.commentKeys,
+    this.highlightedCommentId,
   });
 
   @override
@@ -30,25 +34,20 @@ class CommentsSection extends StatelessWidget {
     return BlocBuilder<CommentsBloc, CommentsState>(
       builder: (context, state) {
         if (state is CommentsInitial || state is CommentsLoading) {
-          // Pass const SizedBox.shrink() as a placeholder for the removed header
-          return _buildLoading(const SizedBox.shrink());
+          return _buildLoading();
         }
 
         if (state is CommentsError) {
-          return _buildError(const SizedBox.shrink(), state.message);
+          return _buildError(state.message);
         }
 
         if (state is CommentsLoaded) {
           final commentList = state.comments;
           if (commentList.isEmpty) {
-            return _buildEmpty(const SizedBox.shrink());
+            return _buildEmpty();
           }
 
-          return _buildCommentList(
-            context,
-            const SizedBox.shrink(),
-            commentList,
-          );
+          return _buildCommentList(context, commentList);
         }
 
         return const SizedBox.shrink();
@@ -56,24 +55,21 @@ class CommentsSection extends StatelessWidget {
     );
   }
 
-  // The 'header' parameter is kept for function signature consistency but is always SizedBox.shrink()
-  Widget _buildLoading(Widget header) {
+  Widget _buildLoading() {
     if (scrollable) {
       return ListView(
         controller: controller,
         padding: EdgeInsets.zero,
-        children: [
-          // REMOVED: header,
-          const SizedBox(height: 40),
-          const Center(child: LoadingIndicator()),
-          const SizedBox(height: 40),
+        children: const [
+          SizedBox(height: 40),
+          Center(child: LoadingIndicator()),
+          SizedBox(height: 40),
         ],
       );
     }
     return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // REMOVED: header,
         Center(
           child: Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
@@ -84,38 +80,26 @@ class CommentsSection extends StatelessWidget {
     );
   }
 
-  // The 'header' parameter is kept for function signature consistency but is always SizedBox.shrink()
-  Widget _buildError(Widget header, String message) {
+  Widget _buildError(String message) {
+    final errorWidget = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      child: CustomErrorWidget(message: message),
+    );
+
     if (scrollable) {
       return ListView(
         controller: controller,
         padding: EdgeInsets.zero,
-        children: [
-          // REMOVED: header,
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16.0,
-              vertical: 24.0,
-            ),
-            child: CustomErrorWidget(message: message),
-          ),
-        ],
+        children: [errorWidget],
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // REMOVED: header,
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
-          child: CustomErrorWidget(message: message),
-        ),
-      ],
+      children: [errorWidget],
     );
   }
 
-  // The 'header' parameter is kept for function signature consistency but is always SizedBox.shrink()
-  Widget _buildEmpty(Widget header) {
+  Widget _buildEmpty() {
     final emptyWidget = const EmptyStateWidget(
       icon: Icons.chat_bubble_outline,
       message: 'Be the first to comment',
@@ -124,69 +108,46 @@ class CommentsSection extends StatelessWidget {
       return ListView(
         controller: controller,
         padding: EdgeInsets.zero,
-        children: [
-          // REMOVED: header,
-          const SizedBox(height: 40),
-          emptyWidget,
-        ],
+        children: [const SizedBox(height: 40), emptyWidget],
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // REMOVED: header,
-        const SizedBox(height: 40),
-        emptyWidget,
-      ],
+      children: [const SizedBox(height: 40), emptyWidget],
     );
   }
 
-  // The 'header' parameter is kept for function signature consistency but is always SizedBox.shrink()
-  Widget _buildCommentList(
-    BuildContext context,
-    Widget header,
-    List<CommentEntity> comments,
-  ) {
+  Widget _buildCommentList(BuildContext context, List<CommentEntity> comments) {
+    final commentTiles = comments.map((comment) {
+      final isHighlighted = comment.id == highlightedCommentId;
+
+      // We must check if the key exists before using it.
+      // The key should be created in the parent's BlocListener.
+      // If it's missing, use a ValueKey as a fallback to avoid crash,
+      // but warn, as scrolling won't work.
+      final key = commentKeys[comment.id] ?? ValueKey(comment.id);
+
+      return CommentTile(
+        key: key,
+        comment: comment,
+        onReply: onReply,
+        depth: 0,
+        currentUserId: currentUserId,
+        isHighlighted: isHighlighted,
+      );
+    }).toList();
+
     if (scrollable) {
-      // Logic simplified as there is no header item in the list
-      return ListView.builder(
+      return ListView(
         controller: controller,
         padding: EdgeInsets.zero,
-        itemCount: comments.length,
-        itemBuilder: (context, index) {
-          final comment = comments[index];
-          return CommentTile(
-            key: ValueKey(comment.id),
-            comment: comment,
-            onReply: onReply,
-            depth: 0,
-            currentUserId: currentUserId,
-          );
-        },
+        children: commentTiles,
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // REMOVED: header,
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: EdgeInsets.zero,
-          itemCount: comments.length,
-          itemBuilder: (context, index) {
-            final comment = comments[index];
-            return CommentTile(
-              key: ValueKey(comment.id),
-              comment: comment,
-              onReply: onReply,
-              depth: 0,
-              currentUserId: currentUserId,
-            );
-          },
-        ),
-      ],
+      children: commentTiles,
     );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:vlone_blog_app/features/notifications/domain/entities/notification_entity.dart';
 
 /// Extends [NotificationEntity] to include data-layer specific logic,
@@ -17,13 +19,37 @@ class NotificationModel extends NotificationEntity {
     super.postId,
     super.content,
     this.readAt,
-  }) : super(
-         // The entity's `isRead` is derived from the model's `readAt`
-         isRead: readAt != null,
-       );
+    super.commentId,
+    super.parentCommentId,
+    super.metadata,
+  }) : super(isRead: readAt != null);
 
   /// Creates a [NotificationModel] from a Supabase database map (JSON).
   factory NotificationModel.fromMap(Map<String, dynamic> map) {
+    // parse metadata robustly (could be stringified JSON or map)
+    Map<String, dynamic>? metadata;
+    try {
+      final rawMeta = map['metadata'];
+      if (rawMeta == null) {
+        metadata = null;
+      } else if (rawMeta is Map) {
+        metadata = Map<String, dynamic>.from(rawMeta);
+      } else if (rawMeta is String) {
+        // sometimes postgres returns jsonb as string
+        metadata = rawMeta.isEmpty
+            ? null
+            : Map<String, dynamic>.from(
+                (rawMeta.startsWith('{') || rawMeta.startsWith('['))
+                    ? (jsonDecode(rawMeta) as Map<String, dynamic>)
+                    : {},
+              );
+      } else {
+        metadata = null;
+      }
+    } catch (_) {
+      metadata = null;
+    }
+
     return NotificationModel(
       id: map['id'] as String,
       recipientId: map['recipient_id'] as String,
@@ -34,18 +60,16 @@ class NotificationModel extends NotificationEntity {
           ? null
           : DateTime.parse(map['read_at'] as String),
       postId: map['post_id'] as String?,
+      commentId: map['comment_id'] as String?,
+      parentCommentId: map['parent_comment_id'] as String?,
       content: map['content'] as String?,
-
-      // These fields are expected from the 'notifications_view'
-      // which should join with the 'profiles' table.
-      actorUsername: map['actor_username'] as String? ?? 'Unknown User',
-      // Changed to match the SQL view's column name
+      actorUsername: map['actor_username'] as String? ?? 'Unknown',
       actorAvatarUrl: map['actor_image_url'] as String?,
+      metadata: metadata,
     );
   }
 
   /// Converts the [NotificationModel] to a Map (JSON).
-  /// Not strictly necessary for this feature but good practice.
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -53,13 +77,14 @@ class NotificationModel extends NotificationEntity {
       'actor_id': actorId,
       'type': type.name,
       'post_id': postId,
+      'comment_id': commentId,
+      'parent_comment_id': parentCommentId,
       'content': content,
       'read_at': readAt?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
-      // These are not part of the 'notifications' table,
-      // but are included for completeness if ever needed.
       'actor_username': actorUsername,
       'actor_image_url': actorAvatarUrl,
+      'metadata': metadata,
     };
   }
 }

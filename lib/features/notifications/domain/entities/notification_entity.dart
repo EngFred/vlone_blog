@@ -8,7 +8,7 @@ enum NotificationType {
   repost,
   mention,
   favorite,
-  unknown; // Fallback for any unexpected types
+  unknown;
 
   static NotificationType fromString(String? type) {
     switch (type) {
@@ -43,11 +43,16 @@ class NotificationEntity extends Equatable {
   final String actorUsername;
   final String? actorAvatarUrl;
 
-  // Optional: related post
+  // Optional: related post & comment
   final String? postId;
+  final String? commentId; // NEW
+  final String? parentCommentId; // NEW
 
-  // Optional: custom content (e.g., for a mention)
+  // Optional: custom content / friendly message
   final String? content;
+
+  // Optional: arbitrary metadata from DB (e.g., {"reply_text": "...", "deep_link": "..."})
+  final Map<String, dynamic>? metadata; // NEW
 
   const NotificationEntity({
     required this.id,
@@ -57,7 +62,10 @@ class NotificationEntity extends Equatable {
     required this.actorUsername,
     this.actorAvatarUrl,
     this.postId,
+    this.commentId,
+    this.parentCommentId,
     this.content,
+    this.metadata,
     required this.isRead,
     required this.createdAt,
   });
@@ -73,7 +81,10 @@ class NotificationEntity extends Equatable {
     String? actorUsername,
     String? actorAvatarUrl,
     String? postId,
+    String? commentId,
+    String? parentCommentId,
     String? content,
+    Map<String, dynamic>? metadata,
   }) {
     return NotificationEntity(
       id: id ?? this.id,
@@ -85,19 +96,21 @@ class NotificationEntity extends Equatable {
       actorUsername: actorUsername ?? this.actorUsername,
       actorAvatarUrl: actorAvatarUrl ?? this.actorAvatarUrl,
       postId: postId ?? this.postId,
+      commentId: commentId ?? this.commentId,
+      parentCommentId: parentCommentId ?? this.parentCommentId,
       content: content ?? this.content,
+      metadata: metadata ?? this.metadata,
     );
   }
 
   /// A constant empty notification entity.
-  /// Used as a fallback in logic to avoid null checks.
   static final NotificationEntity empty = NotificationEntity(
     id: '',
     recipientId: '',
     actorId: '',
     type: NotificationType.unknown,
     actorUsername: '',
-    isRead: true, // Set as true so it's ignored by "mark as read" logic
+    isRead: true,
     createdAt: DateTime.fromMicrosecondsSinceEpoch(0),
   );
 
@@ -108,9 +121,13 @@ class NotificationEntity extends Equatable {
     actorId,
     type,
     postId,
+    commentId,
+    parentCommentId,
     isRead,
     createdAt,
     actorUsername,
     actorAvatarUrl,
+    content,
+    metadata,
   ];
 }

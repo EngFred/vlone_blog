@@ -21,8 +21,16 @@ import 'package:vlone_blog_app/features/posts/presentation/widgets/post_details_
 class PostDetailsPage extends StatefulWidget {
   final String postId;
   final PostEntity? post;
+  final String? highlightCommentId;
+  final String? parentCommentId;
 
-  const PostDetailsPage({super.key, required this.postId, this.post});
+  const PostDetailsPage({
+    super.key,
+    required this.postId,
+    this.post,
+    this.highlightCommentId,
+    this.parentCommentId,
+  });
 
   @override
   State<PostDetailsPage> createState() => _PostDetailsPageState();
@@ -37,17 +45,23 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   bool _subscribedToComments = false;
   bool _isDeleting = false;
 
+  final ScrollController _scrollController = ScrollController();
+  final Map<String, GlobalKey> _commentKeys = {};
+  String? _commentToScrollId;
+  String? _highlightedCommentId;
+
   @override
   void initState() {
     super.initState();
     if (widget.post != null) _post = widget.post;
-    // We no longer subscribe to comments here immediately — we wait until we have a userId (see build())
+    _commentToScrollId = widget.highlightCommentId;
   }
 
   @override
   void dispose() {
     _commentController.dispose();
     _focusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -68,6 +82,56 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
       context.read<CommentsBloc>().add(SubscribeToCommentsEvent(widget.postId));
       _subscribedToComments = true;
     }
+  }
+
+  void _scrollToComment(String commentId) {
+    if (_highlightedCommentId == commentId) return;
+
+    final key = _commentKeys[commentId];
+    if (key == null || key.currentContext == null) {
+      AppLogger.warning(
+        'PostDetailsPage: Cannot scroll, key not found or context is null for ID $commentId',
+      );
+      return;
+    }
+
+    final RenderBox renderBox =
+        key.currentContext!.findRenderObject() as RenderBox;
+    // Find the position relative to the viewport (or the CustomScrollView's ancestor)
+    final position = renderBox.localToGlobal(
+      Offset.zero,
+      ancestor: context.findRenderObject(),
+    );
+
+    // We calculate the position relative to the CustomScrollView's content.
+    // The total position is the offset from the top of the screen (position.dy) plus the current
+    // scroll offset, minus the fixed header heights (AppBar, PostDetailsContent).
+    const double appBarHeight = kToolbarHeight;
+    const double padding = 32.0; // Extra padding for visual comfort
+
+    // A robust way to scroll to the top of the item:
+    // This calculation finds the necessary scroll position to put the top of the target widget
+    // just below the AppBar.
+    final scrollPosition =
+        _scrollController.offset + position.dy - appBarHeight - padding;
+
+    _scrollController
+        .animateTo(
+          scrollPosition.clamp(0.0, _scrollController.position.maxScrollExtent),
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        )
+        .then((_) {
+          if (mounted) {
+            setState(() {
+              _highlightedCommentId = commentId;
+              _commentToScrollId = null; // Clear target after successful scroll
+            });
+            AppLogger.info(
+              'PostDetailsPage: Scrolled to and highlighted comment $commentId.',
+            );
+          }
+        });
   }
 
   void _handleRealtimePostUpdate(RealtimePostUpdate state) {
@@ -203,6 +267,16 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     }
   }
 
+  void _commentsBlocListener(BuildContext context, CommentsState state) {
+    if (state is CommentsLoaded && _commentToScrollId != null) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted && _commentKeys.containsKey(_commentToScrollId)) {
+          _scrollToComment(_commentToScrollId!);
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocSelector<AuthBloc, AuthState, UserEntity?>(
@@ -222,6 +296,12 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
           } else {
             _subscribeToCommentsIfNeeded();
           }
+        }
+
+        if (!_focusNode.hasFocus &&
+            _highlightedCommentId != null &&
+            _commentToScrollId == null) {
+          Future.microtask(() => setState(() => _highlightedCommentId = null));
         }
 
         return WillPopScope(
@@ -257,6 +337,9 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                     BlocListener<FavoritesBloc, FavoritesState>(
                       listener: _favoritesBlocListener,
                     ),
+                    BlocListener<CommentsBloc, CommentsState>(
+                      listener: _commentsBlocListener,
+                    ),
                   ],
                   child: _post == null
                       ? const LoadingIndicator()
@@ -264,6 +347,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                           children: [
                             Expanded(
                               child: CustomScrollView(
+                                controller: _scrollController,
                                 slivers: [
                                   SliverToBoxAdapter(
                                     child: PostDetailsContent(
@@ -276,7 +360,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                                     ),
                                   ),
                                   SliverToBoxAdapter(
-                                    // CommentsSection uses the data source ordering (newest-first)
                                     child: CommentsSection(
                                       commentsCount: _post!.commentsCount,
                                       currentUserId: _userId!,
@@ -284,6 +367,9 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                                         setState(() => _replyingTo = comment);
                                         _focusNode.requestFocus();
                                       },
+                                      commentKeys: _commentKeys,
+                                      highlightedCommentId:
+                                          _highlightedCommentId,
                                     ),
                                   ),
                                 ],

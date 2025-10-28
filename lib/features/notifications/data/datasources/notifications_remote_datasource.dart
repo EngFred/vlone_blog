@@ -9,11 +9,11 @@ class NotificationsRemoteDataSource {
 
   static const String _notificationsView = 'notifications_view';
   static const String _notificationsTable = 'notifications';
-  static const String _unreadCountTable = 'unread_notification_count';
 
   NotificationsRemoteDataSource(this.client);
 
-  /// Stream real-time notifications for the current user
+  /// Returns a broadcast stream giving the current user's notifications (newest-first).
+  /// Seeds initial data from `_notificationsView` and listens to table changes on `_notificationsTable`.
   Stream<List<NotificationModel>> getNotificationsStream() {
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
@@ -21,35 +21,124 @@ class NotificationsRemoteDataSource {
       return Stream.error(const ServerException('User not authenticated.'));
     }
 
-    AppLogger.info('Subscribing to notifications stream for user: $userId');
+    AppLogger.info(
+      'Creating notifications stream controller for user: $userId',
+    );
 
-    final realtimeStream = client
-        .from(_notificationsView)
-        .stream(primaryKey: ['id'])
-        .eq('recipient_id', userId)
-        .order('created_at', ascending: false);
+    late final StreamController<List<NotificationModel>> controller;
+    StreamSubscription<dynamic>? sub;
 
-    return realtimeStream
-        .map((rows) {
-          final notifications = rows
-              .map((map) => NotificationModel.fromMap(map))
+    controller = StreamController<List<NotificationModel>>.broadcast(
+      onListen: () async {
+        // Seed initial notifications by querying the view (provides actor_username, actor_image_url, etc.)
+        try {
+          final initialResp = await client
+              .from(_notificationsView)
+              .select()
+              .eq('recipient_id', userId)
+              .order('created_at', ascending: false);
+
+          final rows = (initialResp is List) ? initialResp : <dynamic>[];
+          final initial = rows
+              .map((r) => NotificationModel.fromMap(r as Map<String, dynamic>))
               .toList();
+
+          if (!controller.isClosed) controller.add(initial);
           AppLogger.info(
-            'Realtime stream received ${notifications.length} notifications.',
+            'Seeded ${initial.length} notifications for user $userId',
           );
-          return notifications;
-        })
-        .handleError((e, stackTrace) {
+        } catch (e, st) {
           AppLogger.error(
-            'Realtime stream error for notifications: $e',
+            'Failed to seed notifications: $e',
             error: e,
-            stackTrace: stackTrace,
+            stackTrace: st,
           );
-          throw ServerException(e.toString());
-        });
+          if (!controller.isClosed)
+            controller.addError(ServerException(e.toString()));
+          // still continue to subscribe to realtime to recover
+        }
+
+        // Subscribe to actual table realtime events and refetch view on changes
+        try {
+          final realtime = client
+              .from(_notificationsTable)
+              .stream(primaryKey: ['id'])
+              .eq('recipient_id', userId);
+
+          sub = realtime.listen(
+            (payloadList) async {
+              try {
+                // On any event for this recipient, refetch the canonical view to pick up joins/metadata
+                final resp = await client
+                    .from(_notificationsView)
+                    .select()
+                    .eq('recipient_id', userId)
+                    .order('created_at', ascending: false);
+
+                final rows = (resp is List) ? resp : <dynamic>[];
+                final items = rows
+                    .map(
+                      (r) =>
+                          NotificationModel.fromMap(r as Map<String, dynamic>),
+                    )
+                    .toList();
+
+                if (!controller.isClosed) controller.add(items);
+              } catch (e, st) {
+                AppLogger.error(
+                  'Failed to refresh notifications after realtime event: $e',
+                  error: e,
+                  stackTrace: st,
+                );
+                if (!controller.isClosed && controller.hasListener) {
+                  controller.addError(ServerException(e.toString()));
+                }
+              }
+            },
+            onError: (err, st) {
+              AppLogger.error(
+                'Notifications realtime subscription error: $err',
+                error: err,
+                stackTrace: st,
+              );
+              if (!controller.isClosed && controller.hasListener) {
+                controller.addError(ServerException(err.toString()));
+              }
+            },
+            cancelOnError: false,
+          );
+        } catch (e, st) {
+          AppLogger.error(
+            'Failed to subscribe to notifications realtime: $e',
+            error: e,
+            stackTrace: st,
+          );
+          // Already seeded earlier; expose the error to listeners
+          if (!controller.isClosed && controller.hasListener) {
+            controller.addError(ServerException(e.toString()));
+          }
+        }
+      },
+      onCancel: () async {
+        // small delay to avoid flapping
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!controller.hasListener) {
+          AppLogger.info(
+            'No more notification listeners for user; cancelling subscription.',
+          );
+          try {
+            await sub?.cancel();
+          } catch (_) {}
+          if (!controller.isClosed) await controller.close();
+        }
+      },
+    );
+
+    return controller.stream;
   }
 
-  /// Stream the unread notification count for the current user.
+  /// Stream unread count (derived) for the current user.
+  /// Seeds with a COUNT(*) query and refreshes on table events.
   Stream<int> getUnreadCountStream() {
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
@@ -57,41 +146,85 @@ class NotificationsRemoteDataSource {
       return Stream.error(const ServerException('User not authenticated.'));
     }
 
-    AppLogger.info('Subscribing to unread count stream for user: $userId');
+    AppLogger.info('Creating unread-count stream for user: $userId');
 
-    final realtimeStream = client
-        .from(_unreadCountTable)
-        .stream(primaryKey: ['user_id'])
-        .eq('user_id', userId);
+    late final StreamController<int> ctrl;
+    StreamSubscription<dynamic>? sub;
 
-    return realtimeStream
-        .map((rows) {
+    ctrl = StreamController<int>.broadcast(
+      onListen: () async {
+        Future<void> fetchAndAdd() async {
           try {
-            if (rows.isEmpty) {
-              return 0;
-            }
-            final first = rows.first;
-            final rawCount = first['unread_count'];
-            if (rawCount == null) return 0;
-            if (rawCount is int) return rawCount;
-            return int.tryParse(rawCount.toString()) ?? 0;
+            final resp = await client
+                .from(_notificationsTable)
+                .select('id')
+                .eq('recipient_id', userId)
+                // FIX: Use .filter to avoid Dart keyword conflict with .is
+                .filter('read_at', 'is', null);
+
+            final count = (resp is List) ? resp.length : 0;
+            if (!ctrl.isClosed) ctrl.add(count);
           } catch (e, st) {
             AppLogger.error(
-              'Failed parsing unread count row: $e',
+              'Failed to fetch unread count: $e',
               error: e,
               stackTrace: st,
             );
-            throw ServerException('Failed to parse unread count.');
+            if (!ctrl.isClosed && ctrl.hasListener) {
+              ctrl.addError(ServerException(e.toString()));
+            }
           }
-        })
-        .handleError((e, stackTrace) {
-          AppLogger.error(
-            'Realtime stream error for unread count: $e',
-            error: e,
-            stackTrace: stackTrace,
+        }
+
+        // initial
+        await fetchAndAdd();
+
+        // subscribe to table changes for this recipient and refresh on events
+        try {
+          final realtime = client
+              .from(_notificationsTable)
+              .stream(primaryKey: ['id'])
+              .eq('recipient_id', userId);
+
+          sub = realtime.listen(
+            (_) async {
+              await fetchAndAdd();
+            },
+            onError: (err, st) {
+              AppLogger.error(
+                'Unread count realtime error: $err',
+                error: err,
+                stackTrace: st,
+              );
+              if (!ctrl.isClosed && ctrl.hasListener) {
+                ctrl.addError(ServerException(err.toString()));
+              }
+            },
+            cancelOnError: false,
           );
-          throw ServerException(e.toString());
-        });
+        } catch (e, st) {
+          AppLogger.error(
+            'Failed to subscribe to unread-count realtime: $e',
+            error: e,
+            stackTrace: st,
+          );
+        }
+      },
+      onCancel: () async {
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!ctrl.hasListener) {
+          AppLogger.info(
+            'No more unread-count listeners; cancelling subscription.',
+          );
+          try {
+            await sub?.cancel();
+          } catch (_) {}
+          if (!ctrl.isClosed) await ctrl.close();
+        }
+      },
+    );
+
+    return ctrl.stream;
   }
 
   /// Mark a single notification as read
@@ -137,6 +270,7 @@ class NotificationsRemoteDataSource {
           .from(_notificationsTable)
           .update({'read_at': DateTime.now().toIso8601String()})
           .eq('recipient_id', userId)
+          // FIX: Use .filter to avoid Dart keyword conflict with .is
           .filter('read_at', 'is', null);
 
       AppLogger.info('All unread notifications marked as read successfully.');
@@ -151,7 +285,6 @@ class NotificationsRemoteDataSource {
   }
 
   /// Deletes one or more notifications by their IDs.
-  /// Your RLS policy ensures the user can only delete their own notifications.
   Future<void> deleteNotifications(List<String> notificationIds) async {
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
@@ -162,16 +295,16 @@ class NotificationsRemoteDataSource {
       return;
     }
 
-    AppLogger.info('Deleting ${notificationIds.length} notifications.');
+    AppLogger.info(
+      'Deleting ${notificationIds.length} notifications for user $userId.',
+    );
     try {
       await client
           .from(_notificationsTable)
           .delete()
-          .inFilter('id', notificationIds) //
-          .eq(
-            'recipient_id',
-            userId,
-          ); // RLS already handles this, but .eq() is a good safeguard.
+          // FIX: Use .filter to avoid Dart keyword conflict with .in
+          .filter('id', 'in', notificationIds)
+          .eq('recipient_id', userId);
 
       AppLogger.info(
         'Successfully deleted ${notificationIds.length} notifications.',
