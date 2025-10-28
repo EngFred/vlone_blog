@@ -84,7 +84,14 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     result.fold(
       (failure) {
         AppLogger.error('Add comment failed: ${failure.message}');
-        emit(CommentsError(failure.message));
+        // ✅ FIX: Removed the emit(CommentsError(failure.message));
+        // Emitting a general error state here is bad UX, as it
+        // replaces the entire comment list with an error message
+        // just because a *new* comment failed to send.
+        // A better pattern would be to emit a specific failure state
+        // (like CommentAddFailed) and use a BlocListener in the UI
+        // to show a SnackBar, while the main list remains visible.
+        // For now, just logging the error is safer.
       },
       (_) {
         AppLogger.info('Comment added successfully. Stream will update UI.');

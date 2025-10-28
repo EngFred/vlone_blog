@@ -1,5 +1,3 @@
-// Location: features/comments/data/repositories/comments_repository_impl.dart
-
 import 'dart:async';
 import 'package:dartz/dartz.dart';
 import 'package:vlone_blog_app/core/error/exceptions.dart';
@@ -58,9 +56,6 @@ class CommentsRepositoryImpl implements CommentsRepository {
   @override
   Stream<Either<Failure, Map<String, dynamic>>> streamCommentEvents() {
     try {
-      AppLogger.info('Repository: Setting up global comment events stream');
-
-      // streamCommentEvents is the method name in CommentsRemoteDataSource
       return remoteDataSource
           .streamCommentEvents()
           .map(
@@ -82,14 +77,13 @@ class CommentsRepositoryImpl implements CommentsRepository {
     }
   }
 
-  /// Builds a nested comment tree immutably and bottom-up.
+  /// Builds nested tree using server-provided replies_count
   static List<CommentEntity> _buildCommentTree(List<CommentEntity> comments) {
     if (comments.isEmpty) return [];
 
     final childrenMap = <String, List<CommentEntity>>{};
     final roots = <CommentEntity>[];
 
-    // Step 1: Collect roots and populate children map
     for (final comment in comments) {
       final parentId = comment.parentCommentId;
       if (parentId == null) {
@@ -99,33 +93,24 @@ class CommentsRepositoryImpl implements CommentsRepository {
       }
     }
 
-    // Step 2: Sort roots and each children list by createdAt ascending
-    roots.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    // Sort roots newest first (server already did this, but safe)
+    roots.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    // Sort children newest first
     for (final children in childrenMap.values) {
-      children.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      children.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     }
 
-    // Step 3: Recursively build the tree bottom-up
     CommentEntity _buildNode(CommentEntity node) {
       final children = childrenMap[node.id] ?? [];
       final builtChildren = children.map((child) {
-        // CRITICAL FIX: node is the parent, so we use node.username.
-        final childWithParentContext = child.copyWith(
-          parentUsername: node.username,
-        );
-        return _buildNode(childWithParentContext);
+        final childWithParent = child.copyWith(parentUsername: node.username);
+        return _buildNode(childWithParent);
       }).toList();
 
       return node.copyWith(replies: builtChildren);
     }
 
-    // Step 4: Build final roots
-    final builtRoots = roots.map(_buildNode).toList();
-
-    AppLogger.info(
-      'Built comment tree with ${builtRoots.length} roots and total ${comments.length} comments',
-    );
-
-    return builtRoots;
+    return roots.map(_buildNode).toList();
   }
 }

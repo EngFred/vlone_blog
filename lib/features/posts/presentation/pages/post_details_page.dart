@@ -14,8 +14,8 @@ import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart'
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/comment_input_field.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/comments_section.dart';
+import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_input_field.dart';
+import 'package:vlone_blog_app/features/comments/presentation/widgets/comments_section.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_details_content.dart';
 
 class PostDetailsPage extends StatefulWidget {
@@ -217,10 +217,11 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
 
         if (_userId == null) {
           _userId = user.id;
-          if (widget.post == null)
+          if (widget.post == null) {
             _fetchPost();
-          else
+          } else {
             _subscribeToCommentsIfNeeded();
+          }
         }
 
         return WillPopScope(
@@ -275,6 +276,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                                     ),
                                   ),
                                   SliverToBoxAdapter(
+                                    // CommentsSection uses the data source ordering (newest-first)
                                     child: CommentsSection(
                                       commentsCount: _post!.commentsCount,
                                       currentUserId: _userId!,

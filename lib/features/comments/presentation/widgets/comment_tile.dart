@@ -9,14 +9,14 @@ class CommentTile extends StatefulWidget {
   final CommentEntity comment;
   final void Function(CommentEntity) onReply;
   final int depth;
-  final String currentUserId; // ✅ Added currentUserId
+  final String currentUserId;
 
   const CommentTile({
     super.key,
     required this.comment,
     required this.onReply,
     this.depth = 0,
-    required this.currentUserId, // ✅ Required in constructor
+    required this.currentUserId,
   });
 
   @override
@@ -26,13 +26,10 @@ class CommentTile extends StatefulWidget {
 class _CommentTileState extends State<CommentTile> {
   bool _isRepliesExpanded = false;
 
-  // ✅ Navigation Logic: go to /profile/me if owner, push to /profile/userId if other
   void _navigateToProfile(BuildContext context) {
     if (widget.comment.userId == widget.currentUserId) {
-      // Tapped own profile: GO to the main profile tab
       context.go('${Constants.profileRoute}/me');
     } else {
-      // Tapped another user's profile: PUSH the standalone profile page
       context.push('${Constants.profileRoute}/${widget.comment.userId}');
     }
   }
@@ -57,7 +54,8 @@ class _CommentTileState extends State<CommentTile> {
     final theme = Theme.of(context);
     final comment = widget.comment;
     final hasReplies = comment.replies.isNotEmpty;
-    final replyCount = comment.replies.length;
+    // Use server-provided count, fallback to local
+    final replyCount = comment.repliesCount ?? comment.replies.length;
     final replyText = replyCount == 1 ? 'reply' : 'replies';
     const avatarRadius = 20.0;
     final horizontalPadding = widget.depth == 0 ? 16.0 : 40.0;
@@ -71,9 +69,8 @@ class _CommentTileState extends State<CommentTile> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Avatar (Tappable)
               GestureDetector(
-                onTap: () => _navigateToProfile(context), // ✅ Navigation
+                onTap: () => _navigateToProfile(context),
                 child: CircleAvatar(
                   radius: avatarRadius,
                   backgroundImage: comment.avatarUrl != null
@@ -85,18 +82,14 @@ class _CommentTileState extends State<CommentTile> {
                 ),
               ),
               const SizedBox(width: 10),
-              // Comment Content
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header Row (Username and Time)
                     Row(
                       children: [
-                        // Username (Tappable)
                         GestureDetector(
-                          onTap: () =>
-                              _navigateToProfile(context), // ✅ Navigation
+                          onTap: () => _navigateToProfile(context),
                           child: Text(
                             comment.username ?? 'Anonymous',
                             style: theme.textTheme.bodyLarge?.copyWith(
@@ -114,7 +107,6 @@ class _CommentTileState extends State<CommentTile> {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    // Textual Reply Context
                     if (comment.parentUsername != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4.0),
@@ -134,13 +126,10 @@ class _CommentTileState extends State<CommentTile> {
                           ),
                         ),
                       ),
-                    // Comment Text
                     Text(comment.text, style: theme.textTheme.bodyMedium),
                     const SizedBox(height: 8),
-                    // Actions Row
                     Row(
                       children: [
-                        // Reply button
                         GestureDetector(
                           onTap: () => widget.onReply(comment),
                           child: Padding(
@@ -154,7 +143,6 @@ class _CommentTileState extends State<CommentTile> {
                             ),
                           ),
                         ),
-                        // "View Replies" button
                         if (hasReplies && widget.depth < 1)
                           GestureDetector(
                             onTap: () {
@@ -182,13 +170,11 @@ class _CommentTileState extends State<CommentTile> {
             ],
           ),
         ),
-        // Optional Separator for root comments
         if (widget.depth == 0)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.0),
             child: Divider(height: 1, indent: 50),
           ),
-        // Expanded Replies Section (Hybrid)
         if (hasReplies && widget.depth < 1)
           AnimatedSize(
             duration: const Duration(milliseconds: 300),
@@ -197,12 +183,11 @@ class _CommentTileState extends State<CommentTile> {
                 ? const SizedBox.shrink()
                 : Column(
                     children: flatReplies.map((reply) {
-                      // All replies inside the expansion are rendered with depth 1.
                       return CommentTile(
                         key: ValueKey(reply.id),
                         comment: reply,
                         onReply: widget.onReply,
-                        depth: 1, // Enforce single indent
+                        depth: 1,
                         currentUserId: widget.currentUserId,
                       );
                     }).toList(),

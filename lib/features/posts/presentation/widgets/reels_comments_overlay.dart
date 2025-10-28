@@ -4,8 +4,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/comment_input_field.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/comments_section.dart';
+import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_input_field.dart';
+import 'package:vlone_blog_app/features/comments/presentation/widgets/comments_section.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 
 /// Bottom-sheet style comments overlay for reels (TikTok / IG style).
