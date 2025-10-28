@@ -49,12 +49,14 @@ class _PostCardState extends State<PostCard> {
           BlocListener<LikesBloc, LikesState>(
             listenWhen: (prev, curr) {
               // Only listen for updates/error for this post
-              if (curr is LikeUpdated && curr.postId == _currentPost.id)
+              if (curr is LikeUpdated && curr.postId == _currentPost.id) {
                 return true;
+              }
               if (curr is LikeError &&
                   curr.postId == _currentPost.id &&
-                  curr.shouldRevert)
+                  curr.shouldRevert) {
                 return true;
+              }
               return false;
             },
             listener: (context, state) {
@@ -99,12 +101,14 @@ class _PostCardState extends State<PostCard> {
           BlocListener<FavoritesBloc, FavoritesState>(
             listenWhen: (prev, curr) {
               // Allow both success updates and error-with-revert for this post
-              if (curr is FavoriteUpdated && curr.postId == _currentPost.id)
+              if (curr is FavoriteUpdated && curr.postId == _currentPost.id) {
                 return true;
+              }
               if (curr is FavoriteError &&
                   curr.postId == _currentPost.id &&
-                  curr.shouldRevert)
+                  curr.shouldRevert) {
                 return true;
+              }
               return false;
             },
             listener: (context, state) {

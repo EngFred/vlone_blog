@@ -192,8 +192,6 @@ class MyApp extends StatelessWidget {
                 appRouter.go(Constants.feedRoute);
 
                 // START RealtimeService ONCE at app-level for the authenticated user.
-                // The service will create one set of backend subscriptions and
-                // publish them as broadcast streams.
                 try {
                   final realtime = di.sl<RealtimeService>();
                   if (!realtime.isStarted) {

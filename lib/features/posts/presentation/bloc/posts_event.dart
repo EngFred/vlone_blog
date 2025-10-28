@@ -142,11 +142,13 @@ class _RealtimePostDeletedEvent extends PostsEvent {
   List<Object?> get props => [postId];
 }
 
-// posts_event.dart (add)
+// ==================== OPTIMISTIC UPDATE EVENT ====================
+
 class OptimisticPostUpdate extends PostsEvent {
   final String postId;
   final int deltaLikes;
   final int deltaFavorites;
+  final int deltaComments; // NEW: Support comment count changes
   final bool? isLiked;
   final bool? isFavorited;
 
@@ -154,7 +156,18 @@ class OptimisticPostUpdate extends PostsEvent {
     required this.postId,
     this.deltaLikes = 0,
     this.deltaFavorites = 0,
+    this.deltaComments = 0,
     this.isLiked,
     this.isFavorited,
   });
+
+  @override
+  List<Object?> get props => [
+    postId,
+    deltaLikes,
+    deltaFavorites,
+    deltaComments,
+    isLiked,
+    isFavorited,
+  ];
 }

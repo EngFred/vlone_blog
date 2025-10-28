@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
@@ -253,16 +252,20 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
         return list.map((p) {
           if (p.id != event.postId) return p;
 
-          final int newLikes = (p.likesCount + (event.deltaLikes))
+          final int newLikes = (p.likesCount + event.deltaLikes)
               .clamp(0, double.infinity)
               .toInt();
-          final int newFavorites = (p.favoritesCount + (event.deltaFavorites))
+          final int newFavorites = (p.favoritesCount + event.deltaFavorites)
+              .clamp(0, double.infinity)
+              .toInt();
+          final int newComments = (p.commentsCount + event.deltaComments)
               .clamp(0, double.infinity)
               .toInt();
 
           return p.copyWith(
             likesCount: newLikes,
             favoritesCount: newFavorites,
+            commentsCount: newComments, // NEW: Apply comment delta
             isLiked: event.isLiked ?? p.isLiked,
             isFavorited: event.isFavorited ?? p.isFavorited,
           );
@@ -292,7 +295,6 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
       }
 
       // If other states carry a posts list, handle them similarly.
-      // Otherwise do nothing (optimistic change applies only to list states).
     } catch (e, st) {
       AppLogger.error(
         'Optimistic update failed in PostsBloc: $e',

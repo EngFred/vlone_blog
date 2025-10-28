@@ -12,16 +12,6 @@ import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
-/// PostsRemoteDataSource
-///
-/// This file is the improved production-ready remote data source for posts.
-/// Improvements in this revision:
-///  - Ensures buffered new-post IDs are flushed when the stream is cancelled
-///  - Adds a client-side max batch size and immediate flush when reached
-///  - Adds RPC retry with exponential backoff for transient errors
-///  - Keeps the coalescing/batching logic but hardened against races
-///  - Defensive checks when pushing to controllers
-
 class PostsRemoteDataSource {
   final SupabaseClient client;
 
@@ -370,7 +360,6 @@ class PostsRemoteDataSource {
   // ==================== Realtime streams ====================
 
   /// Stream for new posts being created.
-  ///
   /// Coalesces incoming insert events into a short buffer window (300ms)
   /// and attempts to fetch multiple posts in a single batched RPC call
   /// (`get_posts_batch`). If the batch RPC is not available the code falls

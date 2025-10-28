@@ -25,11 +25,10 @@ class CommentsSection extends StatelessWidget {
     this.controller,
   });
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, int actualCount) {
     final theme = Theme.of(context);
-    final countText = commentsCount != null
-        ? 'Comments ($commentsCount)'
-        : 'Comments';
+    // Use actualCount from the loaded comments instead of the prop
+    final countText = 'Comments ($actualCount)';
     return Container(
       decoration: BoxDecoration(
         border: Border(
@@ -56,14 +55,31 @@ class CommentsSection extends StatelessWidget {
     );
   }
 
+  // Helper to count total comments recursively
+  int _countAllComments(List<CommentEntity> comments) {
+    int total = 0;
+    for (final comment in comments) {
+      total++; // count this comment
+      if (comment.replies.isNotEmpty) {
+        total += _countAllComments(comment.replies); // count all replies
+      }
+    }
+    return total;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final headerWidget = showCountHeader
-        ? _buildHeader(context)
-        : const SizedBox.shrink();
-
     return BlocBuilder<CommentsBloc, CommentsState>(
       builder: (context, state) {
+        // Determine the actual count from loaded state
+        final int actualCount = state is CommentsLoaded
+            ? _countAllComments(state.comments)
+            : (commentsCount ?? 0);
+
+        final headerWidget = showCountHeader
+            ? _buildHeader(context, actualCount)
+            : const SizedBox.shrink();
+
         if (state is CommentsInitial || state is CommentsLoading) {
           if (scrollable) {
             return ListView(
