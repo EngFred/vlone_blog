@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
+import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
@@ -78,6 +79,12 @@ class _UserProfilePageState extends State<UserProfilePage> {
         AppLogger.info(
           'UserProfilePage: Initialized for userId: ${widget.userId}, currentUser: $sessionUserId',
         );
+
+        // NEW: Subscribe to real-time for this profile if not own
+        if (!_isOwnProfile) {
+          final realtime = sl<RealtimeService>();
+          await realtime.subscribeToProfile(widget.userId);
+        }
       }
     } catch (e, st) {
       AppLogger.error(
@@ -91,6 +98,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
   @override
   void dispose() {
     // No explicit StopProfileRealtimeEvent here — centralized RealtimeService handles lifecycle.
+    // NEW: Unsubscribe if not own profile
+    if (!_isOwnProfile) {
+      final realtime = sl<RealtimeService>();
+      realtime.unsubscribeFromProfile(widget.userId);
+    }
     super.dispose();
   }
 
@@ -287,6 +299,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     _isFollowing = state.isFollowing;
                     _isProcessingFollow = false;
                   });
+                // REMOVE: The post-UserFollowed refresh, as real-time sub will now handle the followers_count update automatically.
               } else if (state is FollowersError) {
                 if (mounted) {
                   if (_isProcessingFollow && _isFollowing != null)

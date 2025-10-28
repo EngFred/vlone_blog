@@ -53,11 +53,6 @@ class _ProfilePageState extends State<ProfilePage> {
     if (_loadedProfileUserId != widget.userId) {
       _loadedProfileUserId = widget.userId;
 
-      // NOTE:
-      // We intentionally DO NOT start/stop realtime here.
-      // RealtimeService should be started centrally (main.dart).
-      // Feature blocs should subscribe to RealtimeService (via DI) so pages don't drive low-level listeners.
-
       _userPosts.clear();
       _userPostsError = null;
       _isUserPostsLoading = false;

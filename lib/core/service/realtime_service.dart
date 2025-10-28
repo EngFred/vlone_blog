@@ -1,4 +1,6 @@
+// lib/core/service/realtime_service.dart
 import 'dart:async';
+
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/usecases/usecase.dart';
 import 'package:vlone_blog_app/features/comments/domain/usecases/stream_comments_usecase.dart';
@@ -66,6 +68,9 @@ class RealtimeService {
   StreamSubscription? _notificationsSub;
   StreamSubscription? _unreadCountSub;
   StreamSubscription? _commentsSub;
+
+  //Map for additional profile subscriptions (beyond current user)
+  final Map<String, StreamSubscription?> _additionalProfileSubs = {};
 
   bool _isStarted = false;
   String? _currentUserId;
@@ -274,9 +279,12 @@ class RealtimeService {
             (profileData) {
               try {
                 if (!_profileUpdatesController.isClosed) {
-                  _profileUpdatesController.add(
-                    Map<String, dynamic>.from(profileData),
-                  );
+                  // NEW: Include user_id in the broadcasted data
+                  final dataWithId = {
+                    'user_id': userId,
+                    ...Map<String, dynamic>.from(profileData),
+                  };
+                  _profileUpdatesController.add(dataWithId);
                 }
               } catch (e) {
                 AppLogger.error(
@@ -416,6 +424,7 @@ class RealtimeService {
 
     AppLogger.info('RealtimeService stopping for user $_currentUserId');
     await _cancelAll();
+    await _cancelAdditionalProfileSubs();
     _isStarted = false;
     _currentUserId = null;
     AppLogger.info('RealtimeService stopped');
@@ -451,6 +460,7 @@ class RealtimeService {
   Future<void> dispose() async {
     AppLogger.info('RealtimeService disposing');
     await _cancelAll();
+    await _cancelAdditionalProfileSubs();
     try {
       await _newPostController.close();
       await _postUpdatesController.close();
@@ -465,5 +475,74 @@ class RealtimeService {
     } catch (e) {
       AppLogger.warning('Failed to close controllers: $e');
     }
+  }
+
+  //Public method to subscribe to a specific user's profile updates
+  Future<void> subscribeToProfile(String userId) async {
+    if (userId == _currentUserId) {
+      AppLogger.info('Already subscribed to current user profile: $userId');
+      return; // Current user is already handled in start()
+    }
+
+    if (_additionalProfileSubs.containsKey(userId)) {
+      AppLogger.info('Already subscribed to profile: $userId');
+      return;
+    }
+
+    AppLogger.info('Subscribing to additional profile updates for: $userId');
+    try {
+      final sub = streamProfileUpdatesUseCase(userId).listen(
+        (either) {
+          either.fold(
+            (failure) => AppLogger.error(
+              'Realtime profile update failure for $userId: ${failure.message}',
+            ),
+            (profileData) {
+              try {
+                if (!_profileUpdatesController.isClosed) {
+                  // NEW: Include user_id in the broadcasted data
+                  final dataWithId = {
+                    'user_id': userId,
+                    ...Map<String, dynamic>.from(profileData),
+                  };
+                  _profileUpdatesController.add(dataWithId);
+                  AppLogger.info('Profile update emitted for user: $userId');
+                }
+              } catch (e) {
+                AppLogger.error(
+                  'Failed to forward profile update for $userId: $e',
+                  error: e,
+                );
+              }
+            },
+          );
+        },
+        onError: (err) => AppLogger.error(
+          'Profile updates stream error for $userId: $err',
+          error: err,
+        ),
+      );
+      _additionalProfileSubs[userId] = sub;
+    } catch (e) {
+      AppLogger.error('Failed to subscribe to profile $userId: $e');
+    }
+  }
+
+  //Public method to unsubscribe
+  Future<void> unsubscribeFromProfile(String userId) async {
+    if (userId == _currentUserId || !_additionalProfileSubs.containsKey(userId))
+      return;
+
+    AppLogger.info('Unsubscribing from profile updates for: $userId');
+    await _additionalProfileSubs[userId]?.cancel();
+    _additionalProfileSubs.remove(userId);
+  }
+
+  //Cancel additional profile subs
+  Future<void> _cancelAdditionalProfileSubs() async {
+    for (final sub in _additionalProfileSubs.values) {
+      await sub?.cancel();
+    }
+    _additionalProfileSubs.clear();
   }
 }

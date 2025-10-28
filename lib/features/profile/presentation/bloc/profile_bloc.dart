@@ -1,4 +1,3 @@
-// lib/features/profile/presentation/bloc/profile_bloc.dart
 import 'dart:async';
 
 import 'package:equatable/equatable.dart';
@@ -127,13 +126,24 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     if (currentState is ProfileDataLoaded) {
       // Create updated profile from data (expecting a map shape)
       try {
+        final updateData = event.updateData;
+        final updateUserId = updateData['user_id'] as String?; //Extract user_id
         final updatedProfile = ProfileModel.fromMap(
-          event.updateData,
+          // Remove 'user_id' if present to parse the rest
+          Map.from(updateData)..remove('user_id'),
         ).toEntity();
-        emit(ProfileDataLoaded(profile: updatedProfile));
-        AppLogger.info(
-          'Profile updated in real-time for user: ${updatedProfile.id}',
-        );
+
+        // Apply only if matches current profile (prevents overwrite)
+        if (updateUserId == currentState.profile.id) {
+          emit(ProfileDataLoaded(profile: updatedProfile));
+          AppLogger.info(
+            'Profile updated in real-time for user: ${updatedProfile.id}',
+          );
+        } else {
+          AppLogger.info(
+            'Ignoring real-time profile update for non-matching user: $updateUserId (current: ${currentState.profile.id})',
+          );
+        }
       } catch (e) {
         AppLogger.error(
           'ProfileBloc: failed to parse realtime profile update: $e',
