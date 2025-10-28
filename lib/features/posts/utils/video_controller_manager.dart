@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:video_player/video_player.dart';
@@ -6,6 +7,9 @@ import 'package:video_player/video_player.dart';
 /// Caches `VideoPlayerController` instances and reference counts them.
 /// Adds a simple LRU eviction to bound memory usage on low-end devices.
 /// Also dedupes concurrent initializations for the same post id.
+///
+/// NEW: supports short-lived "hold for navigation" to prevent immediate release
+/// when a source widget is disposed during a hero / route transition.
 class VideoControllerManager {
   VideoControllerManager._({this.maxControllers = 6});
   static VideoControllerManager? _instance;
@@ -25,6 +29,9 @@ class VideoControllerManager {
 
   // Ongoing initialization futures to dedupe concurrent getController calls
   final Map<String, Future<VideoPlayerController>> _ongoingInits = {};
+
+  // Hold-timers keyed by postId to keep controller alive across short navigations
+  final Map<String, Timer> _holdTimers = {};
 
   /// Returns a controller for [postId], downloading/caching the [url] if needed.
   /// The returned controller is reference-counted; call [releaseController] when done.
@@ -84,7 +91,10 @@ class VideoControllerManager {
 
   /// Decrement refcount and dispose controller when count reaches zero.
   void releaseController(String postId) {
-    if (!_controllers.containsKey(postId)) return;
+    if (!_controllers.containsKey(postId) && !_refCounts.containsKey(postId)) {
+      // nothing to do
+      return;
+    }
 
     _refCounts[postId] = (_refCounts[postId] ?? 1) - 1;
     if ((_refCounts[postId] ?? 0) <= 0) {
@@ -101,6 +111,25 @@ class VideoControllerManager {
     }
   }
 
+  /// Hold the controller for a short duration (TTL) to avoid immediate release.
+  /// Use this before navigation (hero/route) to the full media page so the
+  /// source widget's dispose doesn't remove the controller before the dest re-uses it.
+  void holdForNavigation(String postId, Duration ttl) {
+    // Cancel any existing hold timer so we restart TTL
+    _holdTimers[postId]?.cancel();
+
+    // Bump a synthetic refcount so releaseController won't dispose while held.
+    _refCounts[postId] = (_refCounts[postId] ?? 0) + 1;
+    _touchLru(postId);
+
+    // Schedule a timer to decrement when TTL elapses.
+    _holdTimers[postId] = Timer(ttl, () {
+      _holdTimers.remove(postId);
+      // Release the synthetic hold
+      releaseController(postId);
+    });
+  }
+
   /// Force dispose all (call on app shutdown).
   void disposeAll() {
     for (final c in _controllers.values) {
@@ -114,6 +143,10 @@ class VideoControllerManager {
     // Cancel any ongoing inits by just clearing references — the underlying futures
     // will still complete, but we won't retain or reuse their controllers.
     _ongoingInits.clear();
+    for (final t in _holdTimers.values) {
+      t.cancel();
+    }
+    _holdTimers.clear();
   }
 
   // --- LRU helpers ---

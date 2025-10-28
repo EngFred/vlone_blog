@@ -110,10 +110,6 @@ class _UsersPageState extends State<UsersPage> {
                 setState(() {
                   _loadingUserIds.clear();
                 });
-                SnackbarUtils.showError(
-                  context,
-                  'Follow error: ${state.message}',
-                );
               }
             },
           ),
@@ -130,7 +126,6 @@ class _UsersPageState extends State<UsersPage> {
             } else if (state is UsersError) {
               AppLogger.error('UsersBloc -> UsersError: ${state.message}');
               // show snackbar
-              SnackbarUtils.showError(context, state.message);
             } else if (state is UsersLoading) {
               AppLogger.info('UsersBloc -> UsersLoading');
             }

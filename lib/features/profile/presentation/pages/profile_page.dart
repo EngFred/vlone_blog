@@ -364,7 +364,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 _applyLikeUpdate(state.postId, state.isLiked);
               } else if (state is LikeError) {
                 _revertLike(state.postId, state.previousState);
-                SnackbarUtils.showError(context, state.message);
               }
             },
           ),
@@ -374,7 +373,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 _applyFavoriteUpdate(state.postId, state.isFavorited);
               } else if (state is FavoriteError) {
                 _revertFavorite(state.postId, state.previousState);
-                SnackbarUtils.showError(context, state.message);
               }
             },
           ),
@@ -399,7 +397,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       _isProcessingFollow = false;
                     });
                   }
-                  SnackbarUtils.showError(context, state.message);
                 }
               }
             },
