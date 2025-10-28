@@ -57,14 +57,10 @@ class _ProfilePageState extends State<ProfilePage> {
       _userPostsError = null;
       _isUserPostsLoading = false;
 
-      context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
-      // profile realtime should be handled by ProfileBloc itself via RealtimeService
-      context.read<PostsBloc>().add(
-        GetUserPostsEvent(
-          profileUserId: widget.userId,
-          currentUserId: _userId ?? '',
-        ),
-      );
+      // ✅ OPTIMIZATION: Removed eager data fetches.
+      // MainPage's _dispatchLoadForIndex(3) is now responsible for
+      // dispatching GetProfileDataEvent and GetUserPostsEvent.
+      // We still run the rest of this method to clear old state.
 
       AppLogger.info('ProfilePage: Initialized for userId: ${widget.userId}');
     }
@@ -306,7 +302,6 @@ class _ProfilePageState extends State<ProfilePage> {
               }
             },
           ),
-
           BlocListener<PostsBloc, PostsState>(
             listener: (context, state) {
               if (state is UserPostsLoading) {
@@ -363,7 +358,6 @@ class _ProfilePageState extends State<ProfilePage> {
               }
             },
           ),
-
           BlocListener<LikesBloc, LikesState>(
             listener: (context, state) {
               if (state is LikeUpdated) {
@@ -374,7 +368,6 @@ class _ProfilePageState extends State<ProfilePage> {
               }
             },
           ),
-
           BlocListener<FavoritesBloc, FavoritesState>(
             listener: (context, state) {
               if (state is FavoriteUpdated) {
@@ -385,7 +378,6 @@ class _ProfilePageState extends State<ProfilePage> {
               }
             },
           ),
-
           BlocListener<FollowersBloc, FollowersState>(
             listener: (context, state) {
               if (state is FollowStatusLoaded &&

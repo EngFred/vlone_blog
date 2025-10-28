@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+// Import 'compute' from flutter/foundation
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,6 +13,40 @@ import 'package:vlone_blog_app/core/utils/helpers.dart';
 import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+
+// -----------------------------------------------------------------------------
+// Helper class and function for running thumbnail generation in an isolate.
+//
+// 'compute' requires a top-level or static function and can only take one
+// argument. This class bundles the two paths we need.
+// -----------------------------------------------------------------------------
+class _ThumbnailRequest {
+  final String videoPath;
+  final String tempPath;
+
+  _ThumbnailRequest({required this.videoPath, required this.tempPath});
+}
+
+/// This function will be run in a separate isolate via 'compute'.
+/// It CANNOT use 'path_provider' or other platform channels directly.
+Future<String?> _generateThumbnailInIsolate(_ThumbnailRequest request) async {
+  try {
+    // This is the CPU-intensive part
+    final thumbPath = await VideoThumbnail.thumbnailFile(
+      video: request.videoPath,
+      thumbnailPath: request.tempPath,
+      imageFormat: ImageFormat.JPEG,
+      quality: 75,
+      maxHeight: 720,
+    );
+    return thumbPath;
+  } catch (e) {
+    // Cannot use AppLogger easily from an isolate, just return null
+    // The main thread will handle logging the error
+    return null;
+  }
+}
+// -----------------------------------------------------------------------------
 
 class PostsRemoteDataSource {
   final SupabaseClient client;
@@ -62,7 +98,9 @@ class PostsRemoteDataSource {
         );
 
         if (mediaType == 'video') {
+          // ✅ UPDATED: This call now uses 'compute' internally
           final thumbPath = await _generateThumbnailFile(mediaFile);
+
           if (thumbPath != null) {
             final thumbFile = File(thumbPath);
             final thumbUrl = await _uploadFileToStorage(
@@ -149,16 +187,25 @@ class PostsRemoteDataSource {
     }
   }
 
+  // ✅ UPDATED: This method now orchestrates the 'compute' call
   Future<String?> _generateThumbnailFile(File videoFile) async {
     try {
+      // 1. Get temp directory path (must be on main thread)
       final tempDir = await getTemporaryDirectory();
-      final thumbPath = await VideoThumbnail.thumbnailFile(
-        video: videoFile.path,
-        thumbnailPath: tempDir.path,
-        imageFormat: ImageFormat.JPEG,
-        quality: 75,
-        maxHeight: 720,
+
+      // 2. Prepare the request payload
+      final request = _ThumbnailRequest(
+        videoPath: videoFile.path,
+        tempPath: tempDir.path,
       );
+
+      // 3. Run the heavy task in an isolate
+      final thumbPath = await compute(_generateThumbnailInIsolate, request);
+
+      if (thumbPath == null) {
+        throw Exception('Thumbnail generation returned null');
+      }
+
       return thumbPath;
     } catch (e) {
       AppLogger.error('Thumbnail generation failed: $e', error: e);
@@ -218,6 +265,9 @@ class PostsRemoteDataSource {
 
       AppLogger.info('Feed fetched with ${rows.length} posts via RPC');
 
+      // Note: If 'rows' contained 10,000+ items, this 'map'
+      // could also be a candidate for 'compute', but for a feed,
+      // this is perfectly fine.
       return rows
           .map((map) => PostModel.fromMap(map as Map<String, dynamic>))
           .toList();
@@ -360,7 +410,6 @@ class PostsRemoteDataSource {
   // ==================== Realtime streams ====================
 
   /// Stream for new posts being created.
-  /// Coalesces incoming insert events into a short buffer window (300ms)
   /// and attempts to fetch multiple posts in a single batched RPC call
   /// (`get_posts_batch`). If the batch RPC is not available the code falls
   /// back to fetching each post individually.

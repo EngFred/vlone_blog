@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -10,8 +8,9 @@ import 'package:vlone_blog_app/features/auth/domain/entities/user_entity.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
-import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
+import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_tile.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
+import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_input_field.dart';
@@ -95,43 +94,23 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
       return;
     }
 
-    final RenderBox renderBox =
-        key.currentContext!.findRenderObject() as RenderBox;
-    // Find the position relative to the viewport (or the CustomScrollView's ancestor)
-    final position = renderBox.localToGlobal(
-      Offset.zero,
-      ancestor: context.findRenderObject(),
-    );
-
-    // We calculate the position relative to the CustomScrollView's content.
-    // The total position is the offset from the top of the screen (position.dy) plus the current
-    // scroll offset, minus the fixed header heights (AppBar, PostDetailsContent).
-    const double appBarHeight = kToolbarHeight;
-    const double padding = 32.0; // Extra padding for visual comfort
-
-    // A robust way to scroll to the top of the item:
-    // This calculation finds the necessary scroll position to put the top of the target widget
-    // just below the AppBar.
-    final scrollPosition =
-        _scrollController.offset + position.dy - appBarHeight - padding;
-
-    _scrollController
-        .animateTo(
-          scrollPosition.clamp(0.0, _scrollController.position.maxScrollExtent),
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOut,
-        )
-        .then((_) {
-          if (mounted) {
-            setState(() {
-              _highlightedCommentId = commentId;
-              _commentToScrollId = null; // Clear target after successful scroll
-            });
-            AppLogger.info(
-              'PostDetailsPage: Scrolled to and highlighted comment $commentId.',
-            );
-          }
+    // Updated: Use ensureVisible for reliable scrolling in CustomScrollView/slivers
+    Scrollable.ensureVisible(
+      key.currentContext!,
+      alignment: 0.0, // Align to top of the viewport (below AppBar)
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+    ).then((_) {
+      if (mounted) {
+        setState(() {
+          _highlightedCommentId = commentId;
+          _commentToScrollId = null; // Clear target after successful scroll
         });
+        AppLogger.info(
+          'PostDetailsPage: Scrolled to and highlighted comment $commentId.',
+        );
+      }
+    });
   }
 
   void _handleRealtimePostUpdate(RealtimePostUpdate state) {
@@ -267,13 +246,73 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     }
   }
 
+  // Recursively assign GlobalKeys to all comments and their replies
+  void _assignCommentKeys(List<CommentEntity> comments) {
+    for (var comment in comments) {
+      if (!_commentKeys.containsKey(comment.id)) {
+        _commentKeys[comment.id] = GlobalKey();
+      }
+      _assignCommentKeys(comment.replies);
+    }
+  }
+
+  // Check if a comment ID is in the subtree of a given comment
+  bool _isInSubtree(String id, CommentEntity comment) {
+    if (comment.id == id) return true;
+    for (var reply in comment.replies) {
+      if (_isInSubtree(id, reply)) return true;
+    }
+    return false;
+  }
+
+  // Find the root (top-level) comment ID that contains the target ID in its subtree
+  String? _findRootCommentId(String targetId, List<CommentEntity> comments) {
+    for (var comment in comments) {
+      if (_isInSubtree(targetId, comment)) {
+        return comment.id;
+      }
+    }
+    return null;
+  }
+
   void _commentsBlocListener(BuildContext context, CommentsState state) {
-    if (state is CommentsLoaded && _commentToScrollId != null) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted && _commentKeys.containsKey(_commentToScrollId)) {
-          _scrollToComment(_commentToScrollId!);
-        }
-      });
+    if (state is CommentsLoaded) {
+      // Assign keys recursively to all comments and replies
+      _assignCommentKeys(state.comments);
+
+      if (_commentToScrollId != null) {
+        // Delay to allow build to complete
+        Future.delayed(const Duration(milliseconds: 300), () {
+          // Increased delay for expansion
+          if (!mounted) return;
+
+          final targetId = _commentToScrollId!;
+
+          // If target is nested, find and expand the root comment's replies
+          final rootId = _findRootCommentId(targetId, state.comments);
+          if (rootId != null && rootId != targetId) {
+            // Only if nested
+            final rootKey = _commentKeys[rootId];
+            if (rootKey != null && rootKey.currentState != null) {
+              (rootKey.currentState as CommentTileState)
+                  .expandReplies(); // Updated: Cast to public state class
+            } else {
+              AppLogger.warning(
+                'PostDetailsPage: Root key not found for expansion: $rootId',
+              );
+            }
+          }
+
+          // Now scroll if the key exists
+          if (_commentKeys.containsKey(targetId)) {
+            _scrollToComment(targetId);
+          } else {
+            AppLogger.warning(
+              'PostDetailsPage: Key not found for $targetId after assignment',
+            );
+          }
+        });
+      }
     }
   }
 

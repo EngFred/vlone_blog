@@ -32,16 +32,14 @@ class _FeedPageState extends State<FeedPage>
   @override
   void initState() {
     super.initState();
-    AppLogger.info('Initializing FeedPage');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userId = context.read<AuthBloc>().cachedUser?.id;
       if (userId != null) {
-        // Only request feed; RealtimeService and PostsBloc real-time listeners
-        // are started globally from main.dart on auth.
-        context.read<PostsBloc>().add(GetFeedEvent(userId));
-        context.read<PostsBloc>().add(
-          StartRealtimeListenersEvent(userId),
-        ); // Added to subscribe to real-time streams
+        // ✅ OPTIMIZATION: GetFeedEvent has been REMOVED from here.
+        // MainPage's _dispatchLoadForIndex(0) is now responsible for this.
+
+        // We still need the PostsBloc to be listening to realtime events.
+        context.read<PostsBloc>().add(StartRealtimeListenersEvent(userId));
         _subscribeNotifications();
       } else {
         AppLogger.warning(

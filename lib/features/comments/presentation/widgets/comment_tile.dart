@@ -5,12 +5,15 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 
+//Used both on post details and reels comments in bottom sheet
 class CommentTile extends StatefulWidget {
   final CommentEntity comment;
   final void Function(CommentEntity) onReply;
   final int depth;
   final String currentUserId;
-  final bool isHighlighted;
+  final Map<String, GlobalKey>
+  commentKeys; // Required, for assigning keys to subs
+  final String? highlightedCommentId; // For computing isHighlighted
 
   const CommentTile({
     super.key,
@@ -18,14 +21,19 @@ class CommentTile extends StatefulWidget {
     required this.onReply,
     this.depth = 0,
     required this.currentUserId,
-    this.isHighlighted = false,
+    required this.commentKeys,
+    this.highlightedCommentId,
   });
 
   @override
-  State<CommentTile> createState() => _CommentTileState();
+  State<CommentTile> createState() => CommentTileState(); // Updated: Use public state class
 }
 
-class _CommentTileState extends State<CommentTile>
+class CommentTileState
+    extends
+        State<
+          CommentTile
+        > // Updated: Renamed to public class (removed underscore)
     with SingleTickerProviderStateMixin {
   bool _isRepliesExpanded = false;
 
@@ -48,7 +56,9 @@ class _CommentTileState extends State<CommentTile>
       end: Colors.transparent,
     ).animate(_highlightController);
 
-    if (widget.isHighlighted) {
+    // Trigger highlight if matched (computed in build, but check here for init)
+    if (widget.highlightedCommentId != null &&
+        widget.comment.id == widget.highlightedCommentId) {
       _startHighlightFlash();
     }
   }
@@ -68,7 +78,8 @@ class _CommentTileState extends State<CommentTile>
   @override
   void didUpdateWidget(covariant CommentTile oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.isHighlighted && widget.isHighlighted) {
+    if (oldWidget.highlightedCommentId != widget.highlightedCommentId &&
+        widget.comment.id == widget.highlightedCommentId) {
       _startHighlightFlash();
     }
   }
@@ -76,7 +87,9 @@ class _CommentTileState extends State<CommentTile>
   void _startHighlightFlash() {
     _highlightController.forward().then((_) {
       Future.delayed(const Duration(milliseconds: 500), () {
-        _highlightController.reverse();
+        if (mounted) {
+          _highlightController.reverse();
+        }
       });
     });
   }
@@ -85,6 +98,15 @@ class _CommentTileState extends State<CommentTile>
   void dispose() {
     _highlightController.dispose();
     super.dispose();
+  }
+
+  // Public method to expand replies from outside (e.g., for scrolling to nested)
+  void expandReplies() {
+    if (!_isRepliesExpanded && widget.comment.replies.isNotEmpty) {
+      setState(() {
+        _isRepliesExpanded = true;
+      });
+    }
   }
 
   void _navigateToProfile(BuildContext context) {
@@ -121,14 +143,17 @@ class _CommentTileState extends State<CommentTile>
     final horizontalPadding = widget.depth == 0 ? 16.0 : 40.0;
     final flatReplies = _flattenReplies(comment.replies);
 
+    // Compute isHighlighted here
+    final isHighlighted =
+        widget.highlightedCommentId != null &&
+        widget.comment.id == widget.highlightedCommentId;
+
     return AnimatedBuilder(
       animation: _highlightController,
       builder: (context, child) {
         return Container(
           decoration: BoxDecoration(
-            color: widget.isHighlighted
-                ? _colorAnimation.value
-                : theme.canvasColor,
+            color: isHighlighted ? _colorAnimation.value : theme.canvasColor,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -253,19 +278,20 @@ class _CommentTileState extends State<CommentTile>
                       ? const SizedBox.shrink()
                       : Column(
                           children: flatReplies.map((reply) {
-                            final isChildHighlighted =
-                                reply.id ==
-                                widget
-                                    .comment
-                                    .id; // Child highlight can be refined
+                            // Use commentKeys for sub keys (GlobalKey if assigned)
+                            final replyKey =
+                                widget.commentKeys[reply.id] ??
+                                ValueKey(reply.id);
 
                             return CommentTile(
-                              key: ValueKey(reply.id),
+                              key: replyKey,
                               comment: reply,
                               onReply: widget.onReply,
                               depth: 1,
                               currentUserId: widget.currentUserId,
-                              isHighlighted: isChildHighlighted,
+                              commentKeys: widget.commentKeys, // Pass down
+                              highlightedCommentId:
+                                  widget.highlightedCommentId, // Pass down
                             );
                           }).toList(),
                         ),

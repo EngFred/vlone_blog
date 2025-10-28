@@ -7,6 +7,7 @@ import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_ti
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 
+//Used both on post details and reels comments in bottom sheet
 class CommentsSection extends StatelessWidget {
   final int? commentsCount;
   final void Function(CommentEntity) onReply;
@@ -119,12 +120,7 @@ class CommentsSection extends StatelessWidget {
 
   Widget _buildCommentList(BuildContext context, List<CommentEntity> comments) {
     final commentTiles = comments.map((comment) {
-      final isHighlighted = comment.id == highlightedCommentId;
-
-      // We must check if the key exists before using it.
-      // The key should be created in the parent's BlocListener.
-      // If it's missing, use a ValueKey as a fallback to avoid crash,
-      // but warn, as scrolling won't work.
+      // Use GlobalKey if available, else fallback (but now populated)
       final key = commentKeys[comment.id] ?? ValueKey(comment.id);
 
       return CommentTile(
@@ -133,7 +129,9 @@ class CommentsSection extends StatelessWidget {
         onReply: onReply,
         depth: 0,
         currentUserId: currentUserId,
-        isHighlighted: isHighlighted,
+        commentKeys: commentKeys, // NEW: Pass the map down for nested tiles
+        highlightedCommentId:
+            highlightedCommentId, // NEW: Pass down for computation
       );
     }).toList();
 

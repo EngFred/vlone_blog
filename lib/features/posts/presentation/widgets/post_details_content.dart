@@ -18,32 +18,31 @@ class PostDetailsContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final double detailsMediaHeight = MediaQuery.of(context).size.height * 0.5;
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          PostHeader(
-            post: post,
-            currentUserId: userId, // New: Pass for conditional delete
+    return Column(
+      // Updated: Use Column instead of SingleChildScrollView to avoid nested scroll
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PostHeader(
+          post: post,
+          currentUserId: userId, // New: Pass for conditional delete
+        ),
+        if (post.content != null)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(post.content!),
           ),
-          if (post.content != null)
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(post.content!),
-            ),
-          if (post.mediaUrl != null)
-            // IMPORTANT: on the Post Details page we explicitly disable
-            // the visibility detector so scrolling through comments below
-            // won't pause the video.
-            PostMedia(
-              post: post,
-              height: detailsMediaHeight,
-              useVisibilityDetector: false, // <--- key change
-            ),
-          PostActions(post: post, userId: userId, onCommentTap: onCommentTap),
-          const Divider(),
-        ],
-      ),
+        if (post.mediaUrl != null)
+          // IMPORTANT: on the Post Details page we explicitly disable
+          // the visibility detector so scrolling through comments below
+          // won't pause the video.
+          PostMedia(
+            post: post,
+            height: detailsMediaHeight,
+            useVisibilityDetector: false, // <--- key change
+          ),
+        PostActions(post: post, userId: userId, onCommentTap: onCommentTap),
+        const Divider(),
+      ],
     );
   }
 }

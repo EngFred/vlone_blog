@@ -34,20 +34,12 @@ class _ReelsPageState extends State<ReelsPage>
   @override
   void initState() {
     super.initState();
-    AppLogger.info('Initializing ReelsPage');
     _pageController = PageController(initialPage: 0, viewportFraction: 1.0);
     WidgetsBinding.instance.addObserver(this);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final userId = context.read<AuthBloc>().cachedUser?.id;
-      if (userId != null) {
-        context.read<PostsBloc>().add(GetReelsEvent(userId));
-      } else {
-        AppLogger.warning(
-          'ReelsPage: userId null at init; waiting for AuthBloc',
-        );
-      }
-    });
+    // ✅ OPTIMIZATION: Removed eager data fetch.
+    // MainPage's _dispatchLoadForIndex(1) is now responsible for
+    // dispatching GetReelsEvent when this tab is selected.
   }
 
   @override

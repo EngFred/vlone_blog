@@ -25,6 +25,9 @@ class _MainPageState extends State<MainPage> {
   bool _initializedPages = false;
   final Set<int> _loadedTabs = {};
 
+  //Helper list for readable log messages
+  final List<String> _tabNames = const ['Feed', 'Reels', 'Users', 'Profile'];
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +47,10 @@ class _MainPageState extends State<MainPage> {
     // sync location and load the default tab once the first frame is available
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncSelectedIndexWithLocation();
+      // Pass tab name to the log
+      AppLogger.info(
+        'MainPage: Auth updated. Loading initial tab: ${_tabNames[_selectedIndex]}',
+      );
       _dispatchLoadForIndex(_selectedIndex);
       FlutterNativeSplash.remove(); // in case it wasn't removed yet
     });
@@ -60,6 +67,12 @@ class _MainPageState extends State<MainPage> {
     try {
       final location = GoRouterState.of(context).uri.path;
       final idx = _calculateSelectedIndexFromLocation(location);
+
+      // ✅ ADDED: Log for initial sync
+      AppLogger.info(
+        'Syncing location: $location resolved to tab ${_tabNames[idx]} (index $idx)',
+      );
+
       if (mounted && idx != _selectedIndex) {
         setState(() => _selectedIndex = idx);
       }
@@ -70,7 +83,12 @@ class _MainPageState extends State<MainPage> {
 
   void _dispatchLoadForIndex(int index) {
     if (_userId == null) return;
-    AppLogger.info('Loading data for tab index: $index (user: $_userId)');
+
+    //Made log message more readable
+    AppLogger.info(
+      'Dispatching load for tab: ${_tabNames[index]} (index $index, user: $_userId)',
+    );
+
     switch (index) {
       case 0:
         if (_loadedTabs.contains(0)) return;
@@ -104,6 +122,10 @@ class _MainPageState extends State<MainPage> {
       AppLogger.warning('Cannot navigate, userId is null');
       return;
     }
+
+    //Log for every tap event
+    AppLogger.info('Bottom nav tapped: ${_tabNames[index]} (index $index)');
+
     String route;
     switch (index) {
       case 0:
@@ -125,10 +147,14 @@ class _MainPageState extends State<MainPage> {
     if (!mounted) return;
 
     if (index != _selectedIndex) {
+      // ✅ ADDED: Log for when the tab *changes*
+      AppLogger.info('Navigating to tab: ${_tabNames[index]}');
       setState(() => _selectedIndex = index);
       context.go(route);
       _dispatchLoadForIndex(index);
     } else {
+      // ✅ ADDED: Log for when the *same tab* is re-tapped
+      AppLogger.info('Re-tap on current tab: ${_tabNames[index]}');
       if (index == 3) {
         AppLogger.info('Re-tap on Profile tab detected - full profile refresh');
         _dispatchLoadForIndex(3);

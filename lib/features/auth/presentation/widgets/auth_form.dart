@@ -96,6 +96,17 @@ class _AuthFormState extends State<AuthForm>
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // ✅ ADDED: Modern Logo Placement
+                // Place the logo prominently at the top for brand recognition.
+                // Assuming 'assets/logo.png' exists based on pubspec.yaml.
+                Center(
+                  child: Image.asset(
+                    'assets/logo.png',
+                    height: 90, // Recommended size for a modern brand mark
+                  ),
+                ),
+                const SizedBox(height: 48), // Good vertical spacing
+
                 Text(
                   widget.isLogin ? 'Welcome Back' : 'Create Account',
                   style: theme.textTheme.headlineMedium?.copyWith(

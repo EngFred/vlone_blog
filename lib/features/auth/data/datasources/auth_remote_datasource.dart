@@ -35,7 +35,7 @@ class AuthRemoteDataSource {
 
       final userId = authResponse.user!.id;
 
-      // ✅ OPTIMIZED: Database trigger creates profile, we just fetch it
+      //Database trigger creates profile, we just fetch it
       // Removed client-side profile insertion for reliability
       AppLogger.info(
         'Profile created by DB trigger. Fetching profile for ID: $userId',
@@ -97,7 +97,7 @@ class AuthRemoteDataSource {
 
       final userModel = UserModel.fromMap(profileData);
 
-      // ✅ Cache immediately for offline access
+      //Cache immediately for offline access
       await _cacheUserProfile(userModel);
 
       AppLogger.info('Login successful for user ID: $userId');
@@ -123,7 +123,7 @@ class AuthRemoteDataSource {
     try {
       AppLogger.info('Attempting logout');
       await client.auth.signOut();
-      // ✅ Clear all cached data
+      //Clear all cached data
       await _secureStorage.delete(key: 'supabase_persisted_session');
       await _secureStorage.delete(key: _cachedUserKey);
       AppLogger.info('Logout successful');
@@ -163,7 +163,7 @@ class AuthRemoteDataSource {
       AppLogger.warning(
         'Network error fetching user, trying cached profile: $e',
       );
-      // ✅ OPTIMIZATION: Return cached profile for offline mode
+      //Return cached profile for offline mode
       final cachedUser = await _getCachedUserProfile();
       if (cachedUser != null) {
         AppLogger.info('Returning cached user profile for offline access');
@@ -191,7 +191,7 @@ class AuthRemoteDataSource {
     }
   }
 
-  /// ✅ OPTIMIZED: Check existing session synchronously first
+  /// Check existing session synchronously first
   /// This avoids unnecessary async calls when session already exists
   Future<bool> restoreSession() async {
     try {
@@ -199,7 +199,7 @@ class AuthRemoteDataSource {
         'Attempting to restore session - checking currentSession first',
       );
 
-      // ✅ PERFORMANCE: Quick synchronous check
+      //  Quick synchronous check
       if (client.auth.currentSession != null &&
           client.auth.currentUser != null) {
         AppLogger.info('Session already present in Supabase client');
@@ -270,7 +270,7 @@ class AuthRemoteDataSource {
     }
   }
 
-  /// ✅ Helper to detect network-related errors
+  ///Helper to detect network-related errors
   bool _isNetworkError(dynamic error) {
     final errorString = error.toString().toLowerCase();
     return errorString.contains('socketexception') ||

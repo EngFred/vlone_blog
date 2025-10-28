@@ -23,15 +23,40 @@ class MediaPreview extends StatelessWidget {
     required this.onEdit,
   });
 
+  // Helper widget to create a modern, elevated action chip (like a floating button)
+  Widget _buildActionChip({
+    required BuildContext context,
+    required IconData icon,
+    required VoidCallback onPressed,
+    required Color buttonColor,
+    required Color iconColor,
+  }) {
+    return Material(
+      color: buttonColor,
+      borderRadius: BorderRadius.circular(10),
+      elevation: 4, // Subtle elevation for a floating look
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(6.0),
+          child: Icon(icon, color: iconColor, size: 20),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final buttonBackgroundColor = Theme.of(
-      context,
-    ).colorScheme.background.withOpacity(0.6);
+    final theme = Theme.of(context);
+    // Use a lighter, semi-transparent color for better contrast against media
+    final floatingControlBgColor = theme.colorScheme.surface.withOpacity(0.8);
+    final floatingControlIconColor = theme.colorScheme.onSurface;
 
     return Stack(
       alignment: Alignment.center,
       children: [
+        // 1. Media Content (Image or Video)
         ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 400),
           child: ClipRRect(
@@ -54,39 +79,58 @@ class MediaPreview extends StatelessWidget {
                   ),
           ),
         ),
+
+        // 2. Play/Pause Button (Modernized)
         if (mediaType == 'video' && !isPlaying)
           GestureDetector(
             onTap: onPlayPause,
-            child: CircleAvatar(
-              radius: 32,
-              backgroundColor: buttonBackgroundColor,
-              child: const Icon(
+            child: Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: floatingControlBgColor,
+                shape: BoxShape.circle,
+                // Add a stronger shadow for a cinematic/prominent play button
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.4),
+                    blurRadius: 15,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Icon(
                 Icons.play_arrow_rounded,
-                color: Colors.white,
-                size: 44.0,
+                color: floatingControlIconColor,
+                size: 48.0, // A larger, more compelling icon
               ),
             ),
           ),
+
+        // 3. Grouped Edit and Remove Buttons (Modern Pill/Chip Style)
         Positioned(
-          top: 8,
-          right: 8,
-          child: CircleAvatar(
-            backgroundColor: buttonBackgroundColor,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white, size: 20),
-              onPressed: onRemove,
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 8,
-          right: 8,
-          child: CircleAvatar(
-            backgroundColor: buttonBackgroundColor,
-            child: IconButton(
-              icon: const Icon(Icons.edit, color: Colors.white, size: 20),
-              onPressed: onEdit,
-            ),
+          top: 12, // Slightly offset from the corner
+          right: 12,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Edit Button (Right side, top corner)
+              _buildActionChip(
+                context: context,
+                icon: Icons.edit_rounded,
+                onPressed: onEdit,
+                buttonColor: floatingControlBgColor,
+                iconColor: floatingControlIconColor,
+              ),
+              const SizedBox(width: 8),
+              // Remove Button (Right side, top corner)
+              _buildActionChip(
+                context: context,
+                icon: Icons.close_rounded,
+                onPressed: onRemove,
+                buttonColor: floatingControlBgColor,
+                iconColor: floatingControlIconColor,
+              ),
+            ],
           ),
         ),
       ],

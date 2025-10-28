@@ -226,7 +226,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               if (state is UserPostsLoading) {
                 if (mounted) setState(() => _isUserPostsLoading = true);
               } else if (state is UserPostsLoaded) {
-                if (mounted)
+                if (mounted) {
                   setState(() {
                     _userPosts.clear();
                     _userPostsError = null;
@@ -250,6 +250,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     );
                     _isUserPostsLoading = false;
                   });
+                }
               } else if (state is UserPostsError) {
                 if (mounted)
                   setState(() {
@@ -348,6 +349,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       ProfileHeader(
                         profile: state.profile,
                         isOwnProfile: _isOwnProfile,
+                        // ✅ CHANGED: Pass state variables and the toggle function
                         isFollowing: _isFollowing,
                         onFollowToggle: _onFollowToggle,
                         isProcessingFollow: _isProcessingFollow,
