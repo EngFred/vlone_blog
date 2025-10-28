@@ -6,4 +6,5 @@ abstract class UsersRepository {
   Future<Either<Failure, List<UserListEntity>>> getAllUsers(
     String currentUserId,
   );
+  Stream<Either<Failure, UserListEntity>> streamNewUsers(String currentUserId);
 }

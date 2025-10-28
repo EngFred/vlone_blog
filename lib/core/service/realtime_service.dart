@@ -12,6 +12,8 @@ import 'package:vlone_blog_app/features/profile/domain/usecases/stream_profile_u
 import 'package:vlone_blog_app/features/notifications/domain/entities/notification_entity.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/get_notifications_stream_usecase.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/get_unread_count_stream_usecase.dart';
+import 'package:vlone_blog_app/features/users/domain/entities/user_list_entity.dart';
+import 'package:vlone_blog_app/features/users/domain/usecases/stream_new_users_usecase.dart';
 
 class RealtimeService {
   // Posts
@@ -32,6 +34,10 @@ class RealtimeService {
 
   // Comments (global events)
   final StreamCommentsUseCase streamCommentsUseCase;
+
+  final StreamNewUsersUseCase streamNewUsersUseCase;
+  final StreamController<UserListEntity> _newUserController =
+      StreamController<UserListEntity>.broadcast();
 
   // Broadcast controllers
   final StreamController<PostEntity> _newPostController =
@@ -67,6 +73,7 @@ class RealtimeService {
   StreamSubscription? _notificationsSub;
   StreamSubscription? _unreadCountSub;
   StreamSubscription? _commentsSub;
+  StreamSubscription? _newUsersSub;
 
   //Map for additional profile subscriptions (beyond current user)
   final Map<String, StreamSubscription?> _additionalProfileSubs = {};
@@ -84,6 +91,7 @@ class RealtimeService {
     required this.streamNotificationsUseCase,
     required this.streamUnreadCountUseCase,
     required this.streamCommentsUseCase,
+    required this.streamNewUsersUseCase,
   });
 
   // Public broadcast streams
@@ -99,6 +107,7 @@ class RealtimeService {
       _notificationsController.stream;
   Stream<int> get onUnreadCount => _unreadCountController.stream;
   Stream<Map<String, dynamic>> get onComment => _commentsController.stream;
+  Stream<UserListEntity> get onNewUser => _newUserController.stream;
 
   bool get isStarted => _isStarted;
   String? get currentUserId => _currentUserId;
@@ -403,6 +412,36 @@ class RealtimeService {
       AppLogger.info(
         'RealtimeService streams health: ${areStreamsHealthy ? "HEALTHY" : "NO LISTENERS"}',
       );
+
+      // Starting new users stream
+      AppLogger.info('RealtimeService: Starting new users stream');
+      _newUsersSub = streamNewUsersUseCase(userId).listen(
+        // Pass userId for follow status
+        (either) {
+          either.fold(
+            (failure) => AppLogger.error(
+              'Realtime new user failure: ${failure.message}',
+            ),
+            (user) {
+              try {
+                if (!_newUserController.isClosed) {
+                  _newUserController.add(user);
+                  AppLogger.info(
+                    'RealtimeService: New user emitted: ${user.id}',
+                  );
+                }
+              } catch (e) {
+                AppLogger.error(
+                  'Failed to add new user to controller: $e',
+                  error: e,
+                );
+              }
+            },
+          );
+        },
+        onError: (err) =>
+            AppLogger.error('New users stream error: $err', error: err),
+      );
     } catch (e, st) {
       AppLogger.error(
         'RealtimeService failed to start: $e',
@@ -440,6 +479,7 @@ class RealtimeService {
       await _notificationsSub?.cancel();
       await _unreadCountSub?.cancel();
       await _commentsSub?.cancel();
+      await _newUsersSub?.cancel();
     } catch (e) {
       AppLogger.warning('Error cancelling subscriptions: $e');
     } finally {
@@ -452,6 +492,7 @@ class RealtimeService {
       _notificationsSub = null;
       _unreadCountSub = null;
       _commentsSub = null;
+      _newUsersSub = null;
     }
   }
 
@@ -499,7 +540,7 @@ class RealtimeService {
             (profileData) {
               try {
                 if (!_profileUpdatesController.isClosed) {
-                  // NEW: Include user_id in the broadcasted data
+                  //Include user_id in the broadcasted data
                   final dataWithId = {
                     'user_id': userId,
                     ...Map<String, dynamic>.from(profileData),

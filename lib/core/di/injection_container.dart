@@ -86,6 +86,7 @@ import 'package:vlone_blog_app/features/users/data/datasources/users_remote_data
 import 'package:vlone_blog_app/features/users/data/repository/users_repository_impl.dart';
 import 'package:vlone_blog_app/features/users/domain/repository/users_repository.dart';
 import 'package:vlone_blog_app/features/users/domain/usecases/get_all_users_usecase.dart';
+import 'package:vlone_blog_app/features/users/domain/usecases/stream_new_users_usecase.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 
 final sl = GetIt.instance;
@@ -359,6 +360,9 @@ Future<void> initUsers() async {
     () => UsersRepositoryImpl(sl<UsersRemoteDataSource>()),
   );
   sl.registerLazySingleton(() => GetAllUsersUseCase(sl<UsersRepository>()));
+  sl.registerLazySingleton<StreamNewUsersUseCase>(
+    () => StreamNewUsersUseCase(sl<UsersRepository>()),
+  );
   sl.registerFactory(() => UsersBloc(getAllUsersUseCase: sl()));
 }
 
@@ -412,6 +416,7 @@ Future<void> initRealtime() async {
       streamCommentsUseCase: sl<StreamCommentsUseCase>(),
       streamNotificationsUseCase: sl<GetNotificationsStreamUseCase>(),
       streamUnreadCountUseCase: sl<GetUnreadCountStreamUseCase>(),
+      streamNewUsersUseCase: sl<StreamNewUsersUseCase>(),
     ),
   );
 }

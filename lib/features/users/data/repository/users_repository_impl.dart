@@ -21,4 +21,14 @@ class UsersRepositoryImpl implements UsersRepository {
       return Left(ServerFailure(e.message));
     }
   }
+
+  @override
+  Stream<Either<Failure, UserListEntity>> streamNewUsers(String currentUserId) {
+    return remoteDataSource
+        .streamNewUsers(currentUserId)
+        .map((model) => Right<Failure, UserListEntity>(model.toEntity()))
+        .handleError((e) {
+          return Left<Failure, UserListEntity>(ServerFailure(e.toString()));
+        });
+  }
 }

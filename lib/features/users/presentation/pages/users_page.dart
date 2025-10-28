@@ -26,8 +26,6 @@ class _UsersPageState extends State<UsersPage> {
   @override
   void initState() {
     super.initState();
-    // REMOVED: No auto-load here. MainPage dispatches GetAllUsersEvent when tab selected.
-    // Still set _currentUserId for use in UI.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authState = context.read<AuthBloc>().state;
       if (authState is AuthAuthenticated && mounted) {
