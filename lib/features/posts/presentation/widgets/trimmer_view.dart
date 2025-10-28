@@ -2,10 +2,22 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_trimmer/video_trimmer.dart';
+import 'package:vlone_blog_app/core/widgets/loading_overlay.dart';
 
 class TrimmerView extends StatefulWidget {
   final File videoFile;
-  const TrimmerView(this.videoFile, {super.key});
+  final double? maxDuration;
+  final double initialStart;
+  final double? initialEnd;
+
+  const TrimmerView(
+    this.videoFile, {
+    super.key,
+    this.maxDuration,
+    this.initialStart = 0.0,
+    this.initialEnd,
+  });
+
   @override
   State<TrimmerView> createState() => _TrimmerViewState();
 }
@@ -14,21 +26,52 @@ class _TrimmerViewState extends State<TrimmerView> {
   final Trimmer _trimmer = Trimmer();
   double _startValue = 0.0;
   double _endValue = 0.0;
+  double _fullDurationMs = 0.0;
   bool _isPlaying = false;
-  bool _progressVisibility = false;
+  bool _progressVisibility = false; // Controls the overlay visibility
+
+  double get _trimDurationMs => _endValue - _startValue;
+  double? get _maxDurationMs =>
+      widget.maxDuration != null ? (widget.maxDuration! * 1000) : null;
+
+  bool get _isSaveEnabled {
+    if (_maxDurationMs == null) return true;
+    return _trimDurationMs <= (_maxDurationMs! + 100.0) && _trimDurationMs > 0;
+  }
 
   @override
   void initState() {
     super.initState();
-    _trimmer.loadVideo(videoFile: widget.videoFile).then((_) {
-      final controller = _trimmer.videoPlayerController;
-      if (controller != null && controller.value.isInitialized) {
-        // Use seconds (video_trimmer expects seconds)
-        setState(() {
-          _endValue = controller.value.duration.inSeconds.toDouble();
-        });
+    _loadVideo();
+  }
 
-        // Keep local _isPlaying in sync with the actual controller state
+  Future<void> _loadVideo() async {
+    await _trimmer.loadVideo(videoFile: widget.videoFile);
+    if (!mounted) return;
+
+    final controller = _trimmer.videoPlayerController;
+    if (controller != null && controller.value.isInitialized) {
+      final fullDuration = controller.value.duration;
+      final fullDurationMs = fullDuration.inMilliseconds.toDouble();
+
+      final initialStartMs = (widget.initialStart * 1000.0).clamp(
+        0.0,
+        fullDurationMs,
+      );
+      final initialEndSec =
+          widget.initialEnd ??
+          widget.maxDuration ??
+          fullDuration.inSeconds.toDouble();
+      var initialEndMs = (initialEndSec * 1000.0);
+      initialEndMs = initialEndMs.clamp(initialStartMs, fullDurationMs);
+
+      setState(() {
+        _fullDurationMs = fullDurationMs;
+        _startValue = initialStartMs;
+        _endValue = initialEndMs;
+        _trimmer.videoPlayerController?.seekTo(
+          Duration(milliseconds: _startValue.toInt()),
+        );
         controller.addListener(() {
           if (!mounted) return;
           final playing = controller.value.isPlaying;
@@ -36,23 +79,25 @@ class _TrimmerViewState extends State<TrimmerView> {
             setState(() => _isPlaying = playing);
           }
         });
-      }
-    });
+      });
+    }
   }
 
   Future<void> _saveVideo() async {
+    if (!_isSaveEnabled) return;
     setState(() => _progressVisibility = true);
+
     await _trimmer.saveTrimmedVideo(
       startValue: _startValue,
       endValue: _endValue,
       storageDir: StorageDir.temporaryDirectory,
       videoFileName: 'trimmed_video_${DateTime.now().millisecondsSinceEpoch}',
       onSave: (outputPath) {
+        if (!mounted) return;
         setState(() => _progressVisibility = false);
         if (outputPath != null) {
           Navigator.pop(context, outputPath);
         } else {
-          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to save trimmed video')),
           );
@@ -62,11 +107,8 @@ class _TrimmerViewState extends State<TrimmerView> {
   }
 
   Future<void> _controlPlayback() async {
-    // guard: ensure controller initialized
     final controller = _trimmer.videoPlayerController;
     if (controller == null || !controller.value.isInitialized) return;
-
-    // toggle play/pause via trimmer helper
     bool playbackState = await _trimmer.videoPlaybackControl(
       startValue: _startValue,
       endValue: _endValue,
@@ -76,7 +118,6 @@ class _TrimmerViewState extends State<TrimmerView> {
 
   @override
   void dispose() {
-    // detach listener if needed (video_player cleans up on dispose)
     _trimmer.dispose();
     super.dispose();
   }
@@ -84,6 +125,7 @@ class _TrimmerViewState extends State<TrimmerView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final mediaQuery = MediaQuery.of(context);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -91,14 +133,12 @@ class _TrimmerViewState extends State<TrimmerView> {
       body: Stack(
         alignment: Alignment.center,
         children: [
-          // VideoViewer (no IgnorePointer)
+          // Video player
           Center(child: VideoViewer(trimmer: _trimmer)),
-
-          // Full-screen tappable overlay — make sure it receives hits
+          // Play/pause overlay
           Positioned.fill(
             child: GestureDetector(
-              behavior: HitTestBehavior
-                  .opaque, // <- critical: catches taps on transparent areas
+              behavior: HitTestBehavior.opaque,
               onTap: _controlPlayback,
               child: Center(
                 child: AnimatedOpacity(
@@ -107,6 +147,7 @@ class _TrimmerViewState extends State<TrimmerView> {
                   child: IgnorePointer(
                     ignoring: _isPlaying,
                     child: Container(
+                      // ... Play button UI ...
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.15),
@@ -133,7 +174,7 @@ class _TrimmerViewState extends State<TrimmerView> {
             ),
           ),
 
-          // Trim viewer and progress indicator (kept as before)
+          // Trimmer scrubber
           Positioned(
             bottom: 30,
             left: 16,
@@ -141,9 +182,21 @@ class _TrimmerViewState extends State<TrimmerView> {
             child: TrimViewer(
               trimmer: _trimmer,
               viewerHeight: 60.0,
-              viewerWidth: MediaQuery.of(context).size.width - 32,
-              onChangeStart: (value) => _startValue = value,
-              onChangeEnd: (value) => _endValue = value,
+              viewerWidth: mediaQuery.size.width - 32,
+              onChangeStart: (value) {
+                if (mounted) {
+                  setState(() {
+                    _startValue = value.clamp(0.0, _endValue);
+                  });
+                }
+              },
+              onChangeEnd: (value) {
+                if (mounted) {
+                  setState(() {
+                    _endValue = value.clamp(_startValue, _fullDurationMs);
+                  });
+                }
+              },
               onChangePlaybackState: (value) =>
                   setState(() => _isPlaying = value),
               editorProperties: TrimEditorProperties(
@@ -169,16 +222,7 @@ class _TrimmerViewState extends State<TrimmerView> {
           ),
 
           if (_progressVisibility)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: LinearProgressIndicator(
-                minHeight: 4,
-                color: theme.colorScheme.primary,
-                backgroundColor: Colors.transparent,
-              ),
-            ),
+            const SavingLoadingOverlay(message: 'Saving Video...'),
         ],
       ),
       appBar: AppBar(
@@ -193,25 +237,22 @@ class _TrimmerViewState extends State<TrimmerView> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12.0),
-            child: _progressVisibility
-                ? const Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    ),
-                  )
-                : TextButton(
-                    style: TextButton.styleFrom(foregroundColor: Colors.white),
-                    onPressed: _saveVideo,
-                    child: const Text('Save'),
-                  ),
+            child: TextButton(
+              onPressed: _isSaveEnabled && !_progressVisibility
+                  ? _saveVideo
+                  : null,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                disabledForegroundColor: Colors.white38,
+              ),
+              child: Text(_isSaveEnabled ? 'Save' : 'Trim to save'),
+            ),
           ),
         ],
       ),
+      // Removed floatingActionButton for overlay; it's now in the Stack.
+      // floatingActionButton: null,
+      // floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
 }

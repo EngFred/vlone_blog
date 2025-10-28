@@ -79,7 +79,6 @@ class MediaPreview extends StatelessWidget {
                   ),
           ),
         ),
-
         // 2. Play/Pause Button (Modernized)
         if (mediaType == 'video' && !isPlaying)
           GestureDetector(
@@ -105,7 +104,6 @@ class MediaPreview extends StatelessWidget {
               ),
             ),
           ),
-
         // 3. Grouped Edit and Remove Buttons (Modern Pill/Chip Style)
         Positioned(
           top: 12, // Slightly offset from the corner

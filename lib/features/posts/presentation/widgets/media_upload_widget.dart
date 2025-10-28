@@ -1,12 +1,11 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/utils/crop_utils.dart';
 import 'package:vlone_blog_app/core/utils/helpers.dart';
-import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart'; // Already there, used for warning
 
 import 'media_picker_sheet.dart';
 import 'media_placeholder.dart';
@@ -27,12 +26,11 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
   String? _mediaType;
   VideoPlayerController? _videoController;
   bool _isPreviewPlaying = false;
+  bool _isLoadingMedia = false;
 
   Future<void> _pickMedia(ImageSource source, bool isImage) async {
     final picker = ImagePicker();
     XFile? pickedFile;
-
-    // FIX: Wrap the picking process in try...catch to handle system errors
     try {
       pickedFile = isImage
           ? await picker.pickImage(source: source)
@@ -47,72 +45,27 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
       }
       return;
     }
-
     if (pickedFile == null) return; // User cancelled
     final file = File(pickedFile.path);
     final mediaType = isImage ? 'image' : 'video';
 
     await _videoController?.dispose();
     _videoController = null;
-    setState(() => _isPreviewPlaying = false);
 
-    if (mediaType == 'video') {
-      // FIX: Wrap video initialization in a try...catch for cloud files/unsupported formats
-      try {
-        final duration = await getVideoDuration(file);
-        if (duration > Constants.maxVideoDurationSeconds) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Video exceeds 10 minutes')),
-            );
-          }
-          return;
-        }
-
-        // Initialize controller
-        _videoController = VideoPlayerController.file(file);
-        // CRITICAL: Await initialization
-        await _videoController!.initialize();
-
-        // If initialization succeeds, setup listener and state
-        _videoController!.addListener(() {
-          if (!_videoController!.value.isPlaying &&
-              _videoController!.value.position >=
-                  _videoController!.value.duration) {
-            setState(() => _isPreviewPlaying = false);
-            _videoController!.seekTo(Duration.zero);
-          }
-        });
-
-        setState(() {
-          _mediaFile = file;
-          _mediaType = mediaType;
-        });
-        widget.onMediaSelected(_mediaFile, _mediaType);
-      } catch (e) {
-        debugPrint('Error initializing video player: $e');
-        if (mounted) {
-          SnackbarUtils.showError(
-            context,
-            'Failed to load video. It may be in the cloud or in an unsupported format.',
-          );
-        }
-        // Clean up
-        await _videoController?.dispose();
-        _videoController = null;
-      }
-    } else {
-      // FIX: Also pre-flight the image to check if it's readable
+    if (mediaType == 'image') {
+      // Images: Quick validation and set (no duration check needed)
       try {
         final imageBytes = await file.readAsBytes();
         await decodeImageFromList(imageBytes);
-
-        // If successful, set state
-        setState(() {
-          _mediaFile = file;
-          _mediaType = mediaType;
-        });
-        widget.onMediaSelected(_mediaFile, _mediaType);
+        if (mounted) {
+          setState(() {
+            _mediaFile = file;
+            _mediaType = mediaType;
+            _isPreviewPlaying = false;
+            _isLoadingMedia = false;
+          });
+        }
+        widget.onMediaSelected(file, mediaType);
       } catch (e) {
         debugPrint('Error loading image: $e');
         if (mounted) {
@@ -121,6 +74,89 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
             'Failed to load image. It may be in the cloud or in an unsupported format.',
           );
         }
+      }
+    } else {
+      // Videos: Duration check + auto-trim if needed
+      try {
+        final duration = await getVideoDuration(file); // Returns int (seconds)
+        final double maxAllowed = Constants.maxVideoDurationSeconds
+            .toDouble(); // Use your constant
+        File finalFile = file;
+        bool needsAutoTrim =
+            duration > maxAllowed; // Direct int > double comparison
+
+        if (needsAutoTrim) {
+          // UX: Warn user, then auto-open trim with 0-60s preset
+          if (mounted) {
+            SnackbarUtils.showWarning(
+              context,
+              'Video is longer than ${Constants.maxVideoDurationSeconds} seconds. Please trim to ${Constants.maxVideoDurationSeconds}s or less.',
+            );
+          }
+
+          // Auto-nav to trim view, pre-set to 0-60s (no lock—button will enforce)
+          final trimmedPath = await Navigator.of(context).push<String?>(
+            MaterialPageRoute(
+              builder: (context) => TrimmerView(
+                file,
+                maxDuration: maxAllowed,
+                initialStart: 0.0,
+                initialEnd: maxAllowed,
+              ),
+            ),
+          );
+
+          if (trimmedPath == null) {
+            // User cancelled: Don't set media, return early
+            return;
+          }
+
+          finalFile = File(trimmedPath); // Use trimmed version
+        }
+
+        // Set file (trimmed or original) and load preview
+        if (mounted) {
+          setState(() {
+            _mediaFile = finalFile;
+            _mediaType = mediaType;
+            _isPreviewPlaying = false;
+            _isLoadingMedia = true; // Show loader while initializing
+          });
+        }
+        widget.onMediaSelected(finalFile, mediaType);
+
+        // Init video controller for preview
+        _videoController = VideoPlayerController.file(finalFile);
+        await _videoController!.initialize();
+        _videoController!.addListener(() {
+          if (!mounted) return;
+          if (!_videoController!.value.isPlaying &&
+              _videoController!.value.position >=
+                  _videoController!.value.duration) {
+            setState(() => _isPreviewPlaying = false);
+            _videoController!.seekTo(Duration.zero);
+          }
+        });
+
+        if (mounted) {
+          setState(() => _isLoadingMedia = false);
+        }
+      } catch (e) {
+        debugPrint('Error initializing video: $e');
+        if (mounted) {
+          SnackbarUtils.showError(
+            context,
+            'Failed to load video. Try another file.',
+          );
+          setState(() {
+            _mediaFile = null;
+            _mediaType = null;
+            _isLoadingMedia = false;
+          });
+          widget.onMediaSelected(null, null);
+        }
+        await _videoController?.dispose();
+        _videoController = null;
       }
     }
   }
@@ -139,6 +175,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
       _mediaFile = null;
       _mediaType = null;
       _isPreviewPlaying = false;
+      _isLoadingMedia = false;
     });
     widget.onMediaSelected(null, null);
   }
@@ -146,26 +183,46 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
   Future<void> _editMedia() async {
     if (_mediaFile == null) return;
 
+    // Pause preview if playing
+    if (_mediaType == 'video' &&
+        _isPreviewPlaying &&
+        _videoController != null) {
+      await _videoController!.pause();
+      setState(() => _isPreviewPlaying = false);
+    }
+
     if (_mediaType == 'image') {
+      // Images: Standard crop
       final croppedFile = await cropImageFile(context, _mediaFile!);
       if (croppedFile != null) {
-        setState(() {
-          _mediaFile = croppedFile;
-        });
+        setState(() => _mediaFile = croppedFile);
         widget.onMediaSelected(_mediaFile, _mediaType);
       }
     } else if (_mediaType == 'video') {
-      // Video trimming logic remains the same
-      final trimmedFilePath = await Navigator.of(context).push(
+      // Videos: Trim with limit enforcement via button (no auto if already short)
+      final currentDuration = _videoController!.value.duration.inSeconds
+          .toDouble();
+      final double maxAllowed = Constants.maxVideoDurationSeconds.toDouble();
+      final initialEnd = currentDuration.clamp(
+        0.0,
+        maxAllowed,
+      ); // Cap initial for UX
+
+      final trimmedFilePath = await Navigator.of(context).push<String?>(
         MaterialPageRoute<String?>(
-          builder: (context) => TrimmerView(_mediaFile!),
+          builder: (context) => TrimmerView(
+            _mediaFile!,
+            maxDuration: maxAllowed,
+            initialStart: 0.0, // Always start from 0 for simplicity
+            initialEnd: initialEnd,
+          ),
         ),
       );
       if (trimmedFilePath != null) {
         await _videoController?.dispose();
         final newFile = File(trimmedFilePath);
         _videoController = VideoPlayerController.file(newFile)
-          ..initialize().then((_) => setState(() {}));
+          ..initialize().then((_) => mounted ? setState(() {}) : null);
         setState(() {
           _mediaFile = newFile;
           _isPreviewPlaying = false;
@@ -185,6 +242,8 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
   Widget build(BuildContext context) {
     return _mediaFile == null
         ? MediaPlaceholder(onTap: _showPickOptions)
+        : _isLoadingMedia
+        ? const Center(child: CircularProgressIndicator())
         : MediaPreview(
             file: _mediaFile!,
             mediaType: _mediaType!,

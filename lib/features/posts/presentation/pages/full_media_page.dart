@@ -22,7 +22,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
   bool _initialized = false;
   bool _isInitializing = false;
   bool _isDisposed = false;
-
   Duration? _scrubValue;
   bool _isScrubbing = false;
   bool _wasPlayingBeforeScrub = false;
@@ -47,22 +46,14 @@ class _FullMediaPageState extends State<FullMediaPage> {
         _videoManager.releaseController(widget.post.id);
         return;
       }
-
       ctrl.addListener(_videoListener);
-
       setState(() {
         _videoController = ctrl;
         _initialized = true;
         _isInitializing = false;
       });
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _videoController != null) {
-          VideoPlaybackManager.play(_videoController!, () {
-            if (mounted) setState(() {});
-          });
-        }
-      });
+      // Removed: The addPostFrameCallback that calls VideoPlaybackManager.play
+      // We now let the existing state persist (no auto-play)
     } catch (e) {
       _isInitializing = false;
     }
@@ -135,7 +126,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
         _videoController!.value.duration.inMilliseconds,
       ),
     );
-
     _videoController!
         .seekTo(safeTarget)
         .then((_) {
@@ -163,7 +153,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
   Widget build(BuildContext context) {
     final media = widget.post;
     final heroTag = widget.heroTag ?? 'media_${media.id}';
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -189,7 +178,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
                 ),
               ),
             ),
-
             // Bottom controls (video only)
             if (media.mediaType == 'video')
               Positioned(
@@ -234,7 +222,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
               child: Icon(Icons.play_circle_outline, color: Colors.white),
             );
     }
-
     return AspectRatio(
       aspectRatio: _videoController!.value.aspectRatio,
       child: GestureDetector(
@@ -284,7 +271,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
         ),
       );
     }
-
     final value = _videoController!.value;
     final duration = value.duration;
     final position = _isScrubbing
@@ -295,7 +281,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
         : 1;
     final positionFraction =
         (position.inMilliseconds.clamp(0, maxMilliseconds)) / maxMilliseconds;
-
     return Container(
       color: Colors.black45,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -310,9 +295,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
                 _formatDuration(position),
                 style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
-
               const SizedBox(width: 8),
-
               // Slider
               Expanded(
                 child: SliderTheme(
@@ -339,9 +322,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
                   ),
                 ),
               ),
-
               const SizedBox(width: 8),
-
               // Total duration
               Text(
                 _formatDuration(duration),
@@ -349,9 +330,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
               ),
             ],
           ),
-
           const SizedBox(height: 6),
-
           // Single prominent play/pause control
           Row(
             mainAxisAlignment: MainAxisAlignment.center,

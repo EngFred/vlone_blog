@@ -33,6 +33,8 @@ class _PostMediaState extends State<PostMedia>
   bool _isInitializing = false;
   final VideoControllerManager _videoManager = VideoControllerManager();
   bool _isDisposed = false;
+  bool _isOpeningFull =
+      false; // New: Flag to ignore visibility pause during nav to full
 
   @override
   bool get wantKeepAlive => true;
@@ -41,21 +43,18 @@ class _PostMediaState extends State<PostMedia>
     if (_isDisposed || !mounted) return;
     if (_videoController != null && _initialized) return;
     if (_isInitializing) return;
-
     _isInitializing = true;
     try {
       final controller = await _videoManager.getController(
         widget.post.id,
         widget.post.mediaUrl!,
       );
-
       if (_isDisposed || !mounted) {
         try {
           _videoManager.releaseController(widget.post.id);
         } catch (_) {}
         return;
       }
-
       if (mounted) {
         setState(() {
           _videoController = controller;
@@ -73,7 +72,6 @@ class _PostMediaState extends State<PostMedia>
   void _togglePlayPause() {
     if (_isDisposed || !mounted) return;
     if (_isInitializing) return;
-
     if (_videoController == null || !_initialized) {
       _ensureControllerInitialized().then((_) {
         if (_videoController != null && mounted && !_isDisposed) {
@@ -85,7 +83,6 @@ class _PostMediaState extends State<PostMedia>
       });
       return;
     }
-
     final isPlaying = VideoPlaybackManager.isPlaying(_videoController!);
     if (isPlaying) {
       VideoPlaybackManager.pause();
@@ -102,17 +99,23 @@ class _PostMediaState extends State<PostMedia>
     return widget.autoPlay ? BoxFit.cover : BoxFit.contain;
   }
 
-  void _openFullMedia(String heroTag) {
-    Debouncer.instance.throttle(
-      'open_full_${widget.post.id}',
-      const Duration(milliseconds: 300),
-      () {
-        context.push(
-          '/media',
-          extra: {'post': widget.post, 'heroTag': heroTag},
-        );
-      },
+  void _openFullMedia(String heroTag) async {
+    if (_isOpeningFull) return; // Prevent multiple pushes during navigation
+
+    setState(() {
+      _isOpeningFull = true;
+    });
+
+    await context.push(
+      '/media',
+      extra: {'post': widget.post, 'heroTag': heroTag},
     );
+
+    if (mounted) {
+      setState(() {
+        _isOpeningFull = false;
+      });
+    }
   }
 
   @override
@@ -120,7 +123,6 @@ class _PostMediaState extends State<PostMedia>
     super.build(context);
     final heroTag = 'media_${widget.post.id}_${identityHashCode(this)}';
     final double height = widget.height ?? 320.0;
-
     if (widget.post.mediaType == 'image') {
       return _buildImage(height, heroTag);
     } else if (widget.post.mediaType == 'video') {
@@ -132,7 +134,6 @@ class _PostMediaState extends State<PostMedia>
 
   Widget _buildImage(double height, String heroTag) {
     final boxFit = _getBoxFit();
-
     return SizedBox(
       height: height,
       width: double.infinity,
@@ -187,7 +188,6 @@ class _PostMediaState extends State<PostMedia>
     final boxFit = _getBoxFit();
     const toggleKeyPrefix = 'toggle_play_';
     const toggleDuration = Duration(milliseconds: 300);
-
     Widget content = GestureDetector(
       onTap: () => Debouncer.instance.throttle(
         '$toggleKeyPrefix${widget.post.id}',
@@ -264,7 +264,6 @@ class _PostMediaState extends State<PostMedia>
         ),
       ),
     );
-
     if (widget.useVisibilityDetector) {
       return SizedBox(
         height: height,
@@ -275,25 +274,25 @@ class _PostMediaState extends State<PostMedia>
             if (_isDisposed || !mounted) return;
             final visiblePct = info.visibleFraction;
             final controller = _videoController;
-
             if (visiblePct > 0.4 && !_initialized && !_isInitializing) {
               _ensureControllerInitialized();
             }
-
             if (controller != null &&
                 !_isDisposed &&
                 mounted &&
                 visiblePct < 0.2 &&
                 VideoPlaybackManager.isPlaying(controller)) {
-              VideoPlaybackManager.pause();
-              if (mounted) setState(() {});
+              if (!_isOpeningFull) {
+                // New: Ignore pause if opening full media
+                VideoPlaybackManager.pause();
+                if (mounted) setState(() {});
+              }
             }
           },
           child: content,
         ),
       );
     }
-
     return SizedBox(height: height, width: double.infinity, child: content);
   }
 
