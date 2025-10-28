@@ -1,4 +1,3 @@
-// lib/core/service/realtime_service.dart
 import 'dart:async';
 
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
