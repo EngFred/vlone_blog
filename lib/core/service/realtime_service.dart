@@ -17,14 +17,18 @@ class RealtimeService {
   final StreamNewPostsUseCase streamNewPostsUseCase;
   final StreamPostUpdatesUseCase streamPostUpdatesUseCase;
   final StreamPostDeletionsUseCase streamPostDeletionsUseCase;
+
   // Likes & Favorites
   final StreamLikesUseCase streamLikesUseCase;
   final StreamFavoritesUseCase streamFavoritesUseCase;
+
   // Profile updates
   final StreamProfileUpdatesUseCase streamProfileUpdatesUseCase;
+
   // Notifications
   final GetNotificationsStreamUseCase streamNotificationsUseCase;
   final GetUnreadCountStreamUseCase streamUnreadCountUseCase;
+
   // Comments (global events)
   final StreamCommentsUseCase streamCommentsUseCase;
 
@@ -83,21 +87,26 @@ class RealtimeService {
   Stream<Map<String, dynamic>> get onPostUpdate =>
       _postUpdatesController.stream;
   Stream<String> get onPostDeleted => _postDeletedController.stream;
-
   Stream<Map<String, dynamic>> get onLike => _likesController.stream;
   Stream<Map<String, dynamic>> get onFavorite => _favoritesController.stream;
-
   Stream<Map<String, dynamic>> get onProfileUpdate =>
       _profileUpdatesController.stream;
-
   Stream<List<NotificationEntity>> get onNotificationsBatch =>
       _notificationsController.stream;
   Stream<int> get onUnreadCount => _unreadCountController.stream;
-
   Stream<Map<String, dynamic>> get onComment => _commentsController.stream;
 
   bool get isStarted => _isStarted;
   String? get currentUserId => _currentUserId;
+
+  /// Check if streams are healthy (have active listeners)
+  bool get areStreamsHealthy {
+    return _newPostController.hasListener ||
+        _postUpdatesController.hasListener ||
+        _postDeletedController.hasListener ||
+        _likesController.hasListener ||
+        _favoritesController.hasListener;
+  }
 
   /// Start the backend subscriptions for the provided userId.
   /// Idempotent: calling start(userId) multiple times is safe.
@@ -120,6 +129,7 @@ class RealtimeService {
       // --------------------
       // Posts streams
       // --------------------
+      AppLogger.info('RealtimeService: Starting new posts stream');
       _newPostsSub = streamNewPostsUseCase(NoParams()).listen(
         (either) {
           either.fold(
@@ -128,7 +138,12 @@ class RealtimeService {
             ),
             (post) {
               try {
-                _newPostController.add(post);
+                if (!_newPostController.isClosed) {
+                  _newPostController.add(post);
+                  AppLogger.info(
+                    'RealtimeService: New post emitted: ${post.id}',
+                  );
+                }
               } catch (e) {
                 AppLogger.error(
                   'Failed to add new post to controller: $e',
@@ -142,6 +157,7 @@ class RealtimeService {
             AppLogger.error('New posts stream error: $err', error: err),
       );
 
+      AppLogger.info('RealtimeService: Starting post updates stream');
       _postUpdatesSub = streamPostUpdatesUseCase(NoParams()).listen(
         (either) {
           either.fold(
@@ -150,9 +166,14 @@ class RealtimeService {
             ),
             (updateData) {
               try {
-                _postUpdatesController.add(
-                  Map<String, dynamic>.from(updateData),
-                );
+                if (!_postUpdatesController.isClosed) {
+                  _postUpdatesController.add(
+                    Map<String, dynamic>.from(updateData),
+                  );
+                  AppLogger.info(
+                    'RealtimeService: Post update emitted for: ${updateData['id']}',
+                  );
+                }
               } catch (e) {
                 AppLogger.error('Failed to forward post update: $e', error: e);
               }
@@ -163,6 +184,7 @@ class RealtimeService {
             AppLogger.error('Post updates stream error: $err', error: err),
       );
 
+      AppLogger.info('RealtimeService: Starting post deletions stream');
       _postDeletionsSub = streamPostDeletionsUseCase(NoParams()).listen(
         (either) {
           either.fold(
@@ -171,7 +193,12 @@ class RealtimeService {
             ),
             (postId) {
               try {
-                _postDeletedController.add(postId);
+                if (!_postDeletedController.isClosed) {
+                  _postDeletedController.add(postId);
+                  AppLogger.info(
+                    'RealtimeService: Post deletion emitted: $postId',
+                  );
+                }
               } catch (e) {
                 AppLogger.error(
                   'Failed to forward post deletion: $e',
@@ -188,6 +215,7 @@ class RealtimeService {
       // --------------------
       // Likes & Favorites
       // --------------------
+      AppLogger.info('RealtimeService: Starting likes stream');
       _likesSub = streamLikesUseCase(NoParams()).listen(
         (either) {
           either.fold(
@@ -195,7 +223,9 @@ class RealtimeService {
                 AppLogger.error('Realtime likes failure: ${failure.message}'),
             (likeData) {
               try {
-                _likesController.add(Map<String, dynamic>.from(likeData));
+                if (!_likesController.isClosed) {
+                  _likesController.add(Map<String, dynamic>.from(likeData));
+                }
               } catch (e) {
                 AppLogger.error('Failed to forward like data: $e', error: e);
               }
@@ -206,6 +236,7 @@ class RealtimeService {
             AppLogger.error('Likes stream error: $err', error: err),
       );
 
+      AppLogger.info('RealtimeService: Starting favorites stream');
       _favoritesSub = streamFavoritesUseCase(NoParams()).listen(
         (either) {
           either.fold(
@@ -214,7 +245,9 @@ class RealtimeService {
             ),
             (favData) {
               try {
-                _favoritesController.add(Map<String, dynamic>.from(favData));
+                if (!_favoritesController.isClosed) {
+                  _favoritesController.add(Map<String, dynamic>.from(favData));
+                }
               } catch (e) {
                 AppLogger.error(
                   'Failed to forward favorite data: $e',
@@ -231,8 +264,8 @@ class RealtimeService {
       // --------------------
       // Profile updates
       // --------------------
+      AppLogger.info('RealtimeService: Starting profile updates stream');
       _profileUpdatesSub = streamProfileUpdatesUseCase(userId).listen(
-        // Pass userId instead of NoParams()
         (either) {
           either.fold(
             (failure) => AppLogger.error(
@@ -240,9 +273,11 @@ class RealtimeService {
             ),
             (profileData) {
               try {
-                _profileUpdatesController.add(
-                  Map<String, dynamic>.from(profileData),
-                );
+                if (!_profileUpdatesController.isClosed) {
+                  _profileUpdatesController.add(
+                    Map<String, dynamic>.from(profileData),
+                  );
+                }
               } catch (e) {
                 AppLogger.error(
                   'Failed to forward profile update: $e',
@@ -259,6 +294,7 @@ class RealtimeService {
       // --------------------
       // Notifications (batch) & unread count
       // --------------------
+      AppLogger.info('RealtimeService: Starting notifications stream');
       _notificationsSub = streamNotificationsUseCase(NoParams()).listen(
         (either) {
           either.fold(
@@ -266,16 +302,18 @@ class RealtimeService {
               AppLogger.error(
                 'Realtime notifications failure: ${failure.message}',
               );
-              // forward error to controller consumers
               try {
-                _notificationsController.addError(failure);
+                if (!_notificationsController.isClosed) {
+                  _notificationsController.addError(failure);
+                }
               } catch (_) {}
             },
             (notifications) {
               try {
-                // Ensure runtime List<NotificationEntity> is forwarded
-                final list = List<NotificationEntity>.from(notifications);
-                _notificationsController.add(list);
+                if (!_notificationsController.isClosed) {
+                  final list = List<NotificationEntity>.from(notifications);
+                  _notificationsController.add(list);
+                }
               } catch (e) {
                 AppLogger.error(
                   'Failed to forward notifications batch: $e',
@@ -287,10 +325,13 @@ class RealtimeService {
         },
         onError: (err) {
           AppLogger.error('Notifications stream error: $err', error: err);
-          _notificationsController.addError(err);
+          if (!_notificationsController.isClosed) {
+            _notificationsController.addError(err);
+          }
         },
       );
 
+      AppLogger.info('RealtimeService: Starting unread count stream');
       _unreadCountSub = streamUnreadCountUseCase(NoParams()).listen(
         (either) {
           either.fold(
@@ -299,12 +340,16 @@ class RealtimeService {
                 'Realtime unread count failure: ${failure.message}',
               );
               try {
-                _unreadCountController.addError(failure);
+                if (!_unreadCountController.isClosed) {
+                  _unreadCountController.addError(failure);
+                }
               } catch (_) {}
             },
             (count) {
               try {
-                _unreadCountController.add(count);
+                if (!_unreadCountController.isClosed) {
+                  _unreadCountController.add(count);
+                }
               } catch (e) {
                 AppLogger.error('Failed to forward unread count: $e', error: e);
               }
@@ -313,13 +358,16 @@ class RealtimeService {
         },
         onError: (err) {
           AppLogger.error('Unread count stream error: $err', error: err);
-          _unreadCountController.addError(err);
+          if (!_unreadCountController.isClosed) {
+            _unreadCountController.addError(err);
+          }
         },
       );
 
       // --------------------
       // Comments (global events)
       // --------------------
+      AppLogger.info('RealtimeService: Starting comments stream');
       _commentsSub = streamCommentsUseCase(NoParams()).listen(
         (either) {
           either.fold(
@@ -328,7 +376,11 @@ class RealtimeService {
             ),
             (commentData) {
               try {
-                _commentsController.add(Map<String, dynamic>.from(commentData));
+                if (!_commentsController.isClosed) {
+                  _commentsController.add(
+                    Map<String, dynamic>.from(commentData),
+                  );
+                }
               } catch (e) {
                 AppLogger.error('Failed to forward comment data: $e', error: e);
               }
@@ -340,7 +392,10 @@ class RealtimeService {
       );
 
       _isStarted = true;
-      AppLogger.info('RealtimeService started for user $userId');
+      AppLogger.info('RealtimeService started successfully for user $userId');
+      AppLogger.info(
+        'RealtimeService streams health: ${areStreamsHealthy ? "HEALTHY" : "NO LISTENERS"}',
+      );
     } catch (e, st) {
       AppLogger.error(
         'RealtimeService failed to start: $e',
@@ -406,6 +461,7 @@ class RealtimeService {
       await _notificationsController.close();
       await _unreadCountController.close();
       await _commentsController.close();
+      AppLogger.info('RealtimeService disposed successfully');
     } catch (e) {
       AppLogger.warning('Failed to close controllers: $e');
     }

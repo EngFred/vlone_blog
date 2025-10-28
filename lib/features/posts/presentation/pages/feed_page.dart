@@ -27,10 +27,8 @@ class _FeedPageState extends State<FeedPage>
     with AutomaticKeepAliveClientMixin {
   final List<PostEntity> _posts = [];
   bool _notificationsSubscribed = false;
-
   @override
   bool get wantKeepAlive => true;
-
   @override
   void initState() {
     super.initState();
@@ -41,6 +39,9 @@ class _FeedPageState extends State<FeedPage>
         // Only request feed; RealtimeService and PostsBloc real-time listeners
         // are started globally from main.dart on auth.
         context.read<PostsBloc>().add(GetFeedEvent(userId));
+        context.read<PostsBloc>().add(
+          StartRealtimeListenersEvent(userId),
+        ); // Added to subscribe to real-time streams
         _subscribeNotifications();
       } else {
         AppLogger.warning(
@@ -109,11 +110,9 @@ class _FeedPageState extends State<FeedPage>
     if (currentUserId == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-
     final postsState = context.watch<PostsBloc>().state;
     final bool realtimeActive =
         postsState is FeedLoaded && postsState.isRealtimeActive;
-
     return Scaffold(
       appBar: AppBar(
         title: const UserGreetingTitle(),
@@ -197,7 +196,6 @@ class _FeedPageState extends State<FeedPage>
               }
             },
           ),
-
           // LikesBloc: only sync the boolean flag at page-level.
           // Optimistic deltas are handled by item widgets (PostCard).
           BlocListener<LikesBloc, LikesState>(
@@ -214,7 +212,6 @@ class _FeedPageState extends State<FeedPage>
               }
             },
           ),
-
           // FavoritesBloc: only sync the boolean flag at page-level.
           // Counts are server-authoritative and will be applied by RealtimePostUpdate.
           BlocListener<FavoritesBloc, FavoritesState>(
@@ -249,11 +246,9 @@ class _FeedPageState extends State<FeedPage>
             builder: (context) {
               if (_posts.isNotEmpty)
                 return FeedList(posts: _posts, userId: currentUserId);
-
               final postsState = context.watch<PostsBloc>().state;
               if (postsState is PostsLoading || postsState is PostsInitial)
                 return const LoadingIndicator();
-
               if (postsState is FeedLoaded) {
                 if (postsState.posts.isEmpty) {
                   return const EmptyStateWidget(
@@ -263,7 +258,6 @@ class _FeedPageState extends State<FeedPage>
                 }
                 return FeedList(posts: postsState.posts, userId: currentUserId);
               }
-
               if (postsState is PostsError) {
                 return CustomErrorWidget(
                   message: postsState.message,
@@ -272,7 +266,6 @@ class _FeedPageState extends State<FeedPage>
                   ),
                 );
               }
-
               return const LoadingIndicator();
             },
           ),
