@@ -37,9 +37,20 @@ class _ReelsPageState extends State<ReelsPage>
     _pageController = PageController(initialPage: 0, viewportFraction: 1.0);
     WidgetsBinding.instance.addObserver(this);
 
-    // ✅ OPTIMIZATION: Removed eager data fetch.
-    // MainPage's _dispatchLoadForIndex(1) is now responsible for
-    // dispatching GetReelsEvent when this tab is selected.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userId = context.read<AuthBloc>().cachedUser?.id;
+      if (userId != null) {
+        // ✅ OPTIMIZATION: GetFeedEvent has been REMOVED from here.
+        // MainPage's _dispatchLoadForIndex(1) is now responsible for this.
+
+        // We still need the PostsBloc to be listening to realtime events.
+        context.read<PostsBloc>().add(StartRealtimeListenersEvent(userId));
+      } else {
+        AppLogger.warning(
+          'FeedPage: userId null at init; waiting for AuthBloc',
+        );
+      }
+    });
   }
 
   @override

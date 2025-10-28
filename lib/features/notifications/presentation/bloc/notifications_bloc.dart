@@ -113,8 +113,9 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
       },
     );
 
-    // Also subscribe to unread count stream
-    add(NotificationsSubscribeUnreadCountStream());
+    // NOTE: Removed automatic subscription to unread-count stream here.
+    // The unread count is only subscribed to explicitly (e.g. from FeedPage)
+    // by dispatching NotificationsSubscribeUnreadCountStream().
   }
 
   /// Handles subscribing to the unread count stream.
@@ -224,6 +225,10 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
           final currentState = state as NotificationsLoaded;
           emit(currentState.copyWith(unreadCount: count));
         } else if (state is! NotificationsError) {
+          // Keep the existing behaviour of emitting a loaded-ish state so
+          // other UI (e.g. notification badge in feed) can read unreadCount.
+          // Because pages that show the notifications list (NotificationsPage)
+          // no longer auto-subscribe to this stream, they won't be affected.
           emit(NotificationsLoaded(notifications: [], unreadCount: count));
         }
       },

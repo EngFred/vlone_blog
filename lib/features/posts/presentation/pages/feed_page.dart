@@ -52,14 +52,17 @@ class _FeedPageState extends State<FeedPage>
   void _subscribeNotifications() {
     if (!_notificationsSubscribed && mounted) {
       try {
-        context.read<NotificationsBloc>().add(NotificationsSubscribeStream());
+        context.read<NotificationsBloc>().add(
+          NotificationsSubscribeUnreadCountStream(),
+        );
+        _notificationsSubscribed = true;
         _notificationsSubscribed = true;
         AppLogger.info(
-          'Dispatched NotificationsSubscribeStream from FeedPage.',
+          'Dispatched NotificationsSubscribeUnreadCountStream from FeedPage.',
         );
       } catch (e) {
         AppLogger.error(
-          'Failed to dispatch NotificationsSubscribeStream: $e',
+          'Failed to dispatch NotificationsSubscribeUnreadCountStream: $e',
           error: e,
         );
       }
@@ -108,9 +111,7 @@ class _FeedPageState extends State<FeedPage>
     if (currentUserId == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final postsState = context.watch<PostsBloc>().state;
-    final bool realtimeActive =
-        postsState is FeedLoaded && postsState.isRealtimeActive;
+
     return Scaffold(
       appBar: AppBar(
         title: const UserGreetingTitle(),
@@ -119,30 +120,7 @@ class _FeedPageState extends State<FeedPage>
         iconTheme: IconThemeData(
           color: Theme.of(context).colorScheme.onSurface,
         ),
-        actions: [
-          const NotificationIconWithBadge(),
-          if (realtimeActive)
-            Padding(
-              padding: const EdgeInsets.only(right: 16.0),
-              child: Center(
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: Colors.green,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.green.withOpacity(0.5),
-                        blurRadius: 4,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
+        actions: [const NotificationIconWithBadge()],
       ),
       body: MultiBlocListener(
         listeners: [

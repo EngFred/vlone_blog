@@ -21,20 +21,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
     // Ensure the bloc is subscribed to streams when the page is first opened
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final bloc = context.read<NotificationsBloc>();
-      final currentState = bloc.state;
 
-      // If the bloc is still in initial state, it means streams weren't started yet
-      // This shouldn't normally happen since FeedPage starts them, but it's a safeguard
-      if (currentState is NotificationsInitial) {
-        AppLogger.info(
-          'NotificationsPage: Bloc in initial state, subscribing to streams',
-        );
-        bloc.add(NotificationsSubscribeStream());
-      } else {
-        AppLogger.info(
-          'NotificationsPage: Bloc already subscribed (state: ${currentState.runtimeType})',
-        );
-      }
+      // Subscribe to the notifications batch stream only.
+      AppLogger.info(
+        'NotificationsPage: Subscribing to full NotificationsStream.',
+      );
+      bloc.add(NotificationsSubscribeStream());
     });
   }
 
@@ -109,8 +101,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
               else
                 BlocBuilder<NotificationsBloc, NotificationsState>(
                   builder: (context, state) {
+                    // NOTE: compute "can mark all" from the actual notifications list
+                    // rather than relying on a separate unreadCount stream.
                     final bool canMarkAll =
-                        state is NotificationsLoaded && state.unreadCount > 0;
+                        state is NotificationsLoaded &&
+                        state.notifications.any((n) => !n.isRead);
                     return TextButton(
                       onPressed: canMarkAll
                           ? () => context.read<NotificationsBloc>().add(
@@ -151,6 +146,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   }
 
                   if (state is NotificationsLoaded) {
+                    // Check the list of notifications itself, not just the state type
                     if (state.notifications.isEmpty) {
                       return const EmptyStateWidget(
                         message: 'You have no notifications yet.',

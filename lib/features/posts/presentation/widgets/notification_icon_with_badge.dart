@@ -27,8 +27,9 @@ class NotificationIconWithBadge extends StatelessWidget {
 
         return Padding(
           padding: const EdgeInsets.only(
-            right: 4.0,
-          ), // Adjust padding for a better look in AppBar
+            right:
+                16.0, // <--- UPDATED: Increased this value for more right-side space
+          ),
           child: InkWell(
             borderRadius: BorderRadius.circular(24),
             onTap: () {
