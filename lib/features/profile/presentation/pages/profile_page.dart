@@ -407,8 +407,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         }
                       } else if (state is UserPostsError) {
                         if (state.profileUserId != null &&
-                            state.profileUserId != _currentUserId)
+                            state.profileUserId != _currentUserId) {
                           return; // Ignore foreign user errors
+                        }
                         if (mounted) {
                           setState(() {
                             _userPostsError = state.message;
@@ -417,8 +418,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         }
                       } else if (state is UserPostsLoading) {
                         if (state.profileUserId != null &&
-                            state.profileUserId != _currentUserId)
+                            state.profileUserId != _currentUserId) {
                           return; // Ignore foreign user loading
+                        }
                         if (mounted) {
                           // This state should set loading, but we already set it in _initializeProfile
                           // to handle the initial load race condition. We keep this to catch subsequent loading states.
