@@ -14,13 +14,15 @@ class UsersRepositoryImpl implements UsersRepository {
   Future<Either<Failure, List<UserListEntity>>> getPaginatedUsers({
     required String currentUserId,
     int pageSize = 20,
-    int pageOffset = 0,
+    DateTime? lastCreatedAt,
+    String? lastId,
   }) async {
     try {
       final userModels = await remoteDataSource.getPaginatedUsers(
         currentUserId: currentUserId,
         pageSize: pageSize,
-        pageOffset: pageOffset,
+        lastCreatedAt: lastCreatedAt,
+        lastId: lastId,
       );
       return Right(userModels.map((model) => model.toEntity()).toList());
     } on ServerException catch (e) {

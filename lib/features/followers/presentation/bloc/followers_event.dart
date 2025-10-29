@@ -25,21 +25,51 @@ class FollowUserEvent extends FollowersEvent {
 class GetFollowersEvent extends FollowersEvent {
   final String userId;
   final String? currentUserId;
+  final int pageSize;
+  final DateTime? lastCreatedAt;
+  final String? lastId;
 
-  const GetFollowersEvent({required this.userId, this.currentUserId});
+  const GetFollowersEvent({
+    required this.userId,
+    this.currentUserId,
+    this.pageSize = FollowersBloc.defaultPageSize,
+    this.lastCreatedAt,
+    this.lastId,
+  });
 
   @override
-  List<Object?> get props => [userId, currentUserId];
+  List<Object?> get props => [
+    userId,
+    currentUserId,
+    pageSize,
+    lastCreatedAt,
+    lastId,
+  ];
 }
 
 class GetFollowingEvent extends FollowersEvent {
   final String userId;
   final String? currentUserId;
+  final int pageSize;
+  final DateTime? lastCreatedAt;
+  final String? lastId;
 
-  const GetFollowingEvent({required this.userId, this.currentUserId});
+  const GetFollowingEvent({
+    required this.userId,
+    this.currentUserId,
+    this.pageSize = FollowersBloc.defaultPageSize,
+    this.lastCreatedAt,
+    this.lastId,
+  });
 
   @override
-  List<Object?> get props => [userId, currentUserId];
+  List<Object?> get props => [
+    userId,
+    currentUserId,
+    pageSize,
+    lastCreatedAt,
+    lastId,
+  ];
 }
 
 class GetFollowStatusEvent extends FollowersEvent {

@@ -97,13 +97,7 @@ class _UsersPageState extends State<UsersPage> {
         title: const Text('Users'),
         centerTitle: false,
         backgroundColor: Theme.of(context).colorScheme.surface,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _onRefresh,
-            tooltip: 'Refresh',
-          ),
-        ],
+        // The 'actions' array containing the IconButton has been removed
       ),
       body: RefreshIndicator(
         onRefresh: () async => _onRefresh(),
@@ -148,20 +142,12 @@ class _UsersPageState extends State<UsersPage> {
           ],
           child: BlocBuilder<UsersBloc, UsersState>(
             builder: (context, state) {
-              // Show loading on initial or loading state
+              // 1. Initial/Loading
               if (state is UsersLoading || state is UsersInitial) {
                 return const Center(child: LoadingIndicator());
               }
 
-              // If we have UsersLoaded but list is empty -> show empty state
-              if (state is UsersLoaded && state.users.isEmpty) {
-                return const EmptyStateWidget(
-                  message: 'No users found yet.',
-                  icon: Icons.people_outline,
-                );
-              }
-
-              // If UsersError -> show error UI with retry
+              // 2. Initial Error
               if (state is UsersError) {
                 return CustomErrorWidget(
                   message: 'Failed to load users:\n${state.message}',
@@ -169,17 +155,31 @@ class _UsersPageState extends State<UsersPage> {
                 );
               }
 
-              // If UsersLoadMoreError -> show partial list with error for more
+              // 3. Load More Error (Show partial list with error footer)
               if (state is UsersLoadMoreError) {
+                // `hasMore` is implied true here because we were trying to load more
                 return _buildListView(state.currentUsers, true, state.message);
               }
 
-              // Otherwise show list (use bloc state)
-              return _buildListView(
-                (state as UsersLoaded).users,
-                state.hasMore,
-                null,
-              );
+              // 4. Loading More (Show partial list with loading footer)
+              if (state is UsersLoadingMore) {
+                // `hasMore` is true while loading more
+                return _buildListView(state.currentUsers, true, null);
+              }
+
+              // 5. Loaded (Final state, show full list)
+              if (state is UsersLoaded) {
+                if (state.users.isEmpty) {
+                  return const EmptyStateWidget(
+                    message: 'No users found yet.',
+                    icon: Icons.people_outline,
+                  );
+                }
+                return _buildListView(state.users, state.hasMore, null);
+              }
+
+              // Fallback for unhandled states
+              return const SizedBox.shrink();
             },
           ),
         ),
@@ -194,10 +194,11 @@ class _UsersPageState extends State<UsersPage> {
   ) {
     return ListView.separated(
       controller: _scrollController,
+      // itemCount calculation now correctly relies on `hasMore` argument
       itemCount: users.length + (hasMore ? 1 : 0),
       separatorBuilder: (_, __) => const Divider(height: 1),
       itemBuilder: (context, index) {
-        // Load more footer
+        // Load more footer (index == users.length only when hasMore is true)
         if (index == users.length) {
           if (loadMoreError != null) {
             return ListTile(
@@ -210,6 +211,7 @@ class _UsersPageState extends State<UsersPage> {
               ),
             );
           }
+          // Display loading indicator if no error and hasMore is true
           return const Padding(
             padding: EdgeInsets.all(16.0),
             child: Center(child: LoadingIndicator()),

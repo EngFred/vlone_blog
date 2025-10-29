@@ -20,11 +20,25 @@ class FollowersLoaded extends FollowersState {
   List<Object> get props => [users];
 }
 
+class FollowersMoreLoaded extends FollowersState {
+  final List<UserListEntity> users;
+  const FollowersMoreLoaded(this.users);
+  @override
+  List<Object> get props => [users];
+}
+
 class FollowingLoaded extends FollowersState {
   final List<UserListEntity> users;
 
   const FollowingLoaded(this.users);
 
+  @override
+  List<Object> get props => [users];
+}
+
+class FollowingMoreLoaded extends FollowersState {
+  final List<UserListEntity> users;
+  const FollowingMoreLoaded(this.users);
   @override
   List<Object> get props => [users];
 }

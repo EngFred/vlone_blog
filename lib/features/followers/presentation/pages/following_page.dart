@@ -25,19 +25,71 @@ class _FollowingPageState extends State<FollowingPage> {
   bool _isInitialLoad = true;
   final Set<String> _loadingUserIds = {};
 
+  // --- Pagination State ---
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoadingMore = false;
+  bool _hasNextPage = true;
+  final int _pageSize = FollowersBloc.defaultPageSize;
+  // ------------------------
+
   @override
   void initState() {
     super.initState();
     AppLogger.info('Initializing FollowingPage for user: ${widget.userId}');
+
+    // Add scroll listener
+    _scrollController.addListener(_onScroll);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authState = context.read<AuthBloc>().state;
       if (authState is AuthAuthenticated) {
         _currentUserId = authState.user.id;
       }
-      context.read<FollowersBloc>().add(
-        GetFollowingEvent(userId: widget.userId, currentUserId: _currentUserId),
-      );
+      _fetchInitialFollowing();
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _fetchInitialFollowing() {
+    context.read<FollowersBloc>().add(
+      GetFollowingEvent(
+        userId: widget.userId,
+        currentUserId: _currentUserId,
+        pageSize: _pageSize,
+      ),
+    );
+  }
+
+  void _onScroll() {
+    // Check if we are at the bottom and not already loading
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent * 0.9 &&
+        !_isLoadingMore &&
+        _hasNextPage &&
+        _users.isNotEmpty) {
+      AppLogger.info('Fetching more following...');
+      setState(() {
+        _isLoadingMore = true;
+      });
+
+      final lastUser = _users.last;
+      context.read<FollowersBloc>().add(
+        GetFollowingEvent(
+          userId: widget.userId,
+          currentUserId: _currentUserId,
+          pageSize: _pageSize,
+          lastCreatedAt:
+              lastUser.createdAt, // Assumes UserListEntity has createdAt
+          lastId: lastUser.id,
+        ),
+      );
+    }
   }
 
   void _handleFollowUpdate(String followedUserId, bool nowFollowing) {
@@ -56,10 +108,12 @@ class _FollowingPageState extends State<FollowingPage> {
     AppLogger.info('Retrying following load for user: ${widget.userId}');
     setState(() {
       _isInitialLoad = true;
+      // Reset pagination state
+      _users = [];
+      _hasNextPage = true;
+      _isLoadingMore = false;
     });
-    context.read<FollowersBloc>().add(
-      GetFollowingEvent(userId: widget.userId, currentUserId: _currentUserId),
-    );
+    _fetchInitialFollowing();
   }
 
   @override
@@ -83,12 +137,7 @@ class _FollowingPageState extends State<FollowingPage> {
                 );
                 if (_currentUserId == null) {
                   _currentUserId = state.user.id;
-                  context.read<FollowersBloc>().add(
-                    GetFollowingEvent(
-                      userId: widget.userId,
-                      currentUserId: _currentUserId,
-                    ),
-                  );
+                  _retryFetch(); // Use retryFetch to reset state
                 }
               }
             },
@@ -118,39 +167,83 @@ class _FollowingPageState extends State<FollowingPage> {
         child: BlocConsumer<FollowersBloc, FollowersState>(
           listener: (context, state) {
             if (state is FollowingLoaded) {
+              // --- Initial Load ---
               AppLogger.info(
-                'Following loaded with ${state.users.length} users for user: ${widget.userId}',
+                'Initial following loaded with ${state.users.length} users for user: ${widget.userId}',
               );
               setState(() {
                 _users = state.users;
                 _isInitialLoad = false;
+                _isLoadingMore = false;
+                // Check if this page is full
+                _hasNextPage = state.users.length == _pageSize;
               });
-            } else if (state is FollowersError && _isInitialLoad) {
-              AppLogger.error('Following load failed: ${state.message}');
+            } else if (state is FollowingMoreLoaded) {
+              // --- Paginated Load ---
+              AppLogger.info(
+                'More following loaded with ${state.users.length} users',
+              );
               setState(() {
-                _isInitialLoad = false;
+                _users.addAll(state.users);
+                _isLoadingMore = false;
+                // Check if this page is full
+                _hasNextPage = state.users.length == _pageSize;
               });
-              SnackbarUtils.showError(context, state.message);
+            } else if (state is FollowersError) {
+              AppLogger.error('Following load failed: ${state.message}');
+              if (_isInitialLoad) {
+                // --- Initial Load Error ---
+                setState(() {
+                  _isInitialLoad = false;
+                });
+                SnackbarUtils.showError(context, state.message);
+              } else if (_isLoadingMore) {
+                // --- Paginated Load Error ---
+                setState(() {
+                  _isLoadingMore = false;
+                  // Don't set _hasNextPage to false, allow user to retry by scrolling
+                });
+                SnackbarUtils.showError(
+                  context,
+                  'Failed to load more users: ${state.message}',
+                );
+              }
             }
           },
           builder: (context, state) {
             if (state is FollowersLoading && _isInitialLoad) {
               return const Center(child: LoadingIndicator());
-            } else if (state is FollowersError && _users.isEmpty) {
+            } else if (state is FollowersError &&
+                _users.isEmpty &&
+                !_isLoadingMore) {
               return CustomErrorWidget(
                 message: state.message,
                 onRetry: _retryFetch,
               );
-            } else if (_users.isEmpty && !_isInitialLoad) {
+            } else if (_users.isEmpty && !_isInitialLoad && !_isLoadingMore) {
               return const EmptyStateWidget(
                 message: 'Not following anyone yet.',
                 icon: Icons.people_outline,
               );
             }
+
+            // --- Updated ListView ---
             return ListView.separated(
-              itemCount: _users.length,
+              controller: _scrollController,
+              // Add 1 to item count for the loading indicator if we are loading more
+              itemCount: _users.length + (_isLoadingMore ? 1 : 0),
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (context, index) {
+                // --- Show loading indicator at the bottom ---
+                if (index == _users.length) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: LoadingIndicator(),
+                    ),
+                  );
+                }
+
                 final user = _users[index];
                 return UserListItem(
                   user: user,

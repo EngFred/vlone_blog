@@ -6,7 +6,8 @@ abstract class UsersRepository {
   Future<Either<Failure, List<UserListEntity>>> getPaginatedUsers({
     required String currentUserId,
     int pageSize = 20,
-    int pageOffset = 0,
+    DateTime? lastCreatedAt,
+    String? lastId,
   });
   Stream<Either<Failure, UserListEntity>> streamNewUsers(String currentUserId);
 }

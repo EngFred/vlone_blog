@@ -12,10 +12,11 @@ class UsersRemoteDataSource {
   Future<List<UserListModel>> getPaginatedUsers({
     required String currentUserId,
     int pageSize = 20,
-    int pageOffset = 0,
+    DateTime? lastCreatedAt,
+    String? lastId,
   }) async {
     AppLogger.info(
-      'Fetching paginated users via RPC for: $currentUserId (offset: $pageOffset, size: $pageSize)',
+      'Fetching paginated users via RPC for: $currentUserId (size: $pageSize, lastCreatedAt: $lastCreatedAt)',
     );
     try {
       final response = await client.rpc(
@@ -23,7 +24,9 @@ class UsersRemoteDataSource {
         params: {
           'current_user_id_input': currentUserId,
           'page_size': pageSize,
-          'page_offset': pageOffset,
+          if (lastCreatedAt != null)
+            'last_created_at': lastCreatedAt.toIso8601String(),
+          if (lastId != null) 'last_id': lastId,
         },
       );
       if (response == null) {
@@ -38,6 +41,7 @@ class UsersRemoteDataSource {
       AppLogger.info('Fetched ${users.length} users via RPC');
       return users;
     } catch (e, stackTrace) {
+      // ... existing error handling ...
       AppLogger.error(
         'Failed to fetch paginated users via RPC: $e',
         error: e,
@@ -50,7 +54,7 @@ class UsersRemoteDataSource {
     }
   }
 
-  // NEW: Stream for new profile inserts (new users)
+  //Stream for new profile inserts (new users)
   Stream<UserListModel> streamNewUsers(String currentUserId) {
     AppLogger.info(
       'Setting up real-time stream for new users (profiles inserts)',

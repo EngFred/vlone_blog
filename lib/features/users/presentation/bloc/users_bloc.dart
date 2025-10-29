@@ -13,8 +13,9 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
   final GetPaginatedUsersUseCase getPaginatedUsersUseCase;
   final RealtimeService _realtimeService = di.sl<RealtimeService>();
 
-  // Pagination state
-  int _currentOffset = 0;
+  DateTime? _lastCreatedAt;
+  String? _lastId;
+
   static const int _pageSize = 20;
   bool _hasMore = true;
   String? _currentUserId;
@@ -24,9 +25,8 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     on<LoadMoreUsersEvent>(_onLoadMoreUsers);
     on<RefreshUsersEvent>(_onRefreshUsers);
     on<UpdateUserFollowStatusEvent>(_onUpdateUserFollowStatus);
-    on<_NewUserEvent>(_onNewUser); // Internal event for real-time new users
+    on<_NewUserEvent>(_onNewUser);
 
-    // Listen to real-time new users from RealtimeService
     _realtimeService.onNewUser.listen((user) {
       add(_NewUserEvent(user));
     });
@@ -37,7 +37,7 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     Emitter<UsersState> emit,
   ) async {
     _currentUserId = event.currentUserId;
-    if (_currentOffset != 0) return; // Initial load only
+    // Removed the offset check, always load on initial event
     emit(UsersLoading());
     await _fetchUsers(emit, isRefresh: true);
   }
@@ -46,9 +46,13 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     LoadMoreUsersEvent event,
     Emitter<UsersState> emit,
   ) async {
-    if (_currentUserId == null || !_hasMore || state is UsersLoadingMore)
+    if (_currentUserId == null || !_hasMore || state is UsersLoadingMore) {
       return;
-    emit(UsersLoadingMore());
+    }
+    final currentUsers = state is UsersLoaded
+        ? (state as UsersLoaded).users
+        : <UserListEntity>[];
+    emit(UsersLoadingMore(currentUsers));
     await _fetchUsers(emit, isRefresh: false);
   }
 
@@ -57,7 +61,9 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     Emitter<UsersState> emit,
   ) async {
     _currentUserId = event.currentUserId;
-    _currentOffset = 0;
+    // Reset cursor state for refresh
+    _lastCreatedAt = null;
+    _lastId = null;
     _hasMore = true;
     emit(UsersLoading());
     await _fetchUsers(emit, isRefresh: true);
@@ -67,12 +73,13 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     UpdateUserFollowStatusEvent event,
     Emitter<UsersState> emit,
   ) {
-    if (state is! UsersLoaded) return;
-    final currentState = state as UsersLoaded;
+    final currentState = state;
+    if (currentState is! UsersLoaded) return;
+
     final index = currentState.users.indexWhere(
       (user) => user.id == event.userId,
     );
-    if (index == -1) return; // User not in list
+    if (index == -1) return;
 
     final updatedUsers = List<UserListEntity>.from(currentState.users);
     updatedUsers[index] = updatedUsers[index].copyWith(
@@ -89,39 +96,60 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
       emit(UsersError('User not authenticated'));
       return;
     }
+
+    // Determine the cursor to pass (null on refresh, current state otherwise)
+    final DateTime? cursorCreatedAt = isRefresh ? null : _lastCreatedAt;
+    final String? cursorId = isRefresh ? null : _lastId;
+
     final result = await getPaginatedUsersUseCase(
       GetPaginatedUsersParams(
         currentUserId: _currentUserId!,
         pageSize: _pageSize,
-        pageOffset: _currentOffset,
+        // Pass the cursor keys
+        lastCreatedAt: cursorCreatedAt,
+        lastId: cursorId,
       ),
     );
+
     result.fold(
       (failure) {
+        final errorMessage = ErrorMessageMapper.getErrorMessage(failure);
         if (isRefresh) {
-          emit(UsersError(ErrorMessageMapper.getErrorMessage(failure)));
+          emit(UsersError(errorMessage));
         } else {
-          emit(
-            UsersLoadMoreError(
-              ErrorMessageMapper.getErrorMessage(failure),
-              currentUsers: state is UsersLoaded
-                  ? (state as UsersLoaded).users
-                  : [],
-            ),
-          );
+          final currentUsers = state is UsersLoaded
+              ? (state as UsersLoaded).users
+              : (state is UsersLoadingMore
+                    ? (state as UsersLoadingMore).currentUsers
+                    : <UserListEntity>[]);
+          emit(UsersLoadMoreError(errorMessage, currentUsers: currentUsers));
         }
       },
       (newUsers) {
-        final updatedUsers =
-            isRefresh
-                  ? newUsers
-                  : (state is UsersLoaded
-                        ? List<UserListEntity>.from(
-                            (state as UsersLoaded).users,
-                          )
-                        : <UserListEntity>[])
-              ..addAll(newUsers);
-        _currentOffset += _pageSize;
+        final List<UserListEntity> updatedUsers;
+
+        if (isRefresh) {
+          // On refresh, the new list *is* the updated list
+          updatedUsers = newUsers;
+        } else {
+          // On load more, append new users to current list
+          final currentUsers = state is UsersLoaded
+              ? (state as UsersLoaded).users
+              : (state is UsersLoadingMore
+                    ? (state as UsersLoadingMore).currentUsers
+                    : <UserListEntity>[]);
+
+          updatedUsers = List<UserListEntity>.from(currentUsers)
+            ..addAll(newUsers);
+        }
+
+        // <<-- UPDATE CURSOR STATE FOR NEXT PAGE -->>
+        if (newUsers.isNotEmpty) {
+          final lastUser = newUsers.last;
+          _lastCreatedAt = lastUser.createdAt;
+          _lastId = lastUser.id;
+        }
+
         _hasMore = newUsers.length == _pageSize;
         emit(UsersLoaded(updatedUsers, hasMore: _hasMore));
       },
@@ -133,16 +161,17 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     if (currentState is UsersLoaded &&
         _currentUserId != null &&
         event.user.id != _currentUserId) {
-      // Prepend new user (assuming recency order) and exclude self
-      final updatedUsers = [event.user, ...currentState.users];
-      emit(UsersLoaded(updatedUsers, hasMore: currentState.hasMore));
+      final userExists = currentState.users.any((u) => u.id == event.user.id);
+      if (!userExists) {
+        final updatedUsers = [event.user, ...currentState.users];
+        emit(UsersLoaded(updatedUsers, hasMore: currentState.hasMore));
+      }
     }
   }
 
   @override
   Future<void> close() {
-    _realtimeService
-        .dispose(); // If needed; assuming it handles its own cleanup
+    _realtimeService.dispose();
     return super.close();
   }
 }

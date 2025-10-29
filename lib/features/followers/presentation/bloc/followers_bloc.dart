@@ -16,6 +16,9 @@ class FollowersBloc extends Bloc<FollowersEvent, FollowersState> {
   final GetFollowingUseCase getFollowingUseCase;
   final GetFollowStatusUseCase getFollowStatusUseCase;
 
+  // Define a default page size
+  static const int defaultPageSize = 20;
+
   FollowersBloc({
     required this.followUserUseCase,
     required this.getFollowersUseCase,
@@ -23,7 +26,8 @@ class FollowersBloc extends Bloc<FollowersEvent, FollowersState> {
     required this.getFollowStatusUseCase,
   }) : super(FollowersInitial()) {
     on<FollowUserEvent>((event, emit) async {
-      emit(FollowersLoading());
+      // Note: We don't emit FollowersLoading() here for a better UX
+      // The UI will show a loader on the specific UserListItem
       final result = await followUserUseCase(
         FollowUserParams(
           followerId: event.followerId,
@@ -39,32 +43,66 @@ class FollowersBloc extends Bloc<FollowersEvent, FollowersState> {
     });
 
     on<GetFollowersEvent>((event, emit) async {
-      emit(FollowersLoading());
+      final bool isInitialLoad = event.lastCreatedAt == null;
+
+      // Only emit full-screen loading for the initial load
+      if (isInitialLoad) {
+        emit(FollowersLoading());
+      }
+
       final result = await getFollowersUseCase(
         GetFollowersParams(
           userId: event.userId,
           currentUserId: event.currentUserId,
+          pageSize: event.pageSize,
+          lastCreatedAt: event.lastCreatedAt,
+          lastId: event.lastId,
         ),
       );
+
       result.fold(
         (failure) =>
             emit(FollowersError(ErrorMessageMapper.getErrorMessage(failure))),
-        (users) => emit(FollowersLoaded(users)),
+        (users) {
+          // Emit different states for initial load vs. pagination
+          if (isInitialLoad) {
+            emit(FollowersLoaded(users));
+          } else {
+            emit(FollowersMoreLoaded(users));
+          }
+        },
       );
     });
 
     on<GetFollowingEvent>((event, emit) async {
-      emit(FollowersLoading());
+      final bool isInitialLoad = event.lastCreatedAt == null;
+
+      // Only emit full-screen loading for the initial load
+      if (isInitialLoad) {
+        emit(FollowersLoading());
+      }
+
       final result = await getFollowingUseCase(
         GetFollowingParams(
           userId: event.userId,
           currentUserId: event.currentUserId,
+          pageSize: event.pageSize,
+          lastCreatedAt: event.lastCreatedAt,
+          lastId: event.lastId,
         ),
       );
+
       result.fold(
         (failure) =>
             emit(FollowersError(ErrorMessageMapper.getErrorMessage(failure))),
-        (users) => emit(FollowingLoaded(users)),
+        (users) {
+          // Emit different states for initial load vs. pagination
+          if (isInitialLoad) {
+            emit(FollowingLoaded(users));
+          } else {
+            emit(FollowingMoreLoaded(users));
+          }
+        },
       );
     });
 

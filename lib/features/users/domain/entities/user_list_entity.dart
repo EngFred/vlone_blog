@@ -6,6 +6,7 @@ class UserListEntity extends Equatable {
   final String? bio;
   final String? profileImageUrl;
   final bool isFollowing;
+  final DateTime createdAt;
 
   const UserListEntity({
     required this.id,
@@ -13,6 +14,7 @@ class UserListEntity extends Equatable {
     this.bio,
     this.profileImageUrl,
     required this.isFollowing,
+    required this.createdAt,
   });
 
   UserListEntity copyWith({
@@ -21,6 +23,7 @@ class UserListEntity extends Equatable {
     String? bio,
     String? profileImageUrl,
     bool? isFollowing,
+    DateTime? createdAt,
   }) {
     return UserListEntity(
       id: id ?? this.id,
@@ -28,9 +31,17 @@ class UserListEntity extends Equatable {
       bio: bio ?? this.bio,
       profileImageUrl: profileImageUrl ?? this.profileImageUrl,
       isFollowing: isFollowing ?? this.isFollowing,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 
   @override
-  List<Object?> get props => [id, username, bio, profileImageUrl, isFollowing];
+  List<Object?> get props => [
+    id,
+    username,
+    bio,
+    profileImageUrl,
+    isFollowing,
+    createdAt,
+  ];
 }
