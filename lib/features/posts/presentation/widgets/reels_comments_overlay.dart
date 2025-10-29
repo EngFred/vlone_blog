@@ -306,6 +306,9 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                                 horizontal: 0.0,
                               ),
                               child: CommentsSection(
+                                postId: widget
+                                    .post
+                                    .id, // FIX: Added required postId param (from widget.post.id).
                                 commentsCount: null,
                                 showCountHeader: false,
                                 onReply: (comment) {

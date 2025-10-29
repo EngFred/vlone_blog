@@ -21,13 +21,22 @@ abstract class PostsRepository {
   });
   Future<Either<Failure, List<PostEntity>>> getFeed({
     required String currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   });
   Future<Either<Failure, List<PostEntity>>> getReels({
     required String currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   });
   Future<Either<Failure, List<PostEntity>>> getUserPosts({
     required String profileUserId,
     required String currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   });
 
   // Action

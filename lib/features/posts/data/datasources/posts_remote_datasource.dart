@@ -62,7 +62,7 @@ class PostsRemoteDataSource {
               'createPost: compression skipped or no size reduction; using original',
             );
           }
-        } catch (e, st) {
+        } catch (e) {
           AppLogger.warning(
             'createPost: compression failed, proceeding with original file: $e',
           );
@@ -259,14 +259,27 @@ class PostsRemoteDataSource {
   // ==================== RPC for Feed Retrieval ====================
 
   /// Fetches the main feed using the `get_feed_with_user_status` RPC for efficiency.
-  Future<List<PostModel>> getFeed({required String currentUserId}) async {
+  Future<List<PostModel>> getFeed({
+    required String currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
+  }) async {
     try {
-      AppLogger.info('Fetching feed via RPC for user: $currentUserId');
+      AppLogger.info(
+        'Fetching feed via RPC for user: $currentUserId with pagination: pageSize=$pageSize, lastCreatedAt=$lastCreatedAt, lastId=$lastId',
+      );
 
-      // Call the consolidated Postgres function
+      // Call the consolidated Postgres function with pagination params
       final response = await _callRpcWithRetry(
         'get_feed_with_user_status',
-        params: {'current_user_id': currentUserId},
+        params: {
+          'current_user_id': currentUserId,
+          'page_size': pageSize,
+          if (lastCreatedAt != null)
+            'last_created_at': lastCreatedAt.toIso8601String(),
+          if (lastId != null) 'last_id': lastId,
+        },
       );
 
       final rows = _normalizeRpcList(response);
@@ -287,13 +300,27 @@ class PostsRemoteDataSource {
   }
 
   /// Fetches Reels (video posts) using the optimized `get_posts_with_user_status` RPC.
-  Future<List<PostModel>> getReels({required String currentUserId}) async {
+  Future<List<PostModel>> getReels({
+    required String currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
+  }) async {
     try {
-      AppLogger.info('Fetching reels (video posts) via RPC');
+      AppLogger.info(
+        'Fetching reels (video posts) via RPC with pagination: pageSize=$pageSize, lastCreatedAt=$lastCreatedAt, lastId=$lastId',
+      );
 
       final response = await _callRpcWithRetry(
         'get_posts_with_user_status',
-        params: {'p_current_user_id': currentUserId, 'p_media_type': 'video'},
+        params: {
+          'p_current_user_id': currentUserId,
+          'p_media_type': 'video',
+          'page_size': pageSize,
+          if (lastCreatedAt != null)
+            'last_created_at': lastCreatedAt.toIso8601String(),
+          if (lastId != null) 'last_id': lastId,
+        },
       );
 
       final rows = _normalizeRpcList(response);
@@ -314,15 +341,24 @@ class PostsRemoteDataSource {
   Future<List<PostModel>> getUserPosts({
     required String profileUserId,
     required String currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   }) async {
     try {
-      AppLogger.info('Fetching user posts for $profileUserId via RPC');
+      AppLogger.info(
+        'Fetching user posts for $profileUserId via RPC with pagination: pageSize=$pageSize, lastCreatedAt=$lastCreatedAt, lastId=$lastId',
+      );
 
       final response = await _callRpcWithRetry(
         'get_posts_with_user_status',
         params: {
           'p_current_user_id': currentUserId,
           'p_post_user_id': profileUserId,
+          'page_size': pageSize,
+          if (lastCreatedAt != null)
+            'last_created_at': lastCreatedAt.toIso8601String(),
+          if (lastId != null) 'last_id': lastId,
         },
       );
 

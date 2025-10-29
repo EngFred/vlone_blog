@@ -87,4 +87,23 @@ class NotificationModel extends NotificationEntity {
       'metadata': metadata,
     };
   }
+
+  /// Converts this [NotificationModel] to a pure [NotificationEntity] (without data-layer `readAt`).
+  NotificationEntity toEntity() {
+    return NotificationEntity(
+      id: id,
+      recipientId: recipientId,
+      actorId: actorId,
+      type: type,
+      createdAt: createdAt,
+      actorUsername: actorUsername,
+      actorAvatarUrl: actorAvatarUrl,
+      postId: postId,
+      content: content,
+      isRead: readAt != null, // Derive from readAt
+      commentId: commentId,
+      parentCommentId: parentCommentId,
+      metadata: metadata,
+    );
+  }
 }

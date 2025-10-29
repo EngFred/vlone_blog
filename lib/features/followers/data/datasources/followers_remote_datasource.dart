@@ -60,14 +60,23 @@ class FollowersRemoteDataSource {
   Future<List<UserListModel>> getFollowers({
     required String userId,
     String? currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   }) async {
-    AppLogger.info('Fetching followers for user: $userId');
+    AppLogger.info(
+      'Fetching followers for user: $userId with pagination: pageSize=$pageSize, lastCreatedAt=$lastCreatedAt, lastId=$lastId',
+    );
     try {
       final response = await client.rpc(
         'get_followers_with_follow_status',
         params: {
-          'current_user_id_input': currentUserId,
           'target_user_id': userId,
+          'current_user_id_input': currentUserId,
+          'page_size': pageSize,
+          if (lastCreatedAt != null)
+            'last_created_at': lastCreatedAt.toIso8601String(),
+          if (lastId != null) 'last_id': lastId,
         },
       );
 
@@ -93,14 +102,23 @@ class FollowersRemoteDataSource {
   Future<List<UserListModel>> getFollowing({
     required String userId,
     String? currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   }) async {
-    AppLogger.info('Fetching following for user: $userId');
+    AppLogger.info(
+      'Fetching following for user: $userId with pagination: pageSize=$pageSize, lastCreatedAt=$lastCreatedAt, lastId=$lastId',
+    );
     try {
       final response = await client.rpc(
         'get_following_with_follow_status',
         params: {
-          'current_user_id_input': currentUserId,
           'target_user_id': userId,
+          'current_user_id_input': currentUserId,
+          'page_size': pageSize,
+          if (lastCreatedAt != null)
+            'last_created_at': lastCreatedAt.toIso8601String(),
+          if (lastId != null) 'last_id': lastId,
         },
       );
 

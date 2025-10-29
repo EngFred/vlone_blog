@@ -409,6 +409,8 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                                       commentKeys: _commentKeys,
                                       highlightedCommentId:
                                           _highlightedCommentId,
+                                      postId: widget
+                                          .postId, // FIX: Added required postId param.
                                     ),
                                   ),
                                 ],

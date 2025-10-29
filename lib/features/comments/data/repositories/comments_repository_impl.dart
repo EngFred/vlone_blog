@@ -32,14 +32,44 @@ class CommentsRepositoryImpl implements CommentsRepository {
   }
 
   @override
-  Future<Either<Failure, List<CommentEntity>>> getComments(
-    String postId,
-  ) async {
+  Future<Either<Failure, List<CommentEntity>>> getInitialComments(
+    String postId, {
+    int pageSize = 20,
+  }) async {
     try {
-      final commentModels = await remoteDataSource.getComments(postId);
+      final commentModels = await remoteDataSource.getComments(
+        postId,
+        pageSize: pageSize,
+      );
       final entities = commentModels.map((model) => model.toEntity()).toList();
       final tree = _buildCommentTree(entities);
       return Right(tree);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
+  Future<Either<Failure, List<CommentEntity>>> loadMoreComments(
+    String postId, {
+    required DateTime lastCreatedAt,
+    required String lastId,
+    int pageSize = 20,
+  }) async {
+    try {
+      final moreModels = await remoteDataSource.getComments(
+        postId,
+        pageSize: pageSize,
+        lastCreatedAt: lastCreatedAt,
+        lastId: lastId,
+      );
+      // CHANGE: Append to stream cache (for realtime consistency), but *return* new models for explicit pagination in Bloc.
+      remoteDataSource.appendMoreComments(postId, moreModels);
+      final newEntities = moreModels.map((model) => model.toEntity()).toList();
+      final newTree = _buildCommentTree(
+        newEntities,
+      ); // Build subtree for new batch
+      return Right(newTree);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }

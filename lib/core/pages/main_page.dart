@@ -12,6 +12,7 @@ import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart'
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart'; // Added for notifications
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -24,7 +25,6 @@ class _MainPageState extends State<MainPage> {
   int _selectedIndex = 0;
   bool _initializedPages = false;
   final Set<int> _loadedTabs = {};
-
   //Helper list for readable log messages
   final List<String> _tabNames = const ['Feed', 'Reels', 'Users', 'Profile'];
 
@@ -32,18 +32,16 @@ class _MainPageState extends State<MainPage> {
   void initState() {
     super.initState();
     AppLogger.info('Initializing MainPage (now auth-driven)');
-    // no direct supabase call here. We will wait for AuthBloc to provide the user.
+    // no direct supabase call here. We can wait for AuthBloc to provide the user.
   }
 
   void _onAuthUpdated(String? userId) {
     if (userId == null) return;
     if (_userId == userId && _initializedPages) return;
-
     setState(() {
       _userId = userId;
       _initializedPages = true;
     });
-
     // sync location and load the default tab once the first frame is available
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncSelectedIndexWithLocation();
@@ -51,6 +49,12 @@ class _MainPageState extends State<MainPage> {
       AppLogger.info(
         'MainPage: Auth updated. Loading initial tab: ${_tabNames[_selectedIndex]}',
       );
+      // Added: Global setups - start realtime listeners and notifications once here
+      context.read<PostsBloc>().add(StartRealtimeListenersEvent(_userId!));
+      context.read<NotificationsBloc>().add(
+        NotificationsSubscribeUnreadCountStream(),
+      );
+      AppLogger.info('Subscribed to notifications and realtime from MainPage');
       _dispatchLoadForIndex(_selectedIndex);
       FlutterNativeSplash.remove(); // in case it wasn't removed yet
     });
@@ -67,12 +71,10 @@ class _MainPageState extends State<MainPage> {
     try {
       final location = GoRouterState.of(context).uri.path;
       final idx = _calculateSelectedIndexFromLocation(location);
-
       // ✅ ADDED: Log for initial sync
       AppLogger.info(
         'Syncing location: $location resolved to tab ${_tabNames[idx]} (index $idx)',
       );
-
       if (mounted && idx != _selectedIndex) {
         setState(() => _selectedIndex = idx);
       }
@@ -83,12 +85,10 @@ class _MainPageState extends State<MainPage> {
 
   void _dispatchLoadForIndex(int index) {
     if (_userId == null) return;
-
     //Made log message more readable
     AppLogger.info(
       'Dispatching load for tab: ${_tabNames[index]} (index $index, user: $_userId)',
     );
-
     switch (index) {
       case 0:
         if (_loadedTabs.contains(0)) return;
@@ -103,9 +103,11 @@ class _MainPageState extends State<MainPage> {
       case 2:
         if (_loadedTabs.contains(2)) return;
         _loadedTabs.add(2);
-        context.read<UsersBloc>().add(GetAllUsersEvent(_userId!));
+        context.read<UsersBloc>().add(GetPaginatedUsersEvent(_userId!));
         break;
       case 3:
+        if (_loadedTabs.contains(3)) return;
+        _loadedTabs.add(3);
         context.read<ProfileBloc>().add(GetProfileDataEvent(_userId!));
         context.read<ProfileBloc>().add(StartProfileRealtimeEvent(_userId!));
         context.read<PostsBloc>().add(
@@ -122,10 +124,8 @@ class _MainPageState extends State<MainPage> {
       AppLogger.warning('Cannot navigate, userId is null');
       return;
     }
-
     //Log for every tap event
     AppLogger.info('Bottom nav tapped: ${_tabNames[index]} (index $index)');
-
     String route;
     switch (index) {
       case 0:
@@ -143,9 +143,7 @@ class _MainPageState extends State<MainPage> {
       default:
         route = Constants.feedRoute;
     }
-
     if (!mounted) return;
-
     if (index != _selectedIndex) {
       // ✅ ADDED: Log for when the tab *changes*
       AppLogger.info('Navigating to tab: ${_tabNames[index]}');
@@ -170,7 +168,6 @@ class _MainPageState extends State<MainPage> {
     if (authState is AuthAuthenticated) {
       _onAuthUpdated(authState.user.id);
     }
-
     // If the auth state changes later, the BlocListener in build will pick it up.
   }
 
@@ -193,7 +190,6 @@ class _MainPageState extends State<MainPage> {
     if (_userId == null || !_initializedPages) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-
     final pages = [
       FeedPage(key: const PageStorageKey('feed_page')),
       ReelsPage(
@@ -203,7 +199,6 @@ class _MainPageState extends State<MainPage> {
       const UsersPage(key: PageStorageKey('users_page')),
       ProfilePage(key: const PageStorageKey('profile_page'), userId: _userId!),
     ];
-
     final bool isReelsPage = _selectedIndex == 1;
     final Color barBackgroundColor = isReelsPage
         ? Colors.black
@@ -211,7 +206,6 @@ class _MainPageState extends State<MainPage> {
     final Color unselectedColor = isReelsPage
         ? Colors.white.withOpacity(0.6)
         : Theme.of(context).colorScheme.onSurface.withOpacity(0.6);
-
     return Scaffold(
       body: IndexedStack(index: _selectedIndex, children: pages),
       bottomNavigationBar: BottomNavigationBar(

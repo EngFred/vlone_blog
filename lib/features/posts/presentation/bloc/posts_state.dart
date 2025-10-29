@@ -35,22 +35,60 @@ class PostCreated extends PostsState {
 
 class FeedLoaded extends PostsState {
   final List<PostEntity> posts;
+  final bool hasMore;
   final bool isRealtimeActive;
 
-  const FeedLoaded(this.posts, {this.isRealtimeActive = false});
+  const FeedLoaded(
+    this.posts, {
+    this.hasMore = true,
+    this.isRealtimeActive = false,
+  });
 
   @override
-  List<Object?> get props => [posts, isRealtimeActive];
+  List<Object?> get props => [posts, hasMore, isRealtimeActive];
+}
+
+class FeedLoadingMore extends PostsState {
+  const FeedLoadingMore();
+}
+
+class FeedLoadMoreError extends PostsState {
+  final String message;
+  final List<PostEntity> currentPosts;
+
+  const FeedLoadMoreError(this.message, {required this.currentPosts});
+
+  @override
+  List<Object?> get props => [message, currentPosts];
 }
 
 class ReelsLoaded extends PostsState {
   final List<PostEntity> posts;
+  final bool hasMore;
   final bool isRealtimeActive;
 
-  const ReelsLoaded(this.posts, {this.isRealtimeActive = false});
+  const ReelsLoaded(
+    this.posts, {
+    this.hasMore = true,
+    this.isRealtimeActive = false,
+  });
 
   @override
-  List<Object?> get props => [posts, isRealtimeActive];
+  List<Object?> get props => [posts, hasMore, isRealtimeActive];
+}
+
+class ReelsLoadingMore extends PostsState {
+  const ReelsLoadingMore();
+}
+
+class ReelsLoadMoreError extends PostsState {
+  final String message;
+  final List<PostEntity> currentPosts;
+
+  const ReelsLoadMoreError(this.message, {required this.currentPosts});
+
+  @override
+  List<Object?> get props => [message, currentPosts];
 }
 
 class UserPostsLoading extends PostsState {
@@ -59,11 +97,26 @@ class UserPostsLoading extends PostsState {
 
 class UserPostsLoaded extends PostsState {
   final List<PostEntity> posts;
+  final bool hasMore;
 
-  const UserPostsLoaded(this.posts);
+  const UserPostsLoaded(this.posts, {this.hasMore = true});
 
   @override
-  List<Object?> get props => [posts];
+  List<Object?> get props => [posts, hasMore];
+}
+
+class UserPostsLoadingMore extends PostsState {
+  const UserPostsLoadingMore();
+}
+
+class UserPostsLoadMoreError extends PostsState {
+  final String message;
+  final List<PostEntity> currentPosts;
+
+  const UserPostsLoadMoreError(this.message, {required this.currentPosts});
+
+  @override
+  List<Object?> get props => [message, currentPosts];
 }
 
 class UserPostsError extends PostsState {

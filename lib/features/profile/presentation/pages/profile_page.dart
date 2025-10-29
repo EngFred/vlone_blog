@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
@@ -22,7 +23,6 @@ enum ProfileMenuOption { edit, logout }
 class ProfilePage extends StatefulWidget {
   final String userId;
   const ProfilePage({super.key, required this.userId});
-
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
@@ -31,17 +31,46 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _isOwnProfile = false;
   String? _userId;
   final List<PostEntity> _userPosts = [];
+  bool _hasMoreUserPosts = true; // Added: Track hasMore
   bool _isUserPostsLoading = false;
+  bool _isLoadingMoreUserPosts = false; // Added: For load more state
   String? _userPostsError;
+  String? _loadMoreError; // Added: For load more errors
   bool? _isFollowing;
   bool _isProcessingFollow = false;
   String? _loadedProfileUserId;
+  final ScrollController _scrollController =
+      ScrollController(); // Added: For pagination
+  static const Duration _loadMoreDebounce = Duration(
+    milliseconds: 300,
+  ); // Added: Debounce
 
   @override
   void initState() {
     super.initState();
+    _setupScrollListener(); // Added: Setup listener
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _initializeProfile();
+    });
+  }
+
+  void _setupScrollListener() {
+    _scrollController.addListener(() {
+      if (_scrollController.hasClients) {
+        Debouncer.instance.debounce(
+          'load_more_user_posts',
+          _loadMoreDebounce,
+          () {
+            if (_scrollController.position.pixels >=
+                    _scrollController.position.maxScrollExtent - 200 &&
+                _hasMoreUserPosts &&
+                !_isLoadingMoreUserPosts) {
+              setState(() => _isLoadingMoreUserPosts = true);
+              context.read<PostsBloc>().add(LoadMoreUserPostsEvent());
+            }
+          },
+        );
+      }
     });
   }
 
@@ -50,19 +79,17 @@ class _ProfilePageState extends State<ProfilePage> {
       _isOwnProfile = true;
       _userId = widget.userId;
     });
-
     if (_loadedProfileUserId != widget.userId) {
       _loadedProfileUserId = widget.userId;
-
       _userPosts.clear();
       _userPostsError = null;
+      _loadMoreError = null;
       _isUserPostsLoading = false;
-
+      _hasMoreUserPosts = true;
       // ✅ OPTIMIZATION: Removed eager data fetches.
       // MainPage's _dispatchLoadForIndex(3) is now responsible for
       // dispatching GetProfileDataEvent and GetUserPostsEvent.
       // We still run the rest of this method to clear old state.
-
       AppLogger.info('ProfilePage: Initialized for userId: ${widget.userId}');
     }
   }
@@ -83,6 +110,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void dispose() {
     // Do NOT stop realtime here: the centralized RealtimeService is managed at app-level.
+    _scrollController.dispose(); // Added
     super.dispose();
   }
 
@@ -213,7 +241,6 @@ class _ProfilePageState extends State<ProfilePage> {
               onPressed: () {
                 // 1. Close the dialog
                 Navigator.of(dialogContext).pop();
-
                 // 2. Dispatch the logout event (AuthBloc state will transition to AuthLoading)
                 context.read<AuthBloc>().add(LogoutEvent());
               },
@@ -249,7 +276,6 @@ class _ProfilePageState extends State<ProfilePage> {
       builder: (context, authState) {
         // Determine if we are currently logging out
         final isLoggingOut = authState is AuthLoading;
-
         return Scaffold(
           appBar: AppBar(
             title: const Text('Profile'),
@@ -348,7 +374,10 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ),
                             );
+                            _hasMoreUserPosts = state.hasMore; // Added
                             _isUserPostsLoading = false;
+                            _isLoadingMoreUserPosts = false; // Added
+                            _loadMoreError = null; // Added
                           });
                         }
                       } else if (state is PostCreated) {
@@ -364,6 +393,15 @@ class _ProfilePageState extends State<ProfilePage> {
                           setState(() {
                             _userPostsError = state.message;
                             _isUserPostsLoading = false;
+                          });
+                        }
+                      } else if (state is UserPostsLoadingMore) {
+                        // Optional
+                      } else if (state is UserPostsLoadMoreError) {
+                        if (mounted) {
+                          setState(() {
+                            _loadMoreError = state.message;
+                            _isLoadingMoreUserPosts = false;
                           });
                         }
                       } else if (state is RealtimePostUpdate) {
@@ -444,7 +482,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       return RefreshIndicator(
                         onRefresh: () async {
                           context.read<PostsBloc>().add(
-                            GetUserPostsEvent(
+                            RefreshUserPostsEvent(
+                              // Changed to Refresh for reset pagination
                               profileUserId: widget.userId,
                               currentUserId: _userId ?? '',
                             ),
@@ -453,25 +492,33 @@ class _ProfilePageState extends State<ProfilePage> {
                             setState(() {
                               _userPosts.clear();
                               _userPostsError = null;
+                              _hasMoreUserPosts = true;
                             });
                           }
                         },
-                        child: SingleChildScrollView(
+                        child: CustomScrollView(
+                          // Changed: To CustomScrollView for better pagination
+                          controller: _scrollController, // Added
                           physics: const AlwaysScrollableScrollPhysics(),
-                          child: Column(
-                            children: [
-                              ProfileHeader(
+                          slivers: [
+                            SliverToBoxAdapter(
+                              child: ProfileHeader(
                                 profile: state.profile,
                                 isOwnProfile: _isOwnProfile,
                                 isFollowing: _isFollowing,
                                 onFollowToggle: _onFollowToggle,
                                 isProcessingFollow: _isProcessingFollow,
                               ),
-                              ProfilePostsList(
+                            ),
+                            SliverToBoxAdapter(
+                              child: ProfilePostsList(
                                 posts: _userPosts,
                                 userId: _userId ?? '',
                                 isLoading: _isUserPostsLoading,
                                 error: _userPostsError,
+                                hasMore: _hasMoreUserPosts, // Added
+                                isLoadingMore: _isLoadingMoreUserPosts, // Added
+                                loadMoreError: _loadMoreError, // Added
                                 onRetry: () {
                                   if (mounted)
                                     setState(() {
@@ -486,8 +533,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                   );
                                 },
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       );
                     }
@@ -495,7 +542,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   },
                 ),
               ),
-
               // 2. Loading Overlay (Appears only when isLoggingOut is true)
               if (isLoggingOut)
                 const SavingLoadingOverlay(message: 'Logging out...'),

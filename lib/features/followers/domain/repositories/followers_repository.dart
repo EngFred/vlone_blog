@@ -13,11 +13,17 @@ abstract class FollowersRepository {
   Future<Either<Failure, List<UserListEntity>>> getFollowers({
     required String userId,
     String? currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   });
 
   Future<Either<Failure, List<UserListEntity>>> getFollowing({
     required String userId,
     String? currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   });
 
   Future<Either<Failure, bool>> getFollowStatus({

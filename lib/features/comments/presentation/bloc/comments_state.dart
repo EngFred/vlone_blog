@@ -9,15 +9,43 @@ abstract class CommentsState extends Equatable {
 
 class CommentsInitial extends CommentsState {}
 
-class CommentsLoading extends CommentsState {}
+class CommentsLoading extends CommentsState {
+  const CommentsLoading();
+}
 
+// New: For load-more spinner.
+class CommentsLoadingMore extends CommentsState {}
+
+// Updated: Loaded with pagination fields.
 class CommentsLoaded extends CommentsState {
   final List<CommentEntity> comments;
+  final bool hasMore;
+  final bool isLoadingMore;
+  final String? loadMoreError;
 
-  const CommentsLoaded(this.comments);
+  const CommentsLoaded({
+    required this.comments,
+    this.hasMore = true,
+    this.isLoadingMore = false,
+    this.loadMoreError,
+  });
+
+  CommentsLoaded copyWith({
+    List<CommentEntity>? comments,
+    bool? hasMore,
+    bool? isLoadingMore,
+    String? loadMoreError,
+  }) {
+    return CommentsLoaded(
+      comments: comments ?? this.comments,
+      hasMore: hasMore ?? this.hasMore,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      loadMoreError: loadMoreError ?? this.loadMoreError,
+    );
+  }
 
   @override
-  List<Object?> get props => [comments];
+  List<Object?> get props => [comments, hasMore, isLoadingMore, loadMoreError];
 }
 
 class CommentsError extends CommentsState {
@@ -47,4 +75,6 @@ class CommentsStreamStarted extends CommentsState {
   List<Object?> get props => [postId];
 }
 
-class CommentsStreamStopped extends CommentsState {}
+class CommentsStreamStopped extends CommentsState {
+  const CommentsStreamStopped();
+}

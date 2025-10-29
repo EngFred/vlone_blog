@@ -1,3 +1,4 @@
+// posts_event.dart
 part of 'posts_bloc.dart';
 
 abstract class PostsEvent extends Equatable {
@@ -15,7 +16,7 @@ class CreatePostEvent extends PostsEvent {
 
   const CreatePostEvent({
     required this.userId,
-    required this.content,
+    this.content,
     this.mediaFile,
     this.mediaType,
   });
@@ -33,10 +34,36 @@ class GetFeedEvent extends PostsEvent {
   List<Object?> get props => [userId];
 }
 
+class LoadMoreFeedEvent extends PostsEvent {
+  const LoadMoreFeedEvent();
+}
+
+class RefreshFeedEvent extends PostsEvent {
+  final String userId;
+
+  const RefreshFeedEvent(this.userId);
+
+  @override
+  List<Object?> get props => [userId];
+}
+
 class GetReelsEvent extends PostsEvent {
   final String userId;
 
   const GetReelsEvent(this.userId);
+
+  @override
+  List<Object?> get props => [userId];
+}
+
+class LoadMoreReelsEvent extends PostsEvent {
+  const LoadMoreReelsEvent();
+}
+
+class RefreshReelsEvent extends PostsEvent {
+  final String userId;
+
+  const RefreshReelsEvent(this.userId);
 
   @override
   List<Object?> get props => [userId];
@@ -47,6 +74,23 @@ class GetUserPostsEvent extends PostsEvent {
   final String currentUserId;
 
   const GetUserPostsEvent({
+    required this.profileUserId,
+    required this.currentUserId,
+  });
+
+  @override
+  List<Object?> get props => [profileUserId, currentUserId];
+}
+
+class LoadMoreUserPostsEvent extends PostsEvent {
+  const LoadMoreUserPostsEvent();
+}
+
+class RefreshUserPostsEvent extends PostsEvent {
+  final String profileUserId;
+  final String currentUserId;
+
+  const RefreshUserPostsEvent({
     required this.profileUserId,
     required this.currentUserId,
   });
@@ -83,8 +127,36 @@ class SharePostEvent extends PostsEvent {
   List<Object?> get props => [postId];
 }
 
-// ==================== REAL-TIME EVENTS ====================
+// Optimistic update
+class OptimisticPostUpdate extends PostsEvent {
+  final String postId;
+  final int deltaLikes;
+  final int deltaFavorites;
+  final int deltaComments;
+  final bool? isLiked;
+  final bool? isFavorited;
 
+  const OptimisticPostUpdate({
+    required this.postId,
+    this.deltaLikes = 0,
+    this.deltaFavorites = 0,
+    this.deltaComments = 0,
+    this.isLiked,
+    this.isFavorited,
+  });
+
+  @override
+  List<Object?> get props => [
+    postId,
+    deltaLikes,
+    deltaFavorites,
+    deltaComments,
+    isLiked,
+    isFavorited,
+  ];
+}
+
+// Real-time events
 class StartRealtimeListenersEvent extends PostsEvent {
   final String userId;
 
@@ -98,7 +170,6 @@ class StopRealtimeListenersEvent extends PostsEvent {
   const StopRealtimeListenersEvent();
 }
 
-// Internal events for real-time updates
 class _RealtimePostReceivedEvent extends PostsEvent {
   final PostEntity post;
 
@@ -140,34 +211,4 @@ class _RealtimePostDeletedEvent extends PostsEvent {
 
   @override
   List<Object?> get props => [postId];
-}
-
-// ==================== OPTIMISTIC UPDATE EVENT ====================
-
-class OptimisticPostUpdate extends PostsEvent {
-  final String postId;
-  final int deltaLikes;
-  final int deltaFavorites;
-  final int deltaComments; // NEW: Support comment count changes
-  final bool? isLiked;
-  final bool? isFavorited;
-
-  const OptimisticPostUpdate({
-    required this.postId,
-    this.deltaLikes = 0,
-    this.deltaFavorites = 0,
-    this.deltaComments = 0,
-    this.isLiked,
-    this.isFavorited,
-  });
-
-  @override
-  List<Object?> get props => [
-    postId,
-    deltaLikes,
-    deltaFavorites,
-    deltaComments,
-    isLiked,
-    isFavorited,
-  ];
 }

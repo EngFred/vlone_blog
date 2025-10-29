@@ -3,8 +3,10 @@ import 'package:vlone_blog_app/core/error/failures.dart';
 import 'package:vlone_blog_app/features/users/domain/entities/user_list_entity.dart';
 
 abstract class UsersRepository {
-  Future<Either<Failure, List<UserListEntity>>> getAllUsers(
-    String currentUserId,
-  );
+  Future<Either<Failure, List<UserListEntity>>> getPaginatedUsers({
+    required String currentUserId,
+    int pageSize = 20,
+    int pageOffset = 0,
+  });
   Stream<Either<Failure, UserListEntity>> streamNewUsers(String currentUserId);
 }

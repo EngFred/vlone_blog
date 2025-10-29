@@ -9,12 +9,22 @@ class UsersRemoteDataSource {
   final SupabaseClient client;
   UsersRemoteDataSource(this.client);
 
-  Future<List<UserListModel>> getAllUsers(String currentUserId) async {
-    AppLogger.info('Fetching all users via RPC for: $currentUserId');
+  Future<List<UserListModel>> getPaginatedUsers({
+    required String currentUserId,
+    int pageSize = 20,
+    int pageOffset = 0,
+  }) async {
+    AppLogger.info(
+      'Fetching paginated users via RPC for: $currentUserId (offset: $pageOffset, size: $pageSize)',
+    );
     try {
       final response = await client.rpc(
         'get_users_with_follow_status',
-        params: {'current_user_id_input': currentUserId},
+        params: {
+          'current_user_id_input': currentUserId,
+          'page_size': pageSize,
+          'page_offset': pageOffset,
+        },
       );
       if (response == null) {
         AppLogger.info('RPC returned null for get_users_with_follow_status');
@@ -29,7 +39,7 @@ class UsersRemoteDataSource {
       return users;
     } catch (e, stackTrace) {
       AppLogger.error(
-        'Failed to fetch all users via RPC: $e',
+        'Failed to fetch paginated users via RPC: $e',
         error: e,
         stackTrace: stackTrace,
       );

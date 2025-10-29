@@ -7,7 +7,8 @@ import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 import 'package:vlone_blog_app/features/comments/domain/repositories/comments_repository.dart';
 import 'package:vlone_blog_app/features/comments/domain/usecases/add_comment_usecase.dart';
-import 'package:vlone_blog_app/features/comments/domain/usecases/get_comments_usecase.dart';
+import 'package:vlone_blog_app/features/comments/domain/usecases/get_initial_comments_usecase.dart';
+import 'package:vlone_blog_app/features/comments/domain/usecases/load_more_comments_usecase.dart';
 import 'package:vlone_blog_app/features/comments/domain/usecases/stream_comments_usecase.dart';
 
 part 'comments_event.dart';
@@ -15,7 +16,8 @@ part 'comments_state.dart';
 
 class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
   final AddCommentUseCase addCommentUseCase;
-  final GetCommentsUseCase getCommentsUseCase;
+  final GetInitialCommentsUseCase getInitialCommentsUseCase;
+  final LoadMoreCommentsUseCase loadMoreCommentsUseCase;
   final StreamCommentsUseCase streamCommentsUseCase;
   final CommentsRepository repository;
   final RealtimeService realtimeService;
@@ -24,14 +26,23 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
   StreamSubscription? _rtCommentsSub;
   String? _currentPostId;
 
+  // CHANGE: Added pagination state (mirrors posts/notifications).
+  static const int _pageSize = 20;
+  bool _hasMore = true;
+  DateTime? _lastCreatedAt;
+  String? _lastId;
+
   CommentsBloc({
     required this.addCommentUseCase,
-    required this.getCommentsUseCase,
+    required this.getInitialCommentsUseCase,
+    required this.loadMoreCommentsUseCase,
     required this.streamCommentsUseCase,
     required this.repository,
     required this.realtimeService,
   }) : super(CommentsInitial()) {
-    on<GetCommentsEvent>(_onGetComments);
+    on<GetInitialCommentsEvent>(_onGetInitialComments);
+    on<LoadMoreCommentsEvent>(_onLoadMoreComments);
+    on<RefreshCommentsEvent>(_onRefreshComments);
     on<AddCommentEvent>(_onAddComment);
     on<StartCommentsStreamEvent>(_onStartCommentsStream);
     on<StopCommentsStreamEvent>(_onStopCommentsStream);
@@ -43,28 +54,100 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     });
 
     on<NewCommentsEvent>((event, emit) {
-      emit(CommentsLoaded(event.newComments));
+      emit(CommentsLoaded(comments: event.newComments));
     });
   }
 
-  Future<void> _onGetComments(
-    GetCommentsEvent event,
+  Future<void> _onGetInitialComments(
+    GetInitialCommentsEvent event,
     Emitter<CommentsState> emit,
   ) async {
-    AppLogger.info('GetCommentsEvent triggered for post: ${event.postId}');
-    emit(CommentsLoading());
+    AppLogger.info(
+      'GetInitialCommentsEvent triggered for post: ${event.postId}',
+    );
+    emit(const CommentsLoading());
 
-    final result = await getCommentsUseCase(event.postId);
+    final result = await getInitialCommentsUseCase(event.postId);
     result.fold(
       (failure) {
-        AppLogger.error('Get comments failed: ${failure.message}');
+        AppLogger.error('Get initial comments failed: ${failure.message}');
         emit(CommentsError(failure.message));
       },
       (rootComments) {
-        AppLogger.info('Comments loaded: ${rootComments.length} comments');
-        emit(CommentsLoaded(rootComments));
+        // CHANGE: Reset pagination cursors on initial load.
+        _lastCreatedAt = rootComments.isNotEmpty
+            ? rootComments.last.createdAt
+            : null;
+        _lastId = rootComments.isNotEmpty ? rootComments.last.id : null;
+        _hasMore = rootComments.length == _pageSize;
+
+        AppLogger.info(
+          'Initial comments loaded: ${rootComments.length} roots, hasMore: $_hasMore',
+        );
+        emit(CommentsLoaded(comments: rootComments, hasMore: _hasMore));
       },
     );
+  }
+
+  Future<void> _onLoadMoreComments(
+    LoadMoreCommentsEvent event,
+    Emitter<CommentsState> emit,
+  ) async {
+    if (!_hasMore || state is CommentsLoadingMore) return;
+
+    final currentState = state as CommentsLoaded;
+    emit(currentState.copyWith(isLoadingMore: true, loadMoreError: null));
+
+    final result = await loadMoreCommentsUseCase(
+      LoadMoreCommentsParams(
+        postId: _currentPostId!,
+        lastCreatedAt: _lastCreatedAt!,
+        lastId: _lastId!,
+        pageSize: _pageSize,
+      ),
+    );
+    result.fold(
+      (failure) {
+        AppLogger.error('Load more comments failed: ${failure.message}');
+        emit(
+          currentState.copyWith(
+            isLoadingMore: false,
+            loadMoreError: failure.message,
+          ),
+        );
+      },
+      (newRootComments) {
+        // CHANGE: Append new roots to existing (chronological order: newer at top, older appended).
+        final updatedComments = [...currentState.comments, ...newRootComments];
+        _lastCreatedAt = newRootComments.isNotEmpty
+            ? newRootComments.last.createdAt
+            : null;
+        _lastId = newRootComments.isNotEmpty ? newRootComments.last.id : null;
+        _hasMore = newRootComments.length == _pageSize;
+
+        AppLogger.info(
+          'Loaded ${newRootComments.length} more roots, total: ${updatedComments.length}, hasMore: $_hasMore',
+        );
+        emit(
+          CommentsLoaded(
+            comments: updatedComments,
+            hasMore: _hasMore,
+            isLoadingMore: false,
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _onRefreshComments(
+    RefreshCommentsEvent event,
+    Emitter<CommentsState> emit,
+  ) async {
+    // CHANGE: Reset pagination and reload initial.
+    _hasMore = true;
+    _lastCreatedAt = null;
+    _lastId = null;
+    add(GetInitialCommentsEvent(event.postId));
   }
 
   Future<void> _onAddComment(
@@ -84,14 +167,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     result.fold(
       (failure) {
         AppLogger.error('Add comment failed: ${failure.message}');
-        // ✅ FIX: Removed the emit(CommentsError(failure.message));
-        // Emitting a general error state here is bad UX, as it
-        // replaces the entire comment list with an error message
-        // just because a *new* comment failed to send.
-        // A better pattern would be to emit a specific failure state
-        // (like CommentAddFailed) and use a BlocListener in the UI
-        // to show a SnackBar, while the main list remains visible.
-        // For now, just logging the error is safer.
+        // Unchanged: Log only—no full error state to avoid nuking list.
       },
       (_) {
         AppLogger.info('Comment added successfully. Stream will update UI.');
@@ -106,9 +182,6 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     AppLogger.info(
       'Starting comments real-time stream for post: ${event.postId}',
     );
-
-    // Keep per-post repository stream for accurate comment tree updates
-    emit(CommentsLoading());
 
     _currentPostId = event.postId;
 
@@ -132,25 +205,19 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
           },
         );
 
-    // Additionally, subscribe to the unified global comments stream from RealtimeService.
-    // This lets the app receive comment notifications that may be produced elsewhere.
+    // CHANGE: Keep global realtime sub for notifications (unchanged).
     _rtCommentsSub?.cancel();
     _rtCommentsSub = realtimeService.onComment.listen(
       (commentData) {
         try {
-          // commentData expected to contain 'post_id' and 'comment' or similar
           final postId =
               commentData['post_id'] ??
               commentData['postId'] ??
               commentData['post_id'];
           if (postId is String && postId == _currentPostId) {
-            // Depending on the shape you emit from server, you might get a full comment object or a map.
-            // Here we rely on repository stream to carry the canonical tree; this global stream can be used
-            // for lightweight notifications or incremental updates. We'll trigger a reload for simplicity.
             AppLogger.info(
               'RealtimeService: comment event detected for current post: $postId — refreshing via repo stream',
             );
-            // Let repo stream drive UI; no manual merge here.
           } else {
             AppLogger.info(
               'RealtimeService: comment event for other post: $postId',
@@ -166,7 +233,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
       ),
     );
 
-    // Do not emit CommentsStreamStarted here — repo stream will emit CommentsLoaded shortly.
+    // CHANGE: No initial emit—let GetInitialCommentsEvent drive pagination load.
   }
 
   Future<void> _onStopCommentsStream(
@@ -179,7 +246,11 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     await _rtCommentsSub?.cancel();
     _rtCommentsSub = null;
     _currentPostId = null;
-    emit(CommentsStreamStopped());
+    // CHANGE: Reset pagination on stop (for re-init).
+    _hasMore = true;
+    _lastCreatedAt = null;
+    _lastId = null;
+    emit(const CommentsStreamStopped());
   }
 
   void _onRealtimeCommentReceived(
@@ -187,7 +258,13 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     Emitter<CommentsState> emit,
   ) {
     AppLogger.info('Realtime comments received for post: ${event.postId}');
-    emit(CommentsLoaded(event.comments));
+    // CHANGE: Preserve hasMore etc. from current state.
+    if (state is CommentsLoaded) {
+      final current = state as CommentsLoaded;
+      emit(current.copyWith(comments: event.comments));
+    } else {
+      emit(CommentsLoaded(comments: event.comments));
+    }
   }
 
   @override

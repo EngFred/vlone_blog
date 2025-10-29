@@ -1,3 +1,4 @@
+// posts_bloc.dart
 import 'dart:async';
 import 'dart:io';
 import 'package:bloc/bloc.dart';
@@ -13,6 +14,7 @@ import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_usecase.d
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_reels_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_user_posts_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
+import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 
 part 'posts_event.dart';
 part 'posts_state.dart';
@@ -32,6 +34,27 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   StreamSubscription<Map<String, dynamic>>? _realtimePostUpdateSub;
   StreamSubscription<String>? _realtimePostDeletedSub;
   bool _isSubscribedToService = false;
+
+  // Pagination state for Feed
+  static const int _pageSize = 20;
+  bool _hasMoreFeed = true;
+  DateTime? _lastFeedCreatedAt;
+  String? _lastFeedId;
+  String? _currentFeedUserId;
+
+  // Pagination state for Reels
+  bool _hasMoreReels = true;
+  DateTime? _lastReelsCreatedAt;
+  String? _lastReelsId;
+  String? _currentReelsUserId;
+
+  // Pagination state for User Posts
+  bool _hasMoreUserPosts = true;
+  DateTime? _lastUserPostsCreatedAt;
+  String? _lastUserPostsId;
+  String? _currentUserPostsProfileId;
+  String? _currentUserPostsUserId;
+
   PostsBloc({
     required this.createPostUseCase,
     required this.getFeedUseCase,
@@ -45,20 +68,27 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     // Core handlers
     on<CreatePostEvent>(_onCreatePost);
     on<GetFeedEvent>(_onGetFeed);
+    on<LoadMoreFeedEvent>(_onLoadMoreFeed);
+    on<RefreshFeedEvent>(_onRefreshFeed);
     on<GetReelsEvent>(_onGetReels);
+    on<LoadMoreReelsEvent>(_onLoadMoreReels);
+    on<RefreshReelsEvent>(_onRefreshReels);
     on<GetUserPostsEvent>(_onGetUserPosts);
+    on<LoadMoreUserPostsEvent>(_onLoadMoreUserPosts);
+    on<RefreshUserPostsEvent>(_onRefreshUserPosts);
     on<GetPostEvent>(_onGetPost);
     on<DeletePostEvent>(_onDeletePost);
     on<SharePostEvent>(_onSharePost);
-    // Optimistic update handler (added)
+    // Optimistic update handler
     on<OptimisticPostUpdate>(_onOptimisticPostUpdate);
-    // Real-time handlers (subscribe/unsubscribe to RealtimeService)
+    // Real-time handlers
     on<StartRealtimeListenersEvent>(_onStartRealtimeListeners);
     on<StopRealtimeListenersEvent>(_onStopRealtimeListeners);
     on<_RealtimePostReceivedEvent>(_onRealtimePostReceived);
     on<_RealtimePostUpdatedEvent>(_onRealtimePostUpdated);
     on<_RealtimePostDeletedEvent>(_onRealtimePostDeleted);
   }
+
   // -------------------------
   // Core use-case handlers
   // -------------------------
@@ -91,19 +121,85 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
 
   Future<void> _onGetFeed(GetFeedEvent event, Emitter<PostsState> emit) async {
     AppLogger.info('GetFeedEvent triggered');
+    _currentFeedUserId = event.userId;
     emit(const PostsLoading());
+    await _fetchFeed(emit, isRefresh: true);
+  }
+
+  Future<void> _onLoadMoreFeed(
+    LoadMoreFeedEvent event,
+    Emitter<PostsState> emit,
+  ) async {
+    if (_currentFeedUserId == null || !_hasMoreFeed || state is FeedLoadingMore)
+      return;
+    emit(const FeedLoadingMore());
+    await _fetchFeed(emit, isRefresh: false);
+  }
+
+  Future<void> _onRefreshFeed(
+    RefreshFeedEvent event,
+    Emitter<PostsState> emit,
+  ) async {
+    _currentFeedUserId = event.userId;
+    _hasMoreFeed = true;
+    _lastFeedCreatedAt = null;
+    _lastFeedId = null;
+    emit(const PostsLoading());
+    await _fetchFeed(emit, isRefresh: true);
+  }
+
+  Future<void> _fetchFeed(
+    Emitter<PostsState> emit, {
+    required bool isRefresh,
+  }) async {
     final result = await getFeedUseCase(
-      GetFeedParams(currentUserId: event.userId),
+      GetFeedParams(
+        currentUserId: _currentFeedUserId!,
+        pageSize: _pageSize,
+        lastCreatedAt: _lastFeedCreatedAt,
+        lastId: _lastFeedId,
+      ),
     );
     result.fold(
       (failure) {
-        final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
-        AppLogger.error('Get feed failed: $friendlyMessage');
-        emit(PostsError(friendlyMessage));
+        final message = ErrorMessageMapper.getErrorMessage(failure);
+        AppLogger.error('Get feed failed: $message');
+        if (isRefresh) {
+          emit(PostsError(message));
+        } else {
+          emit(
+            FeedLoadMoreError(
+              message,
+              currentPosts: state is FeedLoaded
+                  ? List<PostEntity>.from((state as FeedLoaded).posts)
+                  : [],
+            ),
+          );
+        }
       },
-      (posts) {
-        AppLogger.info('Feed loaded with ${posts.length} posts');
-        emit(FeedLoaded(posts));
+      (newPosts) {
+        List<PostEntity> updatedPosts;
+        if (isRefresh) {
+          updatedPosts = newPosts;
+        } else {
+          updatedPosts = state is FeedLoaded
+              ? List<PostEntity>.from((state as FeedLoaded).posts)
+              : <PostEntity>[];
+          updatedPosts.addAll(newPosts);
+        }
+        if (newPosts.isNotEmpty) {
+          _lastFeedCreatedAt = newPosts.last.createdAt;
+          _lastFeedId = newPosts.last.id;
+        }
+        _hasMoreFeed = newPosts.length == _pageSize;
+        emit(
+          FeedLoaded(
+            updatedPosts,
+            hasMore: _hasMoreFeed,
+            isRealtimeActive: _isSubscribedToService,
+          ),
+        );
+        AppLogger.info('Feed loaded with ${updatedPosts.length} posts');
       },
     );
   }
@@ -113,19 +209,87 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     Emitter<PostsState> emit,
   ) async {
     AppLogger.info('GetReelsEvent triggered');
+    _currentReelsUserId = event.userId;
     emit(const PostsLoading());
+    await _fetchReels(emit, isRefresh: true);
+  }
+
+  Future<void> _onLoadMoreReels(
+    LoadMoreReelsEvent event,
+    Emitter<PostsState> emit,
+  ) async {
+    if (_currentReelsUserId == null ||
+        !_hasMoreReels ||
+        state is ReelsLoadingMore)
+      return;
+    emit(const ReelsLoadingMore());
+    await _fetchReels(emit, isRefresh: false);
+  }
+
+  Future<void> _onRefreshReels(
+    RefreshReelsEvent event,
+    Emitter<PostsState> emit,
+  ) async {
+    _currentReelsUserId = event.userId;
+    _hasMoreReels = true;
+    _lastReelsCreatedAt = null;
+    _lastReelsId = null;
+    emit(const PostsLoading());
+    await _fetchReels(emit, isRefresh: true);
+  }
+
+  Future<void> _fetchReels(
+    Emitter<PostsState> emit, {
+    required bool isRefresh,
+  }) async {
     final result = await getReelsUseCase(
-      GetReelsParams(currentUserId: event.userId),
+      GetReelsParams(
+        currentUserId: _currentReelsUserId!,
+        pageSize: _pageSize,
+        lastCreatedAt: _lastReelsCreatedAt,
+        lastId: _lastReelsId,
+      ),
     );
     result.fold(
       (failure) {
-        final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
-        AppLogger.error('Get reels failed: $friendlyMessage');
-        emit(PostsError(friendlyMessage));
+        final message = ErrorMessageMapper.getErrorMessage(failure);
+        AppLogger.error('Get reels failed: $message');
+        if (isRefresh) {
+          emit(PostsError(message));
+        } else {
+          emit(
+            ReelsLoadMoreError(
+              message,
+              currentPosts: state is ReelsLoaded
+                  ? List<PostEntity>.from((state as ReelsLoaded).posts)
+                  : [],
+            ),
+          );
+        }
       },
-      (posts) {
-        AppLogger.info('Reels loaded with ${posts.length} posts');
-        emit(ReelsLoaded(posts));
+      (newPosts) {
+        List<PostEntity> updatedPosts;
+        if (isRefresh) {
+          updatedPosts = newPosts;
+        } else {
+          updatedPosts = state is ReelsLoaded
+              ? List<PostEntity>.from((state as ReelsLoaded).posts)
+              : <PostEntity>[];
+          updatedPosts.addAll(newPosts);
+        }
+        if (newPosts.isNotEmpty) {
+          _lastReelsCreatedAt = newPosts.last.createdAt;
+          _lastReelsId = newPosts.last.id;
+        }
+        _hasMoreReels = newPosts.length == _pageSize;
+        emit(
+          ReelsLoaded(
+            updatedPosts,
+            hasMore: _hasMoreReels,
+            isRealtimeActive: _isSubscribedToService,
+          ),
+        );
+        AppLogger.info('Reels loaded with ${updatedPosts.length} posts');
       },
     );
   }
@@ -137,22 +301,84 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     AppLogger.info(
       'GetUserPostsEvent triggered for user: ${event.profileUserId}',
     );
+    _currentUserPostsProfileId = event.profileUserId;
+    _currentUserPostsUserId = event.currentUserId;
     emit(const UserPostsLoading());
+    await _fetchUserPosts(emit, isRefresh: true);
+  }
+
+  Future<void> _onLoadMoreUserPosts(
+    LoadMoreUserPostsEvent event,
+    Emitter<PostsState> emit,
+  ) async {
+    if (_currentUserPostsProfileId == null ||
+        !_hasMoreUserPosts ||
+        state is UserPostsLoadingMore)
+      return;
+    emit(const UserPostsLoadingMore());
+    await _fetchUserPosts(emit, isRefresh: false);
+  }
+
+  Future<void> _onRefreshUserPosts(
+    RefreshUserPostsEvent event,
+    Emitter<PostsState> emit,
+  ) async {
+    _currentUserPostsProfileId = event.profileUserId;
+    _currentUserPostsUserId = event.currentUserId;
+    _hasMoreUserPosts = true;
+    _lastUserPostsCreatedAt = null;
+    _lastUserPostsId = null;
+    emit(const UserPostsLoading());
+    await _fetchUserPosts(emit, isRefresh: true);
+  }
+
+  Future<void> _fetchUserPosts(
+    Emitter<PostsState> emit, {
+    required bool isRefresh,
+  }) async {
     final result = await getUserPostsUseCase(
       GetUserPostsParams(
-        profileUserId: event.profileUserId,
-        currentUserId: event.currentUserId,
+        profileUserId: _currentUserPostsProfileId!,
+        currentUserId: _currentUserPostsUserId!,
+        pageSize: _pageSize,
+        lastCreatedAt: _lastUserPostsCreatedAt,
+        lastId: _lastUserPostsId,
       ),
     );
     result.fold(
       (failure) {
-        final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
-        AppLogger.error('Get user posts failed: $friendlyMessage');
-        emit(UserPostsError(friendlyMessage));
+        final message = ErrorMessageMapper.getErrorMessage(failure);
+        AppLogger.error('Get user posts failed: $message');
+        if (isRefresh) {
+          emit(UserPostsError(message));
+        } else {
+          emit(
+            UserPostsLoadMoreError(
+              message,
+              currentPosts: state is UserPostsLoaded
+                  ? List<PostEntity>.from((state as UserPostsLoaded).posts)
+                  : [],
+            ),
+          );
+        }
       },
-      (posts) {
-        AppLogger.info('User posts loaded with ${posts.length} posts');
-        emit(UserPostsLoaded(posts));
+      (newPosts) {
+        List<PostEntity> updatedPosts;
+        if (isRefresh) {
+          updatedPosts = newPosts;
+        } else {
+          updatedPosts = state is UserPostsLoaded
+              ? List<PostEntity>.from((state as UserPostsLoaded).posts)
+              : <PostEntity>[];
+          updatedPosts.addAll(newPosts);
+        }
+        if (newPosts.isNotEmpty) {
+          _lastUserPostsCreatedAt = newPosts.last.createdAt;
+          _lastUserPostsId = newPosts.last.id;
+        }
+        _hasMoreUserPosts = newPosts.length == _pageSize;
+        emit(UserPostsLoaded(updatedPosts, hasMore: _hasMoreUserPosts));
+        AppLogger.info('User posts loaded with ${updatedPosts.length} posts');
       },
     );
   }
@@ -187,7 +413,7 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     result.fold(
       (failure) {
         final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
-        AppLogger.error('Delete post failed: ${failure.message}');
+        AppLogger.error('Delete post failed: $friendlyMessage');
         emit(PostDeleteError(event.postId, friendlyMessage));
       },
       (_) {
@@ -241,7 +467,7 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
           return p.copyWith(
             likesCount: newLikes,
             favoritesCount: newFavorites,
-            commentsCount: newComments, // NEW: Apply comment delta
+            commentsCount: newComments,
             isLiked: event.isLiked ?? p.isLiked,
             isFavorited: event.isFavorited ?? p.isFavorited,
           );
@@ -251,175 +477,151 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
       if (currentState is FeedLoaded) {
         final updated = _apply(currentState.posts);
         emit(
-          FeedLoaded(updated, isRealtimeActive: currentState.isRealtimeActive),
+          FeedLoaded(
+            updated,
+            hasMore: currentState.hasMore,
+            isRealtimeActive: currentState.isRealtimeActive,
+          ),
         );
         return;
       }
       if (currentState is ReelsLoaded) {
         final updated = _apply(currentState.posts);
         emit(
-          ReelsLoaded(updated, isRealtimeActive: currentState.isRealtimeActive),
+          ReelsLoaded(
+            updated,
+            hasMore: currentState.hasMore,
+            isRealtimeActive: currentState.isRealtimeActive,
+          ),
         );
         return;
       }
       if (currentState is UserPostsLoaded) {
         final updated = _apply(currentState.posts);
-        emit(UserPostsLoaded(updated));
+        emit(UserPostsLoaded(updated, hasMore: currentState.hasMore));
         return;
       }
-      // If other states carry a posts list, handle them similarly.
     } catch (e, st) {
       AppLogger.error(
         'Optimistic update failed in PostsBloc: $e',
         error: e,
         stackTrace: st,
       );
-      // swallow — server updates will correct any mismatch
     }
   }
 
   // -------------------------
-  // Real-time handlers (via RealtimeService)
+  // Real-time handlers
   // -------------------------
-  /// Subscribe to the RealtimeService broadcast streams.
   Future<void> _onStartRealtimeListeners(
     StartRealtimeListenersEvent event,
     Emitter<PostsState> emit,
   ) async {
-    if (_isSubscribedToService) {
-      AppLogger.info(
-        'PostsBloc: already subscribed to RealtimeService streams',
-      );
-      return;
-    }
+    if (_isSubscribedToService) return;
     AppLogger.info('PostsBloc: subscribing to RealtimeService streams');
-    AppLogger.info(
-      'PostsBloc: post listeners started',
-    ); // Added for log visibility
-    // Subscribe to new posts
     _realtimeNewPostSub = realtimeService.onNewPost.listen(
-      (post) {
-        add(_RealtimePostReceivedEvent(post));
-      },
-      onError: (e) =>
-          AppLogger.error('RealtimeService onNewPost error: $e', error: e),
+      (post) => add(_RealtimePostReceivedEvent(post)),
     );
-    // Subscribe to post updates
-    _realtimePostUpdateSub = realtimeService.onPostUpdate.listen(
-      (updateData) {
-        int? safeParseInt(dynamic value) {
-          if (value == null) return null;
-          if (value is int) return value;
-          return int.tryParse(value.toString().split('.').first);
-        }
-
-        add(
-          _RealtimePostUpdatedEvent(
-            postId: updateData['id'] as String,
-            likesCount: safeParseInt(updateData['likes_count']),
-            commentsCount: safeParseInt(updateData['comments_count']),
-            favoritesCount: safeParseInt(updateData['favorites_count']),
-            sharesCount: safeParseInt(updateData['shares_count']),
-          ),
-        );
-      },
-      onError: (e) =>
-          AppLogger.error('RealtimeService onPostUpdate error: $e', error: e),
-    );
-    // Subscribe to deletions
+    _realtimePostUpdateSub = realtimeService.onPostUpdate.listen((updateData) {
+      int? safeParseInt(dynamic value) =>
+          value is int ? value : int.tryParse(value.toString());
+      add(
+        _RealtimePostUpdatedEvent(
+          postId: updateData['id'],
+          likesCount: safeParseInt(updateData['likes_count']),
+          commentsCount: safeParseInt(updateData['comments_count']),
+          favoritesCount: safeParseInt(updateData['favorites_count']),
+          sharesCount: safeParseInt(updateData['shares_count']),
+        ),
+      );
+    });
     _realtimePostDeletedSub = realtimeService.onPostDeleted.listen(
-      (postId) {
-        add(_RealtimePostDeletedEvent(postId));
-      },
-      onError: (e) =>
-          AppLogger.error('RealtimeService onPostDeleted error: $e', error: e),
+      (postId) => add(_RealtimePostDeletedEvent(postId)),
     );
     _isSubscribedToService = true;
-    // Re-emit state marking realtime active if appropriate
-    if (state is FeedLoaded) {
-      emit(
-        FeedLoaded(
-          (state as FeedLoaded).posts,
-          isRealtimeActive: realtimeService.isStarted,
-        ),
-      );
-    } else if (state is ReelsLoaded) {
-      emit(
-        ReelsLoaded(
-          (state as ReelsLoaded).posts,
-          isRealtimeActive: realtimeService.isStarted,
-        ),
-      );
-    }
-    AppLogger.info('PostsBloc: subscribed to RealtimeService');
+    // Update current state with realtime active
+    _updateRealtimeStatus(emit);
   }
 
-  /// Unsubscribe from RealtimeService (does NOT stop the service).
   Future<void> _onStopRealtimeListeners(
     StopRealtimeListenersEvent event,
     Emitter<PostsState> emit,
   ) async {
-    if (!_isSubscribedToService) {
-      AppLogger.info('PostsBloc: stop requested but not subscribed');
-      return;
-    }
+    if (!_isSubscribedToService) return;
     AppLogger.info('PostsBloc: unsubscribing from RealtimeService streams');
-    try {
-      await _realtimeNewPostSub?.cancel();
-      await _realtimePostUpdateSub?.cancel();
-      await _realtimePostDeletedSub?.cancel();
-    } catch (e) {
-      AppLogger.warning('Error cancelling RealtimeService subs: $e');
-    } finally {
-      _realtimeNewPostSub = null;
-      _realtimePostUpdateSub = null;
-      _realtimePostDeletedSub = null;
-      _isSubscribedToService = false;
-    }
-    // Re-emit state marking realtime inactive if appropriate
-    if (state is FeedLoaded) {
-      emit(FeedLoaded((state as FeedLoaded).posts, isRealtimeActive: false));
-    } else if (state is ReelsLoaded) {
-      emit(ReelsLoaded((state as ReelsLoaded).posts, isRealtimeActive: false));
-    }
-    AppLogger.info('PostsBloc: unsubscribed from RealtimeService');
+    await _realtimeNewPostSub?.cancel();
+    await _realtimePostUpdateSub?.cancel();
+    await _realtimePostDeletedSub?.cancel();
+    _realtimeNewPostSub = null;
+    _realtimePostUpdateSub = null;
+    _realtimePostDeletedSub = null;
+    _isSubscribedToService = false;
+    _updateRealtimeStatus(emit);
+  }
+
+  void _updateRealtimeStatus(Emitter<PostsState> emit) {
+    final active = _isSubscribedToService;
+    final state = this.state;
+    if (state is FeedLoaded)
+      emit(
+        FeedLoaded(
+          state.posts,
+          hasMore: state.hasMore,
+          isRealtimeActive: active,
+        ),
+      );
+    if (state is ReelsLoaded)
+      emit(
+        ReelsLoaded(
+          state.posts,
+          hasMore: state.hasMore,
+          isRealtimeActive: active,
+        ),
+      );
+    if (state is UserPostsLoaded)
+      emit(UserPostsLoaded(state.posts, hasMore: state.hasMore));
   }
 
   Future<void> _onRealtimePostReceived(
     _RealtimePostReceivedEvent event,
     Emitter<PostsState> emit,
   ) async {
-    final currentState = state;
-    if (currentState is FeedLoaded) {
-      final exists = currentState.posts.any((p) => p.id == event.post.id);
-      if (!exists) {
-        final updatedPosts = [event.post, ...currentState.posts];
-        emit(
-          FeedLoaded(updatedPosts, isRealtimeActive: realtimeService.isStarted),
-        );
-        AppLogger.info('New post added to feed: ${event.post.id}');
-      }
+    final state = this.state;
+    final post = event.post;
+    bool added = false;
+    if (state is FeedLoaded && !state.posts.any((p) => p.id == post.id)) {
+      final updated = [post, ...state.posts];
+      emit(
+        FeedLoaded(
+          updated,
+          hasMore: state.hasMore,
+          isRealtimeActive: state.isRealtimeActive,
+        ),
+      );
+      added = true;
     }
-    if (currentState is ReelsLoaded && event.post.mediaType == 'video') {
-      final exists = currentState.posts.any((p) => p.id == event.post.id);
-      if (!exists) {
-        final updatedPosts = [event.post, ...currentState.posts];
-        emit(
-          ReelsLoaded(
-            updatedPosts,
-            isRealtimeActive: realtimeService.isStarted,
-          ),
-        );
-        AppLogger.info('New reel added: ${event.post.id}');
-      }
+    if (state is ReelsLoaded &&
+        post.mediaType == 'video' &&
+        !state.posts.any((p) => p.id == post.id)) {
+      final updated = [post, ...state.posts];
+      emit(
+        ReelsLoaded(
+          updated,
+          hasMore: state.hasMore,
+          isRealtimeActive: state.isRealtimeActive,
+        ),
+      );
+      added = true;
     }
+    if (added) AppLogger.info('New post added realtime: ${post.id}');
   }
 
-  void _onRealtimePostUpdated(
+  Future<void> _onRealtimePostUpdated(
     _RealtimePostUpdatedEvent event,
     Emitter<PostsState> emit,
-  ) {
-    final currentState = state;
+  ) async {
+    // Changed to Future<void>
+    final state = this.state;
     List<PostEntity> _applyUpdate(List<PostEntity> posts) {
       return posts.map((post) {
         if (post.id == event.postId) {
@@ -434,29 +636,27 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
       }).toList();
     }
 
-    if (currentState is FeedLoaded) {
+    if (state is FeedLoaded)
       emit(
         FeedLoaded(
-          _applyUpdate(currentState.posts),
-          isRealtimeActive: realtimeService.isStarted,
+          _applyUpdate(state.posts),
+          hasMore: state.hasMore,
+          isRealtimeActive: state.isRealtimeActive,
         ),
       );
-      AppLogger.info('Post counts updated for: ${event.postId}');
-    } else if (currentState is ReelsLoaded) {
+    if (state is ReelsLoaded)
       emit(
         ReelsLoaded(
-          _applyUpdate(currentState.posts),
-          isRealtimeActive: realtimeService.isStarted,
+          _applyUpdate(state.posts),
+          hasMore: state.hasMore,
+          isRealtimeActive: state.isRealtimeActive,
         ),
       );
-      AppLogger.info('Reel counts updated for: ${event.postId}');
-    } else if (currentState is UserPostsLoaded) {
-      emit(UserPostsLoaded(_applyUpdate(currentState.posts)));
-      AppLogger.info('User post counts updated for: ${event.postId}');
-    }
-    // Also emit granular update for widgets
+    if (state is UserPostsLoaded)
+      emit(UserPostsLoaded(_applyUpdate(state.posts), hasMore: state.hasMore));
     emit(
       RealtimePostUpdate(
+        // Use named parameters
         postId: event.postId,
         likesCount: event.likesCount,
         commentsCount: event.commentsCount,
@@ -464,44 +664,47 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
         sharesCount: event.sharesCount,
       ),
     );
+    AppLogger.info('Post updated realtime: ${event.postId}');
   }
 
   void _onRealtimePostDeleted(
     _RealtimePostDeletedEvent event,
     Emitter<PostsState> emit,
-  ) {
-    final currentState = state;
-    if (currentState is FeedLoaded) {
-      final updatedPosts = currentState.posts
-          .where((p) => p.id != event.postId)
-          .toList();
+  ) async {
+    final state = this.state;
+    if (state is FeedLoaded) {
+      final updated = state.posts.where((p) => p.id != event.postId).toList();
       emit(
-        FeedLoaded(updatedPosts, isRealtimeActive: realtimeService.isStarted),
+        FeedLoaded(
+          updated,
+          hasMore: state.hasMore,
+          isRealtimeActive: state.isRealtimeActive,
+        ),
       );
-      AppLogger.info('Post removed from feed: ${event.postId}');
-    } else if (currentState is ReelsLoaded) {
-      final updatedPosts = currentState.posts
-          .where((p) => p.id != event.postId)
-          .toList();
-      emit(
-        ReelsLoaded(updatedPosts, isRealtimeActive: realtimeService.isStarted),
-      );
-      AppLogger.info('Reel removed: ${event.postId}');
-    } else if (currentState is UserPostsLoaded) {
-      final updatedPosts = currentState.posts
-          .where((p) => p.id != event.postId)
-          .toList();
-      emit(UserPostsLoaded(updatedPosts));
-      AppLogger.info('User post removed: ${event.postId}');
     }
+    if (state is ReelsLoaded) {
+      final updated = state.posts.where((p) => p.id != event.postId).toList();
+      emit(
+        ReelsLoaded(
+          updated,
+          hasMore: state.hasMore,
+          isRealtimeActive: state.isRealtimeActive,
+        ),
+      );
+    }
+    if (state is UserPostsLoaded) {
+      final updated = state.posts.where((p) => p.id != event.postId).toList();
+      emit(UserPostsLoaded(updated, hasMore: state.hasMore));
+    }
+    AppLogger.info('Post deleted realtime: ${event.postId}');
   }
 
   @override
-  Future<void> close() {
+  Future<void> close() async {
     AppLogger.info('Closing PostsBloc - cancelling realtime subscriptions');
-    unawaited(_realtimeNewPostSub?.cancel());
-    unawaited(_realtimePostUpdateSub?.cancel());
-    unawaited(_realtimePostDeletedSub?.cancel());
+    await _realtimeNewPostSub?.cancel();
+    await _realtimePostUpdateSub?.cancel();
+    await _realtimePostDeletedSub?.cancel();
     return super.close();
   }
 }

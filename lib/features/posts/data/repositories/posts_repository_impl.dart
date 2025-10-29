@@ -39,10 +39,16 @@ class PostsRepositoryImpl implements PostsRepository {
   @override
   Future<Either<Failure, List<PostEntity>>> getFeed({
     required String currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   }) async {
     try {
       final postModels = await remoteDataSource.getFeed(
         currentUserId: currentUserId,
+        pageSize: pageSize,
+        lastCreatedAt: lastCreatedAt,
+        lastId: lastId,
       );
       return Right(postModels.map((model) => model.toEntity()).toList());
     } on ServerException catch (e) {
@@ -57,10 +63,16 @@ class PostsRepositoryImpl implements PostsRepository {
   @override
   Future<Either<Failure, List<PostEntity>>> getReels({
     required String currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   }) async {
     try {
       final postModels = await remoteDataSource.getReels(
         currentUserId: currentUserId,
+        pageSize: pageSize,
+        lastCreatedAt: lastCreatedAt,
+        lastId: lastId,
       );
       return Right(postModels.map((model) => model.toEntity()).toList());
     } on ServerException catch (e) {
@@ -76,11 +88,17 @@ class PostsRepositoryImpl implements PostsRepository {
   Future<Either<Failure, List<PostEntity>>> getUserPosts({
     required String profileUserId,
     required String currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   }) async {
     try {
       final postModels = await remoteDataSource.getUserPosts(
         profileUserId: profileUserId,
         currentUserId: currentUserId,
+        pageSize: pageSize,
+        lastCreatedAt: lastCreatedAt,
+        lastId: lastId,
       );
       return Right(postModels.map((model) => model.toEntity()).toList());
     } on ServerException catch (e) {

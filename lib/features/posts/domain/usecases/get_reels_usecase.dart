@@ -6,8 +6,16 @@ import 'package:vlone_blog_app/features/posts/domain/repositories/posts_reposito
 
 class GetReelsParams {
   final String currentUserId;
+  final int pageSize;
+  final DateTime? lastCreatedAt;
+  final String? lastId;
 
-  const GetReelsParams({required this.currentUserId});
+  const GetReelsParams({
+    required this.currentUserId,
+    this.pageSize = 20,
+    this.lastCreatedAt,
+    this.lastId,
+  });
 }
 
 class GetReelsUseCase implements UseCase<List<PostEntity>, GetReelsParams> {
@@ -17,6 +25,11 @@ class GetReelsUseCase implements UseCase<List<PostEntity>, GetReelsParams> {
 
   @override
   Future<Either<Failure, List<PostEntity>>> call(GetReelsParams params) {
-    return repository.getReels(currentUserId: params.currentUserId);
+    return repository.getReels(
+      currentUserId: params.currentUserId,
+      pageSize: params.pageSize,
+      lastCreatedAt: params.lastCreatedAt,
+      lastId: params.lastId,
+    );
   }
 }

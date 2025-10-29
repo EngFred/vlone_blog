@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
@@ -22,7 +23,6 @@ import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bl
 class UserProfilePage extends StatefulWidget {
   final String userId;
   const UserProfilePage({super.key, required this.userId});
-
   @override
   State<UserProfilePage> createState() => _UserProfilePageState();
 }
@@ -31,33 +31,58 @@ class _UserProfilePageState extends State<UserProfilePage> {
   String? _currentUserId;
   bool _isOwnProfile = false;
   final List<PostEntity> _userPosts = [];
+  bool _hasMoreUserPosts = true; // Added
   bool _isUserPostsLoading = false;
+  bool _isLoadingMoreUserPosts = false; // Added
   String? _userPostsError;
+  String? _loadMoreError; // Added
   bool? _isFollowing;
   bool _isProcessingFollow = false;
+  final ScrollController _scrollController = ScrollController(); // Added
+  static const Duration _loadMoreDebounce = Duration(
+    milliseconds: 300,
+  ); // Added
 
   @override
   void initState() {
     super.initState();
+    _setupScrollListener(); // Added
     _loadCurrentUser();
+  }
+
+  void _setupScrollListener() {
+    _scrollController.addListener(() {
+      if (_scrollController.hasClients) {
+        Debouncer.instance.debounce(
+          'load_more_user_posts',
+          _loadMoreDebounce,
+          () {
+            if (_scrollController.position.pixels >=
+                    _scrollController.position.maxScrollExtent - 200 &&
+                _hasMoreUserPosts &&
+                !_isLoadingMoreUserPosts) {
+              setState(() => _isLoadingMoreUserPosts = true);
+              context.read<PostsBloc>().add(LoadMoreUserPostsEvent());
+            }
+          },
+        );
+      }
+    });
   }
 
   Future<void> _loadCurrentUser() async {
     try {
       final supabase = sl<SupabaseClient>();
       final sessionUserId = supabase.auth.currentUser?.id;
-
       if (sessionUserId == null) {
         AppLogger.error('No user session found in UserProfilePage');
         return;
       }
-
       if (mounted) {
         setState(() {
           _currentUserId = sessionUserId;
           _isOwnProfile = sessionUserId == widget.userId;
         });
-
         // Request profile + posts. Do NOT start/stop realtime here.
         context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
         context.read<PostsBloc>().add(
@@ -66,7 +91,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
             currentUserId: sessionUserId,
           ),
         );
-
         if (!_isOwnProfile) {
           context.read<FollowersBloc>().add(
             GetFollowStatusEvent(
@@ -75,11 +99,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
             ),
           );
         }
-
         AppLogger.info(
           'UserProfilePage: Initialized for userId: ${widget.userId}, currentUser: $sessionUserId',
         );
-
         // NEW: Subscribe to real-time for this profile if not own
         if (!_isOwnProfile) {
           final realtime = sl<RealtimeService>();
@@ -103,6 +125,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
       final realtime = sl<RealtimeService>();
       realtime.unsubscribeFromProfile(widget.userId);
     }
+    _scrollController.dispose(); // Added
     super.dispose();
   }
 
@@ -248,7 +271,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         ),
                       ),
                     );
+                    _hasMoreUserPosts = state.hasMore; // Added
                     _isUserPostsLoading = false;
+                    _isLoadingMoreUserPosts = false; // Added
+                    _loadMoreError = null; // Added
                   });
                 }
               } else if (state is UserPostsError) {
@@ -257,6 +283,13 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     _userPostsError = state.message;
                     _isUserPostsLoading = false;
                   });
+              } else if (state is UserPostsLoadMoreError) {
+                if (mounted) {
+                  setState(() {
+                    _loadMoreError = state.message;
+                    _isLoadingMoreUserPosts = false;
+                  });
+                }
               } else if (state is RealtimePostUpdate)
                 _handleRealtimePostUpdate(state);
               else if (state is PostDeleted) {
@@ -330,7 +363,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 onRefresh: () async {
                   if (_currentUserId != null) {
                     context.read<PostsBloc>().add(
-                      GetUserPostsEvent(
+                      RefreshUserPostsEvent(
                         profileUserId: widget.userId,
                         currentUserId: _currentUserId!,
                       ),
@@ -339,14 +372,17 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       setState(() {
                         _userPosts.clear();
                         _userPostsError = null;
+                        _hasMoreUserPosts = true;
                       });
                   }
                 },
-                child: SingleChildScrollView(
+                child: CustomScrollView(
+                  // Changed to CustomScrollView
+                  controller: _scrollController, // Added
                   physics: const AlwaysScrollableScrollPhysics(),
-                  child: Column(
-                    children: [
-                      ProfileHeader(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: ProfileHeader(
                         profile: state.profile,
                         isOwnProfile: _isOwnProfile,
                         // ✅ CHANGED: Pass state variables and the toggle function
@@ -354,11 +390,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         onFollowToggle: _onFollowToggle,
                         isProcessingFollow: _isProcessingFollow,
                       ),
-                      ProfilePostsList(
+                    ),
+                    SliverToBoxAdapter(
+                      child: ProfilePostsList(
                         posts: _userPosts,
                         userId: _currentUserId ?? '',
                         isLoading: _isUserPostsLoading,
                         error: _userPostsError,
+                        hasMore: _hasMoreUserPosts, // Added
+                        isLoadingMore: _isLoadingMoreUserPosts, // Added
+                        loadMoreError: _loadMoreError, // Added
                         onRetry: () {
                           if (mounted && _currentUserId != null) {
                             setState(() {
@@ -374,8 +415,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           }
                         },
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               );
             }

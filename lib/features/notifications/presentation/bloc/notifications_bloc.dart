@@ -9,8 +9,7 @@ import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/features/notifications/domain/entities/notification_entity.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/delete_notifications_usecase.dart';
-import 'package:vlone_blog_app/features/notifications/domain/usecases/get_notifications_stream_usecase.dart';
-import 'package:vlone_blog_app/features/notifications/domain/usecases/get_unread_count_stream_usecase.dart';
+import 'package:vlone_blog_app/features/notifications/domain/usecases/get_paginated_notifications_usecase.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/mark_all_as_read_usecase.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/mark_notification_as_read_usecase.dart';
 
@@ -18,40 +17,38 @@ part 'notifications_event.dart';
 part 'notifications_state.dart';
 
 class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
-  final GetNotificationsStreamUseCase _getNotificationsStreamUseCase;
-  final GetUnreadCountStreamUseCase _getUnreadCountStreamUseCase;
+  final GetPaginatedNotificationsUseCase _getPaginatedNotificationsUseCase;
   final MarkAsReadUseCase _markAsReadUseCase;
   final MarkAllAsReadUseCase _markAllAsReadUseCase;
   final DeleteNotificationsUseCase _deleteNotificationsUseCase;
 
-  // Keep legacy direct subscriptions for backward compatibility (optional)
-  StreamSubscription<Either<Failure, List<NotificationEntity>>>?
-  _notificationsSubscription;
-  StreamSubscription<Either<Failure, int>>? _unreadCountSubscription;
-
   // Subscriptions to the RealtimeService broadcast streams
-  StreamSubscription<List<NotificationEntity>>? _rtNotificationsSub;
   StreamSubscription<int>? _rtUnreadCountSub;
+
+  // Pagination state
+  static const int _pageSize = 20;
+  bool _hasMore = true;
+  DateTime? _lastCreatedAt;
+  String? _lastId;
 
   // RealtimeService (injected)
   final RealtimeService realtimeService;
 
   NotificationsBloc({
-    required GetNotificationsStreamUseCase getNotificationsStreamUseCase,
-    required GetUnreadCountStreamUseCase getUnreadCountStreamUseCase,
+    required GetPaginatedNotificationsUseCase getPaginatedNotificationsUseCase,
     required MarkAsReadUseCase markAsReadUseCase,
     required MarkAllAsReadUseCase markAllAsReadUseCase,
     required DeleteNotificationsUseCase deleteNotificationsUseCase,
     required this.realtimeService,
-  }) : _getNotificationsStreamUseCase = getNotificationsStreamUseCase,
-       _getUnreadCountStreamUseCase = getUnreadCountStreamUseCase,
+  }) : _getPaginatedNotificationsUseCase = getPaginatedNotificationsUseCase,
        _markAsReadUseCase = markAsReadUseCase,
        _markAllAsReadUseCase = markAllAsReadUseCase,
        _deleteNotificationsUseCase = deleteNotificationsUseCase,
        super(NotificationsInitial()) {
-    on<NotificationsSubscribeStream>(_onSubscribeStream);
+    on<GetNotificationsEvent>(_onGetNotifications);
+    on<LoadMoreNotificationsEvent>(_onLoadMoreNotifications);
+    on<RefreshNotificationsEvent>(_onRefreshNotifications);
     on<NotificationsSubscribeUnreadCountStream>(_onSubscribeUnreadCountStream);
-    on<_NotificationsStreamUpdated>(_onStreamUpdated);
     on<_UnreadCountStreamUpdated>(_onUnreadCountUpdated);
     on<NotificationsMarkOneAsRead>(_onMarkOneAsRead);
     on<NotificationsMarkAllAsRead>(_onMarkAllAsRead);
@@ -63,59 +60,145 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     on<NotificationsToggleSelection>(_onToggleSelection);
   }
 
-  void _onSubscribeStream(
-    NotificationsSubscribeStream event,
+  Future<void> _onGetNotifications(
+    GetNotificationsEvent event,
     Emitter<NotificationsState> emit,
-  ) {
-    AppLogger.info(
-      'Subscribing to notifications stream (NotificationsBloc)...',
+  ) async {
+    AppLogger.info('Loading initial notifications...');
+    emit(const NotificationsLoading());
+
+    final result = await _getPaginatedNotificationsUseCase(
+      const GetPaginatedNotificationsParams(pageSize: _pageSize),
     );
-    if (state is NotificationsInitial) {
-      emit(NotificationsLoading());
-    }
 
-    // Legacy: still subscribe via usecase in case there are differences
-    _notificationsSubscription?.cancel();
-    _notificationsSubscription = _getNotificationsStreamUseCase(NoParams())
-        .listen(
-          (update) => add(_NotificationsStreamUpdated(update)),
-          onError: (error) {
-            AppLogger.error('Notifications stream error: $error', error: error);
-            add(
-              _NotificationsStreamUpdated(
-                Left(ServerFailure('Stream error: ${error.toString()}')),
-              ),
-            );
-          },
-        );
-
-    // Preferred: subscribe to RealtimeService broadcast for unified flow
-    _rtNotificationsSub?.cancel();
-    _rtNotificationsSub = realtimeService.onNotificationsBatch.listen(
-      (notifications) {
-        try {
-          // Wrap payload into Right and reuse the same internal update handler
-          add(_NotificationsStreamUpdated(Right(notifications)));
-        } catch (e) {
-          AppLogger.error(
-            'Realtime notifications payload handling failed: $e',
-            error: e,
-          );
-        }
-      },
-      onError: (err) {
+    result.fold(
+      (failure) {
         AppLogger.error(
-          'RealtimeService.onNotificationsBatch error: $err',
-          error: err,
+          'Failed to load initial notifications: ${failure.message}',
         );
-        // Forward an error update so _onStreamUpdated can produce a NotificationsError state
-        add(_NotificationsStreamUpdated(Left(ServerFailure(err.toString()))));
+        emit(
+          NotificationsError(
+            ErrorMessageMapper.mapToUserMessage(failure.message),
+          ),
+        );
+      },
+      (newNotifications) {
+        _lastCreatedAt = newNotifications.isNotEmpty
+            ? newNotifications.last.createdAt
+            : null;
+        _lastId = newNotifications.isNotEmpty ? newNotifications.last.id : null;
+        _hasMore = newNotifications.length == _pageSize;
+
+        AppLogger.info(
+          'Loaded ${newNotifications.length} initial notifications, hasMore: $_hasMore',
+        );
+        emit(
+          NotificationsLoaded(
+            notifications: newNotifications,
+            unreadCount: 0,
+            hasMore: _hasMore,
+          ),
+        );
       },
     );
+  }
 
-    // NOTE: Removed automatic subscription to unread-count stream here.
-    // The unread count is only subscribed to explicitly (e.g. from FeedPage)
-    // by dispatching NotificationsSubscribeUnreadCountStream().
+  Future<void> _onLoadMoreNotifications(
+    LoadMoreNotificationsEvent event,
+    Emitter<NotificationsState> emit,
+  ) async {
+    if (!_hasMore || state is NotificationsLoadingMore) return;
+
+    final currentState = state as NotificationsLoaded;
+    emit(currentState.copyWith(isLoadingMore: true, loadMoreError: null));
+
+    final result = await _getPaginatedNotificationsUseCase(
+      GetPaginatedNotificationsParams(
+        pageSize: _pageSize,
+        lastCreatedAt: _lastCreatedAt,
+        lastId: _lastId,
+      ),
+    );
+
+    result.fold(
+      (failure) {
+        AppLogger.error(
+          'Failed to load more notifications: ${failure.message}',
+        );
+        emit(
+          currentState.copyWith(
+            isLoadingMore: false,
+            loadMoreError: ErrorMessageMapper.mapToUserMessage(failure.message),
+          ),
+        );
+      },
+      (newNotifications) {
+        final updatedNotifications = [
+          ...currentState.notifications,
+          ...newNotifications,
+        ];
+        _lastCreatedAt = newNotifications.isNotEmpty
+            ? newNotifications.last.createdAt
+            : null;
+        _lastId = newNotifications.isNotEmpty ? newNotifications.last.id : null;
+        _hasMore = newNotifications.length == _pageSize;
+
+        AppLogger.info(
+          'Loaded ${newNotifications.length} more notifications, hasMore: $_hasMore',
+        );
+        emit(
+          NotificationsLoaded(
+            notifications: updatedNotifications,
+            unreadCount: currentState.unreadCount,
+            hasMore: _hasMore,
+            isLoadingMore: false,
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _onRefreshNotifications(
+    RefreshNotificationsEvent event,
+    Emitter<NotificationsState> emit,
+  ) async {
+    _hasMore = true;
+    _lastCreatedAt = null;
+    _lastId = null;
+    emit(const NotificationsLoading());
+
+    final result = await _getPaginatedNotificationsUseCase(
+      const GetPaginatedNotificationsParams(pageSize: _pageSize),
+    );
+
+    result.fold(
+      (failure) {
+        AppLogger.error('Failed to refresh notifications: ${failure.message}');
+        emit(
+          NotificationsError(
+            ErrorMessageMapper.mapToUserMessage(failure.message),
+          ),
+        );
+      },
+      (newNotifications) {
+        _lastCreatedAt = newNotifications.isNotEmpty
+            ? newNotifications.last.createdAt
+            : null;
+        _lastId = newNotifications.isNotEmpty ? newNotifications.last.id : null;
+        _hasMore = newNotifications.length == _pageSize;
+
+        AppLogger.info(
+          'Refreshed ${newNotifications.length} notifications, hasMore: $_hasMore',
+        );
+        emit(
+          NotificationsLoaded(
+            notifications: newNotifications,
+            unreadCount: 0, // Will be updated by unread stream if subscribed
+            hasMore: _hasMore,
+          ),
+        );
+      },
+    );
   }
 
   /// Handles subscribing to the unread count stream.
@@ -125,26 +208,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
   ) {
     AppLogger.info('Subscribing to unread count stream...');
 
-    // Legacy subscription
-    _unreadCountSubscription?.cancel();
-    _unreadCountSubscription = _getUnreadCountStreamUseCase(NoParams()).listen(
-      (update) => add(_UnreadCountStreamUpdated(update)),
-      onError: (error) {
-        AppLogger.error(
-          'Unread count stream error (legacy): $error',
-          error: error,
-        );
-        add(
-          _UnreadCountStreamUpdated(
-            Left(
-              ServerFailure('Unread count stream error: ${error.toString()}'),
-            ),
-          ),
-        );
-      },
-    );
-
-    // Preferred: RealtimeService
     _rtUnreadCountSub?.cancel();
     _rtUnreadCountSub = realtimeService.onUnreadCount.listen(
       (count) {
@@ -163,44 +226,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
           error: err,
         );
         add(_UnreadCountStreamUpdated(Left(ServerFailure(err.toString()))));
-      },
-    );
-  }
-
-  /// Handles new data batches from the notifications stream.
-  void _onStreamUpdated(
-    _NotificationsStreamUpdated event,
-    Emitter<NotificationsState> emit,
-  ) {
-    event.update.fold(
-      (failure) {
-        AppLogger.error('Notifications stream failed: ${failure.message}');
-        emit(
-          NotificationsError(
-            ErrorMessageMapper.mapToUserMessage(failure.message),
-          ),
-        );
-      },
-      (notifications) {
-        AppLogger.info(
-          'Notifications stream updated with ${notifications.length} items.',
-        );
-
-        final List<NotificationEntity> entityList = List.from(notifications);
-
-        if (state is NotificationsLoaded) {
-          final currentState = state as NotificationsLoaded;
-          emit(
-            currentState.copyWith(
-              notifications: entityList,
-              selectedNotificationIds: currentState.selectedNotificationIds
-                  .where((id) => entityList.any((n) => n.id == id))
-                  .toSet(),
-            ),
-          );
-        } else {
-          emit(NotificationsLoaded(notifications: entityList, unreadCount: 0));
-        }
       },
     );
   }
@@ -224,12 +249,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         if (state is NotificationsLoaded) {
           final currentState = state as NotificationsLoaded;
           emit(currentState.copyWith(unreadCount: count));
-        } else if (state is! NotificationsError) {
-          // Keep the existing behaviour of emitting a loaded-ish state so
-          // other UI (e.g. notification badge in feed) can read unreadCount.
-          // Because pages that show the notifications list (NotificationsPage)
-          // no longer auto-subscribe to this stream, they won't be affected.
-          emit(NotificationsLoaded(notifications: [], unreadCount: count));
         }
       },
     );
@@ -247,19 +266,10 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
 
     final item = currentState.notifications.firstWhere(
       (n) => n.id == event.notificationId,
-      orElse: () => NotificationEntity.empty,
+      orElse: () => throw Exception('Notification not found'),
     );
 
-    if (item.id.isEmpty || item.isRead) {
-      final result = await _markAsReadUseCase(event.notificationId);
-      result.fold(
-        (failure) => AppLogger.error(
-          'Failed to mark (already read) notification: ${failure.message}',
-        ),
-        (_) => AppLogger.info('Notification mark-as-read confirmed via API.'),
-      );
-      return;
-    }
+    if (item.isRead) return;
 
     final updatedList = currentState.notifications.map((n) {
       if (n.id == event.notificationId) return n.copyWith(isRead: true);
@@ -281,13 +291,12 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         AppLogger.error(
           'Failed to mark notification ${event.notificationId} as read: ${failure.message}',
         );
+        // Revert optimistic update if needed
         emit(currentState);
       },
-      (_) {
-        AppLogger.info(
-          'Notification ${event.notificationId} marked as read via API.',
-        );
-      },
+      (_) => AppLogger.info(
+        'Notification ${event.notificationId} marked as read via API.',
+      ),
     );
   }
 
@@ -310,6 +319,7 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     final result = await _markAllAsReadUseCase(NoParams());
     result.fold((failure) {
       AppLogger.error('Failed to mark all as read: ${failure.message}');
+      // Revert
       emit(currentState);
     }, (_) => AppLogger.info('All notifications marked as read via API.'));
   }
@@ -322,17 +332,9 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     if (state is! NotificationsLoaded) return;
     final currentState = state as NotificationsLoaded;
 
-    final NotificationEntity deletedItem;
-    try {
-      deletedItem = currentState.notifications.firstWhere(
-        (n) => n.id == event.notificationId,
-      );
-    } catch (e) {
-      AppLogger.error(
-        'Item ${event.notificationId} not found in state for deletion.',
-      );
-      return;
-    }
+    final deletedItem = currentState.notifications.firstWhere(
+      (n) => n.id == event.notificationId,
+    );
 
     emit(currentState.copyWith(isDeleting: true));
 
@@ -357,16 +359,18 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         )..remove(event.notificationId);
 
         int newUnreadCount = currentState.unreadCount;
-        if (!deletedItem.isRead)
+        if (!deletedItem.isRead) {
           newUnreadCount = (currentState.unreadCount - 1).clamp(0, 9999);
+        }
 
         emit(
-          currentState.copyWith(
-            isDeleting: false,
+          NotificationsLoaded(
             notifications: updatedList,
+            unreadCount: newUnreadCount,
+            hasMore: currentState.hasMore,
             selectedNotificationIds: newSelectedIds,
             isSelectionMode: newSelectedIds.isNotEmpty,
-            unreadCount: newUnreadCount,
+            isDeleting: false,
           ),
         );
       },
@@ -413,12 +417,13 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
             .clamp(0, 9999);
 
         emit(
-          currentState.copyWith(
-            isDeleting: false,
+          NotificationsLoaded(
             notifications: updatedList,
-            isSelectionMode: false,
-            selectedNotificationIds: {},
             unreadCount: newUnreadCount,
+            hasMore: currentState.hasMore,
+            isSelectionMode: false,
+            selectedNotificationIds: <String>{},
+            isDeleting: false,
           ),
         );
       },
@@ -449,7 +454,7 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     emit(
       currentState.copyWith(
         isSelectionMode: false,
-        selectedNotificationIds: {},
+        selectedNotificationIds: <String>{},
       ),
     );
   }
@@ -462,10 +467,11 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     final currentState = state as NotificationsLoaded;
 
     final newIds = Set<String>.from(currentState.selectedNotificationIds);
-    if (newIds.contains(event.notificationId))
+    if (newIds.contains(event.notificationId)) {
       newIds.remove(event.notificationId);
-    else
+    } else {
       newIds.add(event.notificationId);
+    }
 
     emit(
       currentState.copyWith(
@@ -480,9 +486,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     AppLogger.info(
       'Closing NotificationsBloc and canceling stream subscriptions.',
     );
-    _notificationsSubscription?.cancel();
-    _unreadCountSubscription?.cancel();
-    _rtNotificationsSub?.cancel();
     _rtUnreadCountSub?.cancel();
     return super.close();
   }

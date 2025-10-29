@@ -33,11 +33,17 @@ class FollowersRepositoryImpl implements FollowersRepository {
   Future<Either<Failure, List<UserListEntity>>> getFollowers({
     required String userId,
     String? currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   }) async {
     try {
       final userModels = await remoteDataSource.getFollowers(
         userId: userId,
         currentUserId: currentUserId,
+        pageSize: pageSize,
+        lastCreatedAt: lastCreatedAt,
+        lastId: lastId,
       );
       return Right(userModels.map((model) => model.toEntity()).toList());
     } on ServerException catch (e) {
@@ -49,11 +55,17 @@ class FollowersRepositoryImpl implements FollowersRepository {
   Future<Either<Failure, List<UserListEntity>>> getFollowing({
     required String userId,
     String? currentUserId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
   }) async {
     try {
       final userModels = await remoteDataSource.getFollowing(
         userId: userId,
         currentUserId: currentUserId,
+        pageSize: pageSize,
+        lastCreatedAt: lastCreatedAt,
+        lastId: lastId,
       );
       return Right(userModels.map((model) => model.toEntity()).toList());
     } on ServerException catch (e) {

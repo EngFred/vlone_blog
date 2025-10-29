@@ -7,13 +7,39 @@ abstract class UsersEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-class GetAllUsersEvent extends UsersEvent {
+class GetPaginatedUsersEvent extends UsersEvent {
   final String currentUserId;
 
-  const GetAllUsersEvent(this.currentUserId);
+  const GetPaginatedUsersEvent(this.currentUserId);
 
   @override
   List<Object?> get props => [currentUserId];
+}
+
+class LoadMoreUsersEvent extends UsersEvent {
+  const LoadMoreUsersEvent();
+
+  @override
+  List<Object?> get props => [];
+}
+
+class RefreshUsersEvent extends UsersEvent {
+  final String currentUserId;
+
+  const RefreshUsersEvent(this.currentUserId);
+
+  @override
+  List<Object?> get props => [currentUserId];
+}
+
+class UpdateUserFollowStatusEvent extends UsersEvent {
+  final String userId;
+  final bool isFollowing;
+
+  const UpdateUserFollowStatusEvent(this.userId, this.isFollowing);
+
+  @override
+  List<Object?> get props => [userId, isFollowing];
 }
 
 class _NewUserEvent extends UsersEvent {

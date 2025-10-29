@@ -7,10 +7,26 @@ abstract class CommentsEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-class GetCommentsEvent extends CommentsEvent {
+// CHANGE: Renamed from GetCommentsEvent to GetInitialCommentsEvent for clarity.
+class GetInitialCommentsEvent extends CommentsEvent {
   final String postId;
 
-  const GetCommentsEvent(this.postId);
+  const GetInitialCommentsEvent(this.postId);
+
+  @override
+  List<Object?> get props => [postId];
+}
+
+// New: For loading older comments.
+class LoadMoreCommentsEvent extends CommentsEvent {
+  const LoadMoreCommentsEvent();
+}
+
+// New: For pull-to-refresh.
+class RefreshCommentsEvent extends CommentsEvent {
+  final String postId;
+
+  const RefreshCommentsEvent(this.postId);
 
   @override
   List<Object?> get props => [postId];

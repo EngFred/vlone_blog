@@ -15,7 +15,6 @@ import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 class ReelsPage extends StatefulWidget {
   final bool isVisible;
   const ReelsPage({super.key, this.isVisible = true});
-
   @override
   State<ReelsPage> createState() => _ReelsPageState();
 }
@@ -27,6 +26,8 @@ class _ReelsPageState extends State<ReelsPage>
   late PageController _pageController;
   int _currentPage = 0;
   bool _isPageChanging = false;
+  bool _hasMoreReels = true; // Added: Track hasMore locally
+  bool _isLoadingMore = false; // Added: Prevent duplicate loads
 
   @override
   bool get wantKeepAlive => true;
@@ -36,15 +37,10 @@ class _ReelsPageState extends State<ReelsPage>
     super.initState();
     _pageController = PageController(initialPage: 0, viewportFraction: 1.0);
     WidgetsBinding.instance.addObserver(this);
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userId = context.read<AuthBloc>().cachedUser?.id;
       if (userId != null) {
-        // ✅ OPTIMIZATION: GetFeedEvent has been REMOVED from here.
-        // MainPage's _dispatchLoadForIndex(1) is now responsible for this.
-
-        // We still need the PostsBloc to be listening to realtime events.
-        context.read<PostsBloc>().add(StartRealtimeListenersEvent(userId));
+        // Removed: StartRealtimeListenersEvent and GetReelsEvent - handled by MainPage
       } else {
         AppLogger.warning(
           'FeedPage: userId null at init; waiting for AuthBloc',
@@ -78,10 +74,8 @@ class _ReelsPageState extends State<ReelsPage>
 
   void _updatePosts(List<PostEntity> newPosts) {
     if (!mounted) return;
-
     final oldIds = _posts.map((p) => p.id).toSet();
     final newIds = newPosts.map((p) => p.id).toSet();
-
     if (oldIds.length == newIds.length && oldIds.containsAll(newIds)) {
       setState(() {
         for (int i = 0; i < newPosts.length; i++) {
@@ -114,6 +108,15 @@ class _ReelsPageState extends State<ReelsPage>
     Future.delayed(const Duration(milliseconds: 100), () {
       if (mounted) setState(() => _isPageChanging = false);
     });
+
+    // Added: Load more if near the end (preemptive, 2 pages before end)
+    if (index >= _posts.length - 2 && _hasMoreReels && !_isLoadingMore) {
+      final currentUserId = context.read<AuthBloc>().cachedUser?.id;
+      if (currentUserId != null) {
+        setState(() => _isLoadingMore = true);
+        context.read<PostsBloc>().add(LoadMoreReelsEvent());
+      }
+    }
   }
 
   @override
@@ -123,7 +126,6 @@ class _ReelsPageState extends State<ReelsPage>
     if (currentUserId == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-
     return Scaffold(
       body: MultiBlocListener(
         listeners: [
@@ -134,7 +136,9 @@ class _ReelsPageState extends State<ReelsPage>
                 AppLogger.info('Reels loaded with ${state.posts.length} posts');
                 if (mounted) {
                   _updatePosts(state.posts);
+                  _hasMoreReels = state.hasMore; // Added: Update hasMore
                   _hasLoadedOnce = true;
+                  _isLoadingMore = false; // Added: Reset loading flag
                 }
               } else if (state is PostCreated &&
                   state.post.mediaType == 'video') {
@@ -167,10 +171,14 @@ class _ReelsPageState extends State<ReelsPage>
                 final index = _posts.indexWhere((p) => p.id == state.postId);
                 if (index != -1 && mounted)
                   setState(() => _posts.removeAt(index));
+              } else if (state is ReelsLoadingMore) {
+                // Optional: Handle loading more state if needed
+              } else if (state is ReelsLoadMoreError) {
+                AppLogger.error('Load more reels error: ${state.message}');
+                if (mounted) setState(() => _isLoadingMore = false);
               }
             },
           ),
-
           // LikesBloc: only handle server confirmations or errors (do NOT apply optimistic deltas at page level).
           BlocListener<LikesBloc, LikesState>(
             listener: (context, state) {
@@ -195,7 +203,6 @@ class _ReelsPageState extends State<ReelsPage>
                   );
                   setState(() => _posts[idx] = updated);
                 }
-
                 // Revert central optimistic update so all pages remain consistent
                 context.read<PostsBloc>().add(
                   OptimisticPostUpdate(
@@ -209,7 +216,6 @@ class _ReelsPageState extends State<ReelsPage>
               }
             },
           ),
-
           // FavoritesBloc: same approach as likes — do NOT apply optimistic deltas at page level
           BlocListener<FavoritesBloc, FavoritesState>(
             listener: (context, state) {
@@ -236,7 +242,6 @@ class _ReelsPageState extends State<ReelsPage>
                   );
                   setState(() => _posts[idx] = updated);
                 }
-
                 // Revert central optimistic update so all pages remain consistent
                 context.read<PostsBloc>().add(
                   OptimisticPostUpdate(
@@ -255,7 +260,9 @@ class _ReelsPageState extends State<ReelsPage>
           onRefresh: () async {
             AppLogger.info('Refreshing reels for user: $currentUserId');
             final bloc = context.read<PostsBloc>();
-            bloc.add(GetReelsEvent(currentUserId));
+            bloc.add(
+              RefreshReelsEvent(currentUserId),
+            ); // Changed to RefreshReelsEvent for consistency
             await bloc.stream.firstWhere(
               (state) => state is ReelsLoaded || state is PostsError,
             );
@@ -273,14 +280,22 @@ class _ReelsPageState extends State<ReelsPage>
                     ),
                   );
                 }
-
                 return PageView.builder(
                   controller: _pageController,
                   scrollDirection: Axis.vertical,
-                  itemCount: _posts.length,
+                  itemCount:
+                      _posts.length +
+                      (_hasMoreReels
+                          ? 1
+                          : 0), // Added: Extra for loading footer if hasMore
                   onPageChanged: _onPageChanged,
                   physics: const PageScrollPhysics(),
                   itemBuilder: (context, index) {
+                    if (_hasMoreReels && index == _posts.length) {
+                      return const Center(
+                        child: LoadingIndicator(),
+                      ); // Added: Loading footer
+                    }
                     final post = _posts[index];
                     final isCurrentPage = index == _currentPage;
                     return ReelItem(
@@ -294,7 +309,6 @@ class _ReelsPageState extends State<ReelsPage>
                   },
                 );
               }
-
               final postsState = context.watch<PostsBloc>().state;
               if (postsState is PostsLoading || postsState is PostsInitial)
                 return const LoadingIndicator();

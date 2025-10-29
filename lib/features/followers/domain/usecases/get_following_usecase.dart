@@ -17,6 +17,9 @@ class GetFollowingUseCase
     return repository.getFollowing(
       userId: params.userId,
       currentUserId: params.currentUserId,
+      pageSize: params.pageSize,
+      lastCreatedAt: params.lastCreatedAt,
+      lastId: params.lastId,
     );
   }
 }
@@ -24,6 +27,15 @@ class GetFollowingUseCase
 class GetFollowingParams {
   final String userId;
   final String? currentUserId;
+  final int pageSize;
+  final DateTime? lastCreatedAt;
+  final String? lastId;
 
-  GetFollowingParams({required this.userId, this.currentUserId});
+  GetFollowingParams({
+    required this.userId,
+    this.currentUserId,
+    this.pageSize = 20,
+    this.lastCreatedAt,
+    this.lastId,
+  });
 }

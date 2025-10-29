@@ -17,6 +17,9 @@ class GetFollowersUseCase
     return repository.getFollowers(
       userId: params.userId,
       currentUserId: params.currentUserId,
+      pageSize: params.pageSize,
+      lastCreatedAt: params.lastCreatedAt,
+      lastId: params.lastId,
     );
   }
 }
@@ -24,6 +27,15 @@ class GetFollowersUseCase
 class GetFollowersParams {
   final String userId;
   final String? currentUserId;
+  final int pageSize;
+  final DateTime? lastCreatedAt;
+  final String? lastId;
 
-  GetFollowersParams({required this.userId, this.currentUserId});
+  GetFollowersParams({
+    required this.userId,
+    this.currentUserId,
+    this.pageSize = 20,
+    this.lastCreatedAt,
+    this.lastId,
+  });
 }

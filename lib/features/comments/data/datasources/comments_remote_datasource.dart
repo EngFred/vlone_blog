@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vlone_blog_app/core/error/exceptions.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
@@ -9,9 +8,10 @@ class CommentsRemoteDataSource {
   final SupabaseClient client;
   CommentsRemoteDataSource(this.client);
 
-  // Cached controllers & subscriptions for getCommentsStream (per-post)
+  // Cached controllers, channels, & local lists for getCommentsStream (per-post)
   final Map<String, StreamController<List<CommentModel>>> _controllers = {};
-  final Map<String, StreamSubscription> _subscriptions = {};
+  final Map<String, RealtimeChannel> _channels = {};
+  final Map<String, List<CommentModel>> _localComments = {};
 
   // Channel & controller for global comment events
   RealtimeChannel? _commentsChannel;
@@ -50,13 +50,28 @@ class CommentsRemoteDataSource {
     }
   }
 
-  Future<List<CommentModel>> getComments(String postId) async {
-    AppLogger.info('Fetching initial comments for post (RPC): $postId');
+  Future<List<CommentModel>> getComments(
+    String postId, {
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
+  }) async {
+    AppLogger.info(
+      'Fetching comments for post (RPC): $postId with pagination: pageSize=$pageSize, lastCreatedAt=$lastCreatedAt, lastId=$lastId',
+    );
     try {
-      // Call the canonical RPC that guarantees ORDER BY created_at DESC and includes replies_count & profile info
+      // Call the paginated Postgres function
       final response = await client.rpc(
-        'get_comments_view_for_post',
-        params: {'p_post_id': postId},
+        'get_comments_with_user_status',
+        params: {
+          'p_post_id': postId,
+          'p_current_user_id':
+              null, // Optional, for future user-specific status like is_liked
+          'page_size': pageSize,
+          if (lastCreatedAt != null)
+            'last_created_at': lastCreatedAt.toIso8601String(),
+          if (lastId != null) 'last_id': lastId,
+        },
       );
 
       // Normalize possible response shapes
@@ -66,7 +81,6 @@ class CommentsRemoteDataSource {
       } else if (response is List) {
         rows = response;
       } else if (response is Map && response.values.isNotEmpty) {
-        // supabase sometimes wraps results like {'get_comments_view_for_post': [ ... ]}
         final firstVal = response.values.first;
         rows = firstVal is List ? firstVal : [firstVal];
       } else {
@@ -91,128 +105,181 @@ class CommentsRemoteDataSource {
     }
   }
 
+  /// Fetches a single comment with profile info from the view
+  Future<CommentModel> getSingleComment(String commentId) async {
+    try {
+      final response = await client
+          .from('comments_view')
+          .select()
+          .eq('id', commentId)
+          .single();
+      if (response == null || response.isEmpty) {
+        throw const ServerException('Comment not found');
+      }
+      return CommentModel.fromMap(response);
+    } catch (e) {
+      AppLogger.error(
+        'Failed to fetch single comment $commentId: $e',
+        error: e,
+      );
+      throw ServerException(e.toString());
+    }
+  }
+
+  /// Appends more comments to the local cache for a post and emits if stream active
+  void appendMoreComments(String postId, List<CommentModel> more) {
+    if (_localComments.containsKey(postId)) {
+      _localComments[postId]!.addAll(more);
+      final controller = _controllers[postId];
+      if (controller != null && !controller.isClosed) {
+        controller.add(_localComments[postId]!);
+      }
+    }
+  }
+
   /// Returns a cached broadcast stream per postId.
   Stream<List<CommentModel>> getCommentsStream(String postId) {
     AppLogger.info('Requesting comments stream for post: $postId');
-
     final existing = _controllers[postId];
     if (existing != null) {
       AppLogger.info('Returning existing comments stream for post: $postId');
       return existing.stream;
     }
 
-    late final StreamController<List<CommentModel>> controller;
+    final controller = StreamController<List<CommentModel>>.broadcast();
+    _controllers[postId] = controller;
 
-    controller = StreamController<List<CommentModel>>.broadcast(
-      onListen: () async {
-        AppLogger.info(
-          'Listener attached to comments stream for post: $postId',
+    controller.onListen = () async {
+      AppLogger.info('Listener attached to comments stream for post: $postId');
+      try {
+        final initial = await getComments(postId, pageSize: 20);
+        _localComments[postId] = initial;
+        if (!controller.isClosed) controller.add(initial);
+      } catch (e, st) {
+        AppLogger.error(
+          'Failed to seed initial comments for post: $postId, error: $e',
+          error: e,
+          stackTrace: st,
         );
-        try {
-          final initial = await getComments(postId);
-          if (!controller.isClosed) controller.add(initial);
-        } catch (e, st) {
-          AppLogger.error(
-            'Failed to seed initial comments for post: $postId, error: $e',
-            error: e,
-            stackTrace: st,
-          );
-          if (!controller.isClosed) {
-            controller.addError(ServerException(e.toString()));
+        if (!controller.isClosed) {
+          controller.addError(ServerException(e.toString()));
+        }
+      }
+    };
+
+    // Setup realtime delta listener
+    final channel = client.channel('comments_post_$postId');
+    _channels[postId] = channel;
+
+    void handlePayload(PostgresChangePayload payload) async {
+      try {
+        final event = payload.eventType;
+        if (event == PostgresChangeEvent.insert) {
+          final newRec = payload.newRecord;
+          final id = newRec['id'] as String?;
+          if (id != null) {
+            final comment = await getSingleComment(id);
+            final local = _localComments[postId] ?? [];
+            local.insert(0, comment);
+            _localComments[postId] = local;
+            if (!controller.isClosed) controller.add(local);
+          }
+        } else if (event == PostgresChangeEvent.update) {
+          final newRec = payload.newRecord;
+          final id = newRec['id'] as String?;
+          if (id != null) {
+            final updated = await getSingleComment(id);
+            final local = _localComments[postId] ?? [];
+            final index = local.indexWhere((c) => c.id == id);
+            if (index != -1) {
+              local[index] = updated;
+              _localComments[postId] = local;
+              if (!controller.isClosed) controller.add(local);
+            }
+          }
+        } else if (event == PostgresChangeEvent.delete) {
+          final oldRec = payload.oldRecord;
+          final id = oldRec['id'] as String?;
+          if (id != null) {
+            final local = _localComments[postId] ?? [];
+            local.removeWhere((c) => c.id == id);
+            _localComments[postId] = local;
+            if (!controller.isClosed) controller.add(local);
           }
         }
-      },
-      onCancel: () async {
-        await Future.delayed(const Duration(milliseconds: 50));
-        if (!controller.hasListener) {
-          AppLogger.info('No listeners remain, cleaning up for post: $postId');
-          await _subscriptions[postId]?.cancel();
-          _subscriptions.remove(postId);
-          _controllers.remove(postId);
-          if (!controller.isClosed) await controller.close();
+      } catch (e, st) {
+        AppLogger.error(
+          'Failed to process realtime comment payload for post: $postId, error: $e',
+          error: e,
+          stackTrace: st,
+        );
+        if (!controller.isClosed && controller.hasListener) {
+          controller.addError(ServerException(e.toString()));
         }
-      },
-    );
-
-    // Realtime: listen to changes on the COMMENTS TABLE (table triggers always fire).
-    try {
-      final realtimeStream = client
-          .from('comments') // listen on table not view
-          .stream(primaryKey: ['id'])
-          .eq('post_id', postId);
-
-      final sub = realtimeStream.listen(
-        (payloadList) async {
-          try {
-            // Normalize payload shape
-            dynamic payload = payloadList;
-            if (payload is List && payload.isNotEmpty) {
-              payload = payload.first;
-            }
-
-            if (payload is Map<String, dynamic> && payload.containsKey('id')) {
-              // Simple & safe: refetch canonical (server-ordered) list on any change
-              final refreshed = await getComments(postId);
-              if (!controller.isClosed) controller.add(refreshed);
-            }
-          } catch (e, st) {
-            AppLogger.error(
-              'Failed to process realtime comment payload for post: $postId, error: $e',
-              error: e,
-              stackTrace: st,
-            );
-            if (!controller.isClosed && controller.hasListener) {
-              controller.addError(ServerException(e.toString()));
-            }
-          }
-        },
-        onError: (err, st) {
-          AppLogger.error(
-            'Realtime stream error for post: $postId, error: $err',
-            error: err,
-            stackTrace: st,
-          );
-          if (!controller.isClosed && controller.hasListener) {
-            controller.addError(ServerException(err.toString()));
-          }
-        },
-        cancelOnError: false,
-      );
-
-      // Cache controller and subscription
-      _controllers[postId] = controller;
-      _subscriptions[postId] = sub;
-
-      return controller.stream;
-    } catch (e, stackTrace) {
-      AppLogger.error(
-        'Failed to subscribe to comments stream for post: $postId, error: $e',
-        error: e,
-        stackTrace: stackTrace,
-      );
-      return Stream.error(ServerException(e.toString()));
+      }
     }
+
+    // --- FIX START ---
+    // Define the filter object as required by the new API
+    final filter = PostgresChangeFilter(
+      type: PostgresChangeFilterType.eq,
+      column: 'post_id',
+      value: postId,
+    );
+    // --- FIX END ---
+
+    channel
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'comments',
+          filter: filter, // Use the filter object
+          callback: handlePayload,
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'comments',
+          filter: filter, // Use the filter object
+          callback: handlePayload,
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'comments',
+          filter: filter, // Use the filter object
+          callback: handlePayload,
+        )
+        .subscribe();
+
+    controller.onCancel = () async {
+      await Future.delayed(const Duration(milliseconds: 50));
+      if (!controller.hasListener) {
+        AppLogger.info('No listeners remain, cleaning up for post: $postId');
+        try {
+          await _channels[postId]?.unsubscribe();
+        } catch (_) {}
+        _channels.remove(postId);
+        _controllers.remove(postId);
+        _localComments.remove(postId);
+        if (!controller.isClosed) await controller.close();
+      }
+    };
+
+    return controller.stream;
   }
 
   /// Global comment insert stream (for feed counters)
   Stream<Map<String, dynamic>> streamCommentEvents() {
     AppLogger.info('Setting up real-time stream for global comment events');
-
     if (_commentsController != null && !_commentsController!.isClosed) {
-      return _commentsController!.stream.handleError((error) {
-        AppLogger.error(
-          'Error in global comments stream: $error',
-          error: error,
-        );
-      });
+      return _commentsController!.stream;
     }
 
     _commentsController = StreamController<Map<String, dynamic>>.broadcast();
-
     final channel = client.channel(
       'comments_updates_${DateTime.now().millisecondsSinceEpoch}',
     );
-
     _commentsChannel = channel
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
@@ -223,14 +290,12 @@ class CommentsRemoteDataSource {
               AppLogger.info(
                 'Comment event received on post: ${payload.newRecord['post_id']}',
               );
-
               final data = {
                 'event': 'INSERT',
                 'post_id': payload.newRecord['post_id'],
                 'user_id': payload.newRecord['user_id'],
                 'comment_id': payload.newRecord['id'],
               };
-
               if (!(_commentsController?.isClosed ?? true)) {
                 _commentsController!.add(data);
               }
@@ -264,21 +329,17 @@ class CommentsRemoteDataSource {
         AppLogger.info('Global comments stream cancelled and cleaned up');
       }
     };
-
-    return _commentsController!.stream.handleError((error) {
-      AppLogger.error('Error in global comments stream: $error', error: error);
-    });
+    return _commentsController!.stream;
   }
 
   Future<void> disposeAllStreams() async {
     AppLogger.info('Disposing all comments streams');
-
-    for (final sub in _subscriptions.values) {
+    for (final channel in _channels.values) {
       try {
-        await sub.cancel();
+        await channel.unsubscribe();
       } catch (_) {}
     }
-    _subscriptions.clear();
+    _channels.clear();
 
     for (final ctrl in _controllers.values) {
       try {
@@ -286,6 +347,7 @@ class CommentsRemoteDataSource {
       } catch (_) {}
     }
     _controllers.clear();
+    _localComments.clear();
 
     try {
       await _commentsChannel?.unsubscribe();

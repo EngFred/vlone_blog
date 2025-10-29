@@ -17,7 +17,8 @@ import 'package:vlone_blog_app/features/comments/data/datasources/comments_remot
 import 'package:vlone_blog_app/features/comments/data/repositories/comments_repository_impl.dart';
 import 'package:vlone_blog_app/features/comments/domain/repositories/comments_repository.dart';
 import 'package:vlone_blog_app/features/comments/domain/usecases/add_comment_usecase.dart';
-import 'package:vlone_blog_app/features/comments/domain/usecases/get_comments_usecase.dart';
+import 'package:vlone_blog_app/features/comments/domain/usecases/get_initial_comments_usecase.dart';
+import 'package:vlone_blog_app/features/comments/domain/usecases/load_more_comments_usecase.dart';
 import 'package:vlone_blog_app/features/comments/domain/usecases/stream_comments_usecase.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
 
@@ -52,6 +53,7 @@ import 'package:vlone_blog_app/features/notifications/data/repository/notificati
 import 'package:vlone_blog_app/features/notifications/domain/repository/notification_repository.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/delete_notifications_usecase.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/get_notifications_stream_usecase.dart';
+import 'package:vlone_blog_app/features/notifications/domain/usecases/get_paginated_notifications_usecase.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/get_unread_count_stream_usecase.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/mark_all_as_read_usecase.dart';
 import 'package:vlone_blog_app/features/notifications/domain/usecases/mark_notification_as_read_usecase.dart';
@@ -85,7 +87,7 @@ import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.d
 import 'package:vlone_blog_app/features/users/data/datasources/users_remote_datasource.dart';
 import 'package:vlone_blog_app/features/users/data/repository/users_repository_impl.dart';
 import 'package:vlone_blog_app/features/users/domain/repository/users_repository.dart';
-import 'package:vlone_blog_app/features/users/domain/usecases/get_all_users_usecase.dart';
+import 'package:vlone_blog_app/features/users/domain/usecases/get_paginated_users_usecase.dart';
 import 'package:vlone_blog_app/features/users/domain/usecases/stream_new_users_usecase.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 
@@ -272,19 +274,23 @@ Future<void> initComments() async {
   sl.registerLazySingleton<AddCommentUseCase>(
     () => AddCommentUseCase(sl<CommentsRepository>()),
   );
-  sl.registerLazySingleton<GetCommentsUseCase>(
-    () => GetCommentsUseCase(sl<CommentsRepository>()),
+  sl.registerLazySingleton<GetInitialCommentsUseCase>(
+    () => GetInitialCommentsUseCase(sl<CommentsRepository>()),
   );
   sl.registerLazySingleton<StreamCommentsUseCase>(
     () => StreamCommentsUseCase(sl<CommentsRepository>()),
   );
+  sl.registerLazySingleton<LoadMoreCommentsUseCase>(
+    () => LoadMoreCommentsUseCase(sl<CommentsRepository>()),
+  );
   sl.registerFactory<CommentsBloc>(
     () => CommentsBloc(
+      getInitialCommentsUseCase: sl<GetInitialCommentsUseCase>(),
       addCommentUseCase: sl<AddCommentUseCase>(),
-      getCommentsUseCase: sl<GetCommentsUseCase>(),
       streamCommentsUseCase: sl<StreamCommentsUseCase>(),
       repository: sl<CommentsRepository>(),
       realtimeService: sl<RealtimeService>(),
+      loadMoreCommentsUseCase: sl<LoadMoreCommentsUseCase>(),
     ),
   );
 }
@@ -359,11 +365,13 @@ Future<void> initUsers() async {
   sl.registerLazySingleton<UsersRepository>(
     () => UsersRepositoryImpl(sl<UsersRemoteDataSource>()),
   );
-  sl.registerLazySingleton(() => GetAllUsersUseCase(sl<UsersRepository>()));
+  sl.registerLazySingleton(
+    () => GetPaginatedUsersUseCase(sl<UsersRepository>()),
+  );
   sl.registerLazySingleton<StreamNewUsersUseCase>(
     () => StreamNewUsersUseCase(sl<UsersRepository>()),
   );
-  sl.registerFactory(() => UsersBloc(getAllUsersUseCase: sl()));
+  sl.registerFactory(() => UsersBloc(getPaginatedUsersUseCase: sl()));
 }
 
 // -------------------
@@ -391,14 +399,16 @@ Future<void> initNotifications() async {
   sl.registerLazySingleton<DeleteNotificationsUseCase>(
     () => DeleteNotificationsUseCase(sl<NotificationsRepository>()),
   );
+  sl.registerLazySingleton<GetPaginatedNotificationsUseCase>(
+    () => GetPaginatedNotificationsUseCase(sl<NotificationsRepository>()),
+  );
   sl.registerFactory<NotificationsBloc>(
     () => NotificationsBloc(
-      getNotificationsStreamUseCase: sl<GetNotificationsStreamUseCase>(),
       markAsReadUseCase: sl<MarkAsReadUseCase>(),
       markAllAsReadUseCase: sl<MarkAllAsReadUseCase>(),
-      getUnreadCountStreamUseCase: sl<GetUnreadCountStreamUseCase>(),
       deleteNotificationsUseCase: sl<DeleteNotificationsUseCase>(),
       realtimeService: sl<RealtimeService>(),
+      getPaginatedNotificationsUseCase: sl<GetPaginatedNotificationsUseCase>(),
     ),
   );
 }

@@ -11,11 +11,17 @@ class UsersRepositoryImpl implements UsersRepository {
   UsersRepositoryImpl(this.remoteDataSource);
 
   @override
-  Future<Either<Failure, List<UserListEntity>>> getAllUsers(
-    String currentUserId,
-  ) async {
+  Future<Either<Failure, List<UserListEntity>>> getPaginatedUsers({
+    required String currentUserId,
+    int pageSize = 20,
+    int pageOffset = 0,
+  }) async {
     try {
-      final userModels = await remoteDataSource.getAllUsers(currentUserId);
+      final userModels = await remoteDataSource.getPaginatedUsers(
+        currentUserId: currentUserId,
+        pageSize: pageSize,
+        pageOffset: pageOffset,
+      );
       return Right(userModels.map((model) => model.toEntity()).toList());
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));

@@ -12,6 +12,50 @@ class NotificationsRemoteDataSource {
 
   NotificationsRemoteDataSource(this.client);
 
+  List _normalizeRpcList(dynamic resp) {
+    if (resp == null) return <dynamic>[];
+    if (resp is List) return resp;
+    if (resp is Map) return [resp];
+    return <dynamic>[];
+  }
+
+  /// Paginated fetch of notifications using the RPC
+  Future<List<NotificationModel>> getPaginatedNotifications({
+    required String userId,
+    int pageSize = 20,
+    DateTime? lastCreatedAt,
+    String? lastId,
+  }) async {
+    try {
+      AppLogger.info(
+        'Fetching paginated notifications for user: $userId with pageSize=$pageSize, lastCreatedAt=$lastCreatedAt, lastId=$lastId',
+      );
+
+      final response = await client.rpc(
+        'get_notifications_for_user',
+        params: {
+          'p_recipient_id': userId,
+          'page_size': pageSize,
+          if (lastCreatedAt != null)
+            'last_created_at': lastCreatedAt.toIso8601String(),
+          if (lastId != null) 'last_id': lastId,
+        },
+      );
+
+      final rows = _normalizeRpcList(response);
+      if (rows.isEmpty) return [];
+
+      AppLogger.info('Fetched ${rows.length} notifications via RPC');
+
+      return rows
+          .map((map) => NotificationModel.fromMap(map as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      AppLogger.error('Error fetching paginated notifications: $e', error: e);
+      throw ServerException(e.toString());
+    }
+  }
+
   /// Returns a broadcast stream giving the current user's notifications (newest-first).
   /// Seeds initial data from `_notificationsView` and listens to table changes on `_notificationsTable`.
   Stream<List<NotificationModel>> getNotificationsStream() {
