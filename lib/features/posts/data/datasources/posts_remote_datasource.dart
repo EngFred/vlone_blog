@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -13,32 +12,6 @@ import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:vlone_blog_app/core/utils/video_compressor.dart';
-
-class _ThumbnailRequest {
-  final String videoPath;
-  final String tempPath;
-
-  _ThumbnailRequest({required this.videoPath, required this.tempPath});
-}
-
-Future<String?> _generateThumbnailInIsolate(_ThumbnailRequest request) async {
-  try {
-    // This is the CPU-intensive part
-    final thumbPath = await VideoThumbnail.thumbnailFile(
-      video: request.videoPath,
-      thumbnailPath: request.tempPath,
-      imageFormat: ImageFormat.JPEG,
-      quality: 75,
-      maxHeight: 720,
-    );
-    return thumbPath;
-  } catch (e) {
-    // Cannot use AppLogger easily from an isolate, just return null
-    // The main thread will handle logging the error
-    return null;
-  }
-}
-// -----------------------------------------------------------------------------
 
 class PostsRemoteDataSource {
   final SupabaseClient client;
@@ -114,7 +87,7 @@ class PostsRemoteDataSource {
         );
 
         if (mediaType == 'video') {
-          // This call now uses 'compute' internally and uses the final fileToUpload
+          // This call now runs on the main thread, as required by the plugin
           final thumbPath = await _generateThumbnailFile(fileToUpload);
 
           if (thumbPath != null) {
@@ -215,28 +188,36 @@ class PostsRemoteDataSource {
     }
   }
 
-  //This method now orchestrates the 'compute' call
+  //This method now calls the plugin directly
   Future<String?> _generateThumbnailFile(File videoFile) async {
     try {
-      // 1. Get temp directory path (must be on main thread)
+      // 1. Get temp directory path
       final tempDir = await getTemporaryDirectory();
 
-      // 2. Prepare the request payload
-      final request = _ThumbnailRequest(
-        videoPath: videoFile.path,
-        tempPath: tempDir.path,
+      // 2. Run the task directly.
+      // The plugin itself is async and manages platform channels.
+      final thumbPath = await VideoThumbnail.thumbnailFile(
+        video: videoFile.path,
+        thumbnailPath:
+            tempDir.path, // The plugin will create a file IN this dir
+        imageFormat: ImageFormat.JPEG,
+        quality: 75,
+        maxHeight: 720,
       );
-
-      // 3. Run the heavy task in an isolate
-      final thumbPath = await compute(_generateThumbnailInIsolate, request);
 
       if (thumbPath == null) {
         throw Exception('Thumbnail generation returned null');
       }
 
+      AppLogger.info('Thumbnail generated at: $thumbPath');
       return thumbPath;
-    } catch (e) {
-      AppLogger.error('Thumbnail generation failed: $e', error: e);
+    } catch (e, st) {
+      // This will now log the REAL error if the plugin fails
+      AppLogger.error(
+        'Thumbnail generation failed: $e',
+        error: e,
+        stackTrace: st,
+      );
       return null;
     }
   }

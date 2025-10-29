@@ -47,5 +47,22 @@
 		<true/>
 		<key>UIStatusBarHidden</key>
 		<false/>
+
+		<!-- Permission strings required for accessing Photos, Camera, Microphone -->
+		<!-- Read access to the user's photo library (required when picking videos/photos) -->
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>${PRODUCT_NAME} library usage — we need access to your photos and videos to upload and compress media.</string>
+
+		<!-- Write access to the user's photo library (if you save generated thumbnails or exported videos) -->
+		<key>NSPhotoLibraryAddUsageDescription</key>
+		<string>${PRODUCT_NAME} needs permission to save photos or videos to your library.</string>
+
+		<!-- Camera access (if you allow recording video/photo within the app) -->
+		<key>NSCameraUsageDescription</key>
+		<string>${PRODUCT_NAME} needs camera access to record videos or take photos.</string>
+
+		<!-- Microphone access (if your videos include audio recording) -->
+		<key>NSMicrophoneUsageDescription</key>
+		<string>${PRODUCT_NAME} needs microphone access to record audio for videos.</string>
 	</dict>
 </plist>
