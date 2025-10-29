@@ -91,41 +91,59 @@ class ReelsLoadMoreError extends PostsState {
   List<Object?> get props => [message, currentPosts];
 }
 
+// NEW: Added profileUserId to all user-posts states for per-profile isolation
 class UserPostsLoading extends PostsState {
-  const UserPostsLoading();
+  final String? profileUserId; // Tracks which profile this loading is for
+
+  const UserPostsLoading({this.profileUserId});
+
+  @override
+  List<Object?> get props => [profileUserId];
 }
 
 class UserPostsLoaded extends PostsState {
   final List<PostEntity> posts;
   final bool hasMore;
+  final String? profileUserId; // Tracks which profile these posts belong to
 
-  const UserPostsLoaded(this.posts, {this.hasMore = true});
+  const UserPostsLoaded(this.posts, {this.hasMore = true, this.profileUserId});
 
   @override
-  List<Object?> get props => [posts, hasMore];
+  List<Object?> get props => [posts, hasMore, profileUserId];
 }
 
 class UserPostsLoadingMore extends PostsState {
-  const UserPostsLoadingMore();
+  final String? profileUserId; // For consistency during load more
+
+  const UserPostsLoadingMore({this.profileUserId});
+
+  @override
+  List<Object?> get props => [profileUserId];
 }
 
 class UserPostsLoadMoreError extends PostsState {
   final String message;
   final List<PostEntity> currentPosts;
+  final String? profileUserId; // Preserve for error context
 
-  const UserPostsLoadMoreError(this.message, {required this.currentPosts});
+  const UserPostsLoadMoreError(
+    this.message, {
+    required this.currentPosts,
+    this.profileUserId,
+  });
 
   @override
-  List<Object?> get props => [message, currentPosts];
+  List<Object?> get props => [message, currentPosts, profileUserId];
 }
 
 class UserPostsError extends PostsState {
   final String message;
+  final String? profileUserId; // Tracks which profile errored
 
-  const UserPostsError(this.message);
+  const UserPostsError(this.message, {this.profileUserId});
 
   @override
-  List<Object?> get props => [message];
+  List<Object?> get props => [message, profileUserId];
 }
 
 class PostLoaded extends PostsState {

@@ -1,4 +1,3 @@
-// posts_bloc.dart
 import 'dart:async';
 import 'dart:io';
 import 'package:bloc/bloc.dart';
@@ -14,7 +13,6 @@ import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_usecase.d
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_reels_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_user_posts_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
-import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 
 part 'posts_event.dart';
 part 'posts_state.dart';
@@ -299,12 +297,17 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     Emitter<PostsState> emit,
   ) async {
     AppLogger.info(
-      'GetUserPostsEvent triggered for user: ${event.profileUserId}',
+      'GetUserPostsEvent triggered for profileUserId: ${event.profileUserId} (currentUserId: ${event.currentUserId})',
     );
     _currentUserPostsProfileId = event.profileUserId;
     _currentUserPostsUserId = event.currentUserId;
-    emit(const UserPostsLoading());
-    await _fetchUserPosts(emit, isRefresh: true);
+    // CHANGE: Emit with profileUserId for isolation
+    emit(UserPostsLoading(profileUserId: event.profileUserId));
+    await _fetchUserPosts(
+      emit,
+      isRefresh: true,
+      profileUserId: event.profileUserId,
+    );
   }
 
   Future<void> _onLoadMoreUserPosts(
@@ -315,8 +318,13 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
         !_hasMoreUserPosts ||
         state is UserPostsLoadingMore)
       return;
-    emit(const UserPostsLoadingMore());
-    await _fetchUserPosts(emit, isRefresh: false);
+    // CHANGE: Emit with current profileUserId for consistency
+    emit(UserPostsLoadingMore(profileUserId: _currentUserPostsProfileId));
+    await _fetchUserPosts(
+      emit,
+      isRefresh: false,
+      profileUserId: _currentUserPostsProfileId,
+    );
   }
 
   Future<void> _onRefreshUserPosts(
@@ -328,14 +336,23 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     _hasMoreUserPosts = true;
     _lastUserPostsCreatedAt = null;
     _lastUserPostsId = null;
-    emit(const UserPostsLoading());
-    await _fetchUserPosts(emit, isRefresh: true);
+    // CHANGE: Emit with profileUserId for isolation
+    emit(UserPostsLoading(profileUserId: event.profileUserId));
+    await _fetchUserPosts(
+      emit,
+      isRefresh: true,
+      profileUserId: event.profileUserId,
+    );
   }
 
   Future<void> _fetchUserPosts(
     Emitter<PostsState> emit, {
     required bool isRefresh,
+    required String? profileUserId, // NEW: Propagate for state
   }) async {
+    AppLogger.info(
+      'Fetching user posts for profileUserId: $profileUserId (isRefresh: $isRefresh)',
+    );
     final result = await getUserPostsUseCase(
       GetUserPostsParams(
         profileUserId: _currentUserPostsProfileId!,
@@ -348,9 +365,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     result.fold(
       (failure) {
         final message = ErrorMessageMapper.getErrorMessage(failure);
-        AppLogger.error('Get user posts failed: $message');
+        AppLogger.error('Get user posts failed for $profileUserId: $message');
         if (isRefresh) {
-          emit(UserPostsError(message));
+          emit(UserPostsError(message, profileUserId: profileUserId));
         } else {
           emit(
             UserPostsLoadMoreError(
@@ -358,6 +375,7 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
               currentPosts: state is UserPostsLoaded
                   ? List<PostEntity>.from((state as UserPostsLoaded).posts)
                   : [],
+              profileUserId: profileUserId,
             ),
           );
         }
@@ -377,8 +395,17 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
           _lastUserPostsId = newPosts.last.id;
         }
         _hasMoreUserPosts = newPosts.length == _pageSize;
-        emit(UserPostsLoaded(updatedPosts, hasMore: _hasMoreUserPosts));
-        AppLogger.info('User posts loaded with ${updatedPosts.length} posts');
+        // CHANGE: Emit with profileUserId for isolation
+        emit(
+          UserPostsLoaded(
+            updatedPosts,
+            hasMore: _hasMoreUserPosts,
+            profileUserId: profileUserId,
+          ),
+        );
+        AppLogger.info(
+          'User posts loaded for $profileUserId with ${updatedPosts.length} posts',
+        );
       },
     );
   }
@@ -498,7 +525,14 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
       }
       if (currentState is UserPostsLoaded) {
         final updated = _apply(currentState.posts);
-        emit(UserPostsLoaded(updated, hasMore: currentState.hasMore));
+        // CHANGE: Preserve profileUserId in optimistic update
+        emit(
+          UserPostsLoaded(
+            updated,
+            hasMore: currentState.hasMore,
+            profileUserId: currentState.profileUserId,
+          ),
+        );
         return;
       }
     } catch (e, st) {
@@ -578,8 +612,15 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
           isRealtimeActive: active,
         ),
       );
+    // CHANGE: Preserve profileUserId in realtime status update
     if (state is UserPostsLoaded)
-      emit(UserPostsLoaded(state.posts, hasMore: state.hasMore));
+      emit(
+        UserPostsLoaded(
+          state.posts,
+          hasMore: state.hasMore,
+          profileUserId: state.profileUserId,
+        ),
+      );
   }
 
   Future<void> _onRealtimePostReceived(
@@ -652,8 +693,16 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
           isRealtimeActive: state.isRealtimeActive,
         ),
       );
-    if (state is UserPostsLoaded)
-      emit(UserPostsLoaded(_applyUpdate(state.posts), hasMore: state.hasMore));
+    if (state is UserPostsLoaded) {
+      // CHANGE: Preserve profileUserId in realtime update
+      emit(
+        UserPostsLoaded(
+          _applyUpdate(state.posts),
+          hasMore: state.hasMore,
+          profileUserId: state.profileUserId,
+        ),
+      );
+    }
     emit(
       RealtimePostUpdate(
         // Use named parameters
@@ -693,8 +742,15 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
       );
     }
     if (state is UserPostsLoaded) {
+      // CHANGE: Preserve profileUserId in realtime deletion
       final updated = state.posts.where((p) => p.id != event.postId).toList();
-      emit(UserPostsLoaded(updated, hasMore: state.hasMore));
+      emit(
+        UserPostsLoaded(
+          updated,
+          hasMore: state.hasMore,
+          profileUserId: state.profileUserId,
+        ),
+      );
     }
     AppLogger.info('Post deleted realtime: ${event.postId}');
   }

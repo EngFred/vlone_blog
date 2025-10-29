@@ -12,7 +12,6 @@ import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart'
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
-import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart'; // Added for notifications
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -27,7 +26,6 @@ class _MainPageState extends State<MainPage> {
   final Set<int> _loadedTabs = {};
   //Helper list for readable log messages
   final List<String> _tabNames = const ['Feed', 'Reels', 'Users', 'Profile'];
-
   @override
   void initState() {
     super.initState();
@@ -38,6 +36,7 @@ class _MainPageState extends State<MainPage> {
   void _onAuthUpdated(String? userId) {
     if (userId == null) return;
     if (_userId == userId && _initializedPages) return;
+    if (!mounted) return; // NEW: Safety check for production robustness
     setState(() {
       _userId = userId;
       _initializedPages = true;
@@ -51,10 +50,8 @@ class _MainPageState extends State<MainPage> {
       );
       // Added: Global setups - start realtime listeners and notifications once here
       context.read<PostsBloc>().add(StartRealtimeListenersEvent(_userId!));
-      context.read<NotificationsBloc>().add(
-        NotificationsSubscribeUnreadCountStream(),
-      );
-      AppLogger.info('Subscribed to notifications and realtime from MainPage');
+      // NEW: Start Profile realtime only once here (global bloc for own profile)
+      context.read<ProfileBloc>().add(StartProfileRealtimeEvent(_userId!));
       _dispatchLoadForIndex(_selectedIndex);
       FlutterNativeSplash.remove(); // in case it wasn't removed yet
     });
@@ -105,14 +102,13 @@ class _MainPageState extends State<MainPage> {
         _loadedTabs.add(2);
         context.read<UsersBloc>().add(GetPaginatedUsersEvent(_userId!));
         break;
+      // CHANGE: Added check to load only once (like other tabs); no always-reload
       case 3:
         if (_loadedTabs.contains(3)) return;
         _loadedTabs.add(3);
         context.read<ProfileBloc>().add(GetProfileDataEvent(_userId!));
-        context.read<ProfileBloc>().add(StartProfileRealtimeEvent(_userId!));
-        context.read<PostsBloc>().add(
-          GetUserPostsEvent(profileUserId: _userId!, currentUserId: _userId!),
-        );
+        // ⛔ FIX: Removed post loading from here.
+        // The ProfilePage will now handle this itself.
         break;
       default:
         break;
@@ -145,18 +141,15 @@ class _MainPageState extends State<MainPage> {
     }
     if (!mounted) return;
     if (index != _selectedIndex) {
-      // ✅ ADDED: Log for when the tab *changes*
+      //Log for when the tab *changes*
       AppLogger.info('Navigating to tab: ${_tabNames[index]}');
       setState(() => _selectedIndex = index);
       context.go(route);
       _dispatchLoadForIndex(index);
     } else {
-      // ✅ ADDED: Log for when the *same tab* is re-tapped
+      //Log for when the *same tab* is re-tapped
       AppLogger.info('Re-tap on current tab: ${_tabNames[index]}');
-      if (index == 3) {
-        AppLogger.info('Re-tap on Profile tab detected - full profile refresh');
-        _dispatchLoadForIndex(3);
-      }
+      // CHANGE: Removed special refresh for Profile (now consistent with other tabs)
     }
   }
 
@@ -197,7 +190,7 @@ class _MainPageState extends State<MainPage> {
         isVisible: _selectedIndex == 1,
       ),
       const UsersPage(key: PageStorageKey('users_page')),
-      ProfilePage(key: const PageStorageKey('profile_page'), userId: _userId!),
+      ProfilePage(key: const PageStorageKey('profile_page')),
     ];
     final bool isReelsPage = _selectedIndex == 1;
     final Color barBackgroundColor = isReelsPage

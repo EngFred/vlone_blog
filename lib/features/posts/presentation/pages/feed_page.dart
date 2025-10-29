@@ -7,6 +7,7 @@ import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
+import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/feed_list.dart';
@@ -24,8 +25,12 @@ class _FeedPageState extends State<FeedPage>
     with AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
   String? _userId; // Store userId from AuthBloc
-  bool _notificationsSubscribed = false;
   static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
+  final List<PostEntity> _posts = []; // Added: Local posts list
+  bool _hasMore = true; // Added: Local hasMore
+  bool _isRealtimeActive = false; // Added: Local realtime status
+  bool _hasLoadedOnce = false; // Added: To track initial load
+  String? _loadMoreError; // Added: For load more errors
 
   @override
   bool get wantKeepAlive => true;
@@ -42,7 +47,9 @@ class _FeedPageState extends State<FeedPage>
       if (_userId != null && mounted) {
         setState(() {}); // Trigger rebuild to pass userId
         // Removed: GetFeedEvent and StartRealtimeListenersEvent - handled by MainPage
-        // Removed: _subscribeNotifications() - moved to MainPage
+        context.read<NotificationsBloc>().add(
+          NotificationsSubscribeUnreadCountStream(),
+        );
       } else if (mounted) {
         // Handle unauthenticated: e.g., redirect or show login
         AppLogger.warning('User not authenticated in FeedPage');
@@ -60,9 +67,7 @@ class _FeedPageState extends State<FeedPage>
       if (_scrollController.hasClients) {
         // Debounce the load-more check on scroll (resets timer each time)
         Debouncer.instance.debounce('load_more_feed', _loadMoreDebounce, () {
-          final state = context.read<PostsBloc>().state;
-          if (state is FeedLoaded &&
-              state.hasMore &&
+          if (_hasMore &&
               _scrollController.position.pixels >=
                   _scrollController.position.maxScrollExtent - 200) {
             context.read<PostsBloc>().add(const LoadMoreFeedEvent());
@@ -77,6 +82,28 @@ class _FeedPageState extends State<FeedPage>
     final userId = _extractUserId(authState);
     if (userId != null) {
       context.read<PostsBloc>().add(RefreshFeedEvent(userId));
+    }
+  }
+
+  void _updatePosts(List<PostEntity> newPosts) {
+    if (!mounted) return;
+    final oldIds = _posts.map((p) => p.id).toSet();
+    final newIds = newPosts.map((p) => p.id).toSet();
+    if (oldIds.length == newIds.length && oldIds.containsAll(newIds)) {
+      setState(() {
+        for (int i = 0; i < newPosts.length; i++) {
+          if (_posts[i] != newPosts[i]) _posts[i] = newPosts[i];
+        }
+      });
+    } else {
+      AppLogger.info(
+        'Updating feed list. Old: ${oldIds.length}, New: ${newIds.length}',
+      );
+      setState(() {
+        _posts
+          ..clear()
+          ..addAll(newPosts);
+      });
     }
   }
 
@@ -101,56 +128,94 @@ class _FeedPageState extends State<FeedPage>
         backgroundColor: Theme.of(context).colorScheme.surface,
         actions: [const NotificationIconWithBadge()],
       ),
-      body: RefreshIndicator(
-        onRefresh: _onRefresh,
-        child: BlocBuilder<PostsBloc, PostsState>(
-          builder: (context, state) {
-            if (state is PostsLoading || state is PostsInitial) {
-              return const Center(child: LoadingIndicator());
-            }
-            if (state is FeedLoaded) {
-              if (state.posts.isEmpty) {
-                return const EmptyStateWidget(
-                  message: 'No posts yet. Create one to get started!',
-                  icon: Icons.post_add,
+      body: MultiBlocListener(
+        listeners: [
+          BlocListener<PostsBloc, PostsState>(
+            listener: (context, state) {
+              if (state is FeedLoaded) {
+                _updatePosts(state.posts);
+                _hasMore = state.hasMore;
+                _isRealtimeActive = state.isRealtimeActive;
+                _hasLoadedOnce = true;
+                _loadMoreError = null;
+              } else if (state is PostCreated) {
+                if (!mounted) return;
+                final exists = _posts.any((p) => p.id == state.post.id);
+                if (!exists) {
+                  setState(() => _posts.insert(0, state.post));
+                }
+              } else if (state is RealtimePostUpdate) {
+                if (!mounted) return;
+                final index = _posts.indexWhere((p) => p.id == state.postId);
+                if (index != -1) {
+                  final post = _posts[index];
+                  final updatedPost = post.copyWith(
+                    likesCount: (state.likesCount ?? post.likesCount)
+                        .clamp(0, double.infinity)
+                        .toInt(),
+                    commentsCount: (state.commentsCount ?? post.commentsCount)
+                        .clamp(0, double.infinity)
+                        .toInt(),
+                    favoritesCount:
+                        (state.favoritesCount ?? post.favoritesCount)
+                            .clamp(0, double.infinity)
+                            .toInt(),
+                    sharesCount: (state.sharesCount ?? post.sharesCount)
+                        .clamp(0, double.infinity)
+                        .toInt(),
+                  );
+                  setState(() => _posts[index] = updatedPost);
+                }
+              } else if (state is PostDeleted) {
+                if (!mounted) return;
+                final index = _posts.indexWhere((p) => p.id == state.postId);
+                if (index != -1) {
+                  setState(() => _posts.removeAt(index));
+                }
+              } else if (state is FeedLoadMoreError) {
+                if (mounted) {
+                  _loadMoreError = state.message;
+                }
+              } else if (state is PostsError) {
+                // Handle general error if needed
+              }
+            },
+          ),
+        ],
+        child: RefreshIndicator(
+          onRefresh: _onRefresh,
+          child: Builder(
+            builder: (context) {
+              final postsState = context.watch<PostsBloc>().state;
+              if (postsState is PostsLoading || postsState is PostsInitial) {
+                return const Center(child: LoadingIndicator());
+              }
+              if (postsState is PostsError) {
+                return CustomErrorWidget(
+                  message: postsState.message,
+                  onRetry: _onRefresh,
                 );
               }
-              return FeedList(
-                posts: state.posts,
-                userId: _userId!, // Pass userId
-                hasMore: state.hasMore,
-                isRealtimeActive: state.isRealtimeActive,
-                onLoadMore: () =>
-                    context.read<PostsBloc>().add(const LoadMoreFeedEvent()),
-              );
-            }
-            if (state is FeedLoadMoreError) {
-              return FeedList(
-                posts: state.currentPosts,
-                userId: _userId!, // Pass userId
-                hasMore: true,
-                loadMoreError: state.message,
-                onLoadMore: () =>
-                    context.read<PostsBloc>().add(const LoadMoreFeedEvent()),
-              );
-            }
-            if (state is PostsError) {
-              return CustomErrorWidget(
-                message: state.message,
-                onRetry: _onRefresh,
-              );
-            }
-            // Fallback: Extract posts if possible (e.g., from RealtimePostUpdate or PostCreated)
-            // For simplicity, read current state and rebuild if it's a feed-like state
-            final currentPosts = _extractPostsFromState(state);
-            return FeedList(
-              posts: currentPosts,
-              userId: _userId!, // Pass userId
-              hasMore: false,
-              isRealtimeActive: false,
-              onLoadMore: () {}, // Disabled in fallback
-            );
-          },
+              if (_hasLoadedOnce) {
+                if (_posts.isEmpty) {
+                  return const EmptyStateWidget(
+                    message: 'No posts yet. Create one to get started!',
+                    icon: Icons.post_add,
+                  );
+                }
+                return FeedList(
+                  posts: _posts,
+                  userId: _userId!,
+                  hasMore: _hasMore,
+                  isRealtimeActive: _isRealtimeActive,
+                  loadMoreError: _loadMoreError,
+                  onLoadMore: () =>
+                      context.read<PostsBloc>().add(const LoadMoreFeedEvent()),
+                );
+              }
+              return const Center(child: LoadingIndicator());
+            },
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -158,15 +223,5 @@ class _FeedPageState extends State<FeedPage>
         child: const Icon(Icons.add),
       ),
     );
-  }
-
-  List<PostEntity> _extractPostsFromState(PostsState state) {
-    // Helper to pull posts from various states (extend as needed)
-    return switch (state) {
-      FeedLoaded(:final posts) => posts,
-      ReelsLoaded(:final posts) => posts, // If applicable
-      UserPostsLoaded(:final posts) => posts,
-      _ => <PostEntity>[],
-    };
   }
 }

@@ -113,6 +113,7 @@ class CommentsRemoteDataSource {
           .select()
           .eq('id', commentId)
           .single();
+      // ignore: unnecessary_null_comparison
       if (response == null || response.isEmpty) {
         throw const ServerException('Comment not found');
       }

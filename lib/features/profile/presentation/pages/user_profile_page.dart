@@ -8,6 +8,7 @@ import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
+import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
@@ -15,7 +16,6 @@ import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.d
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_posts_list.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
-import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 
 /// Standalone profile page for viewing other users' profiles
 /// This page is NOT part of the bottom navigation bar
@@ -31,22 +31,21 @@ class _UserProfilePageState extends State<UserProfilePage> {
   String? _currentUserId;
   bool _isOwnProfile = false;
   final List<PostEntity> _userPosts = [];
-  bool _hasMoreUserPosts = true; // Added
+  bool _hasMoreUserPosts = true;
   bool _isUserPostsLoading = false;
-  bool _isLoadingMoreUserPosts = false; // Added
+  bool _isLoadingMoreUserPosts = false;
   String? _userPostsError;
-  String? _loadMoreError; // Added
+  String? _loadMoreError;
   bool? _isFollowing;
   bool _isProcessingFollow = false;
-  final ScrollController _scrollController = ScrollController(); // Added
-  static const Duration _loadMoreDebounce = Duration(
-    milliseconds: 300,
-  ); // Added
+  // REMOVED: String? _lastLoadedPostsProfileId;
+  final ScrollController _scrollController = ScrollController();
+  static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
 
   @override
   void initState() {
     super.initState();
-    _setupScrollListener(); // Added
+    _setupScrollListener();
     _loadCurrentUser();
   }
 
@@ -61,7 +60,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     _scrollController.position.maxScrollExtent - 200 &&
                 _hasMoreUserPosts &&
                 !_isLoadingMoreUserPosts) {
-              setState(() => _isLoadingMoreUserPosts = true);
+              setState(() {
+                _isLoadingMoreUserPosts = true;
+              });
+              // This is safe to call on the local PostsBloc
               context.read<PostsBloc>().add(LoadMoreUserPostsEvent());
             }
           },
@@ -83,12 +85,23 @@ class _UserProfilePageState extends State<UserProfilePage> {
           _currentUserId = sessionUserId;
           _isOwnProfile = sessionUserId == widget.userId;
         });
-        // Request profile + posts. Do NOT start/stop realtime here.
+        // Request profile data (uses local ProfileBloc instance)
         context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
+
+        // Start realtime listener on the local ProfileBloc instance
+        // Only for non-own profiles to avoid overlap with MainPage's global bloc
+        if (!_isOwnProfile) {
+          context.read<ProfileBloc>().add(
+            StartProfileRealtimeEvent(widget.userId),
+          );
+        }
+
+        // Request user posts (uses local PostsBloc instance)
+        // Ensure _currentUserId is set before dispatch
         context.read<PostsBloc>().add(
           GetUserPostsEvent(
             profileUserId: widget.userId,
-            currentUserId: sessionUserId,
+            currentUserId: _currentUserId!, // Safe post-setState
           ),
         );
         if (!_isOwnProfile) {
@@ -99,10 +112,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
             ),
           );
         }
+        // REMOVED: _lastLoadedPostsProfileId = null; // Reset on init
         AppLogger.info(
           'UserProfilePage: Initialized for userId: ${widget.userId}, currentUser: $sessionUserId',
         );
-        // NEW: Subscribe to real-time for this profile if not own
+        // Subscribe to real-time for this profile if not own
         if (!_isOwnProfile) {
           final realtime = sl<RealtimeService>();
           await realtime.subscribeToProfile(widget.userId);
@@ -117,15 +131,52 @@ class _UserProfilePageState extends State<UserProfilePage> {
     }
   }
 
+  // FIX: This entire method is removed as the PostsBloc is now isolated.
+  /*
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final postsState = context.watch<PostsBloc>().state;
+    // use of _lastLoadedPostsProfileId for mismatch detection.
+    // If it's set to a different ID than widget.userId (stale from previous load),
+    // or if the bloc state mismatches, trigger RefreshUserPostsEvent. log for clarity.
+    if (_currentUserId != null && !_isUserPostsLoading) {
+      final bool idMismatch =
+          _lastLoadedPostsProfileId != null &&
+          _lastLoadedPostsProfileId != widget.userId;
+      final bool stateMismatch =
+          postsState is UserPostsLoaded &&
+          postsState.profileUserId != null &&
+          postsState.profileUserId != widget.userId;
+
+      if (idMismatch || stateMismatch) {
+        AppLogger.info(
+          'UserProfilePage: Posts state/lastLoaded ID mismatch. lastLoaded: $_lastLoadedPostsProfileId, expected: ${widget.userId}, state profile: ${postsState is UserPostsLoaded ? postsState.profileUserId : 'N/A'} - triggering refresh.',
+        );
+        context.read<PostsBloc>().add(
+          RefreshUserPostsEvent(
+            profileUserId: widget.userId,
+            currentUserId: _currentUserId!,
+          ),
+        );
+      }
+    }
+  }
+  */
+
   @override
   void dispose() {
-    // No explicit StopProfileRealtimeEvent here — centralized RealtimeService handles lifecycle.
-    // NEW: Unsubscribe if not own profile
+    // Unsubscribe if not own profile
     if (!_isOwnProfile) {
       final realtime = sl<RealtimeService>();
       realtime.unsubscribeFromProfile(widget.userId);
     }
-    _scrollController.dispose(); // Added
+    // Stop realtime listener on the local ProfileBloc instance (cancels sub in bloc.close())
+    if (!_isOwnProfile) {
+      context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
+    }
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -147,12 +198,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
             .clamp(0, double.infinity)
             .toInt(),
       );
-      setState(() => _userPosts[index] = updatedPost);
+      setState(() {
+        _userPosts[index] = updatedPost;
+      });
     }
   }
 
   void _onFollowToggle(bool newFollowing) {
-    if (_isProcessingFollow || _currentUserId == null) return;
+    if (_isProcessingFollow || _currentUserId == null) {
+      return;
+    }
     setState(() {
       _isProcessingFollow = true;
       _isFollowing = newFollowing;
@@ -168,34 +223,42 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   void _applyLikeUpdate(String postId, bool isLiked) {
     final index = _userPosts.indexWhere((p) => p.id == postId);
-    if (index == -1 || !mounted) return;
+    if (index == -1 || !mounted) {
+      return;
+    }
     final old = _userPosts[index];
     final delta = isLiked ? 1 : -1;
     final updated = old.copyWith(
       likesCount: (old.likesCount + delta).clamp(0, double.infinity).toInt(),
       isLiked: isLiked,
     );
-    setState(() => _userPosts[index] = updated);
+    setState(() {
+      _userPosts[index] = updated;
+    });
   }
 
   void _revertLike(String postId, bool previousState) {
     final index = _userPosts.indexWhere((p) => p.id == postId);
-    if (index == -1 || !mounted) return;
+    if (index == -1 || !mounted) {
+      return;
+    }
     final old = _userPosts[index];
     final correctedCount = previousState
         ? (old.likesCount + 1)
         : (old.likesCount - 1);
-    setState(
-      () => _userPosts[index] = old.copyWith(
+    setState(() {
+      _userPosts[index] = old.copyWith(
         isLiked: previousState,
         likesCount: correctedCount.clamp(0, double.infinity).toInt(),
-      ),
-    );
+      );
+    });
   }
 
   void _applyFavoriteUpdate(String postId, bool isFavorited) {
     final index = _userPosts.indexWhere((p) => p.id == postId);
-    if (index == -1 || !mounted) return;
+    if (index == -1 || !mounted) {
+      return;
+    }
     final old = _userPosts[index];
     final delta = isFavorited ? 1 : -1;
     final updated = old.copyWith(
@@ -204,22 +267,26 @@ class _UserProfilePageState extends State<UserProfilePage> {
           .toInt(),
       isFavorited: isFavorited,
     );
-    setState(() => _userPosts[index] = updated);
+    setState(() {
+      _userPosts[index] = updated;
+    });
   }
 
   void _revertFavorite(String postId, bool previousState) {
     final index = _userPosts.indexWhere((p) => p.id == postId);
-    if (index == -1 || !mounted) return;
+    if (index == -1 || !mounted) {
+      return;
+    }
     final old = _userPosts[index];
     final correctedCount = previousState
         ? (old.favoritesCount + 1)
         : (old.favoritesCount - 1);
-    setState(
-      () => _userPosts[index] = old.copyWith(
+    setState(() {
+      _userPosts[index] = old.copyWith(
         isFavorited: previousState,
         favoritesCount: correctedCount.clamp(0, double.infinity).toInt(),
-      ),
-    );
+      );
+    });
   }
 
   @override
@@ -238,17 +305,18 @@ class _UserProfilePageState extends State<UserProfilePage> {
         listeners: [
           BlocListener<ProfileBloc, ProfileState>(
             listener: (context, state) {
-              if (state is ProfileDataLoaded)
+              if (state is ProfileDataLoaded) {
+                // Since ProfileBloc is local, we don't need to check userId here.
                 AppLogger.info(
-                  'User profile updated via real-time stream: ${state.profile.username}',
+                  'User profile loaded/updated: ${state.profile.username}',
                 );
+              }
             },
           ),
           BlocListener<PostsBloc, PostsState>(
             listener: (context, state) {
-              if (state is UserPostsLoading) {
-                if (mounted) setState(() => _isUserPostsLoading = true);
-              } else if (state is UserPostsLoaded) {
+              // Since PostsBloc is now local, we remove all checks for foreign profileUserId.
+              if (state is UserPostsLoaded) {
                 if (mounted) {
                   setState(() {
                     _userPosts.clear();
@@ -271,18 +339,29 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         ),
                       ),
                     );
-                    _hasMoreUserPosts = state.hasMore; // Added
+                    _hasMoreUserPosts = state.hasMore;
                     _isUserPostsLoading = false;
-                    _isLoadingMoreUserPosts = false; // Added
-                    _loadMoreError = null; // Added
+                    _isLoadingMoreUserPosts = false;
+                    _loadMoreError = null;
+                    // REMOVED: _lastLoadedPostsProfileId = widget.userId;
                   });
+                  AppLogger.info(
+                    'UserProfilePage: Loaded ${_userPosts.length} posts for ${widget.userId}',
+                  );
                 }
               } else if (state is UserPostsError) {
-                if (mounted)
+                if (mounted) {
                   setState(() {
                     _userPostsError = state.message;
                     _isUserPostsLoading = false;
                   });
+                }
+              } else if (state is UserPostsLoading) {
+                if (mounted) {
+                  setState(() {
+                    _isUserPostsLoading = true;
+                  });
+                }
               } else if (state is UserPostsLoadMoreError) {
                 if (mounted) {
                   setState(() {
@@ -290,22 +369,25 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     _isLoadingMoreUserPosts = false;
                   });
                 }
-              } else if (state is RealtimePostUpdate)
+              } else if (state is RealtimePostUpdate) {
                 _handleRealtimePostUpdate(state);
-              else if (state is PostDeleted) {
+              } else if (state is PostDeleted) {
                 final index = _userPosts.indexWhere(
                   (p) => p.id == state.postId,
                 );
-                if (index != -1 && mounted)
-                  setState(() => _userPosts.removeAt(index));
+                if (index != -1 && mounted) {
+                  setState(() {
+                    _userPosts.removeAt(index);
+                  });
+                }
               }
             },
           ),
           BlocListener<LikesBloc, LikesState>(
             listener: (context, state) {
-              if (state is LikeUpdated)
+              if (state is LikeUpdated) {
                 _applyLikeUpdate(state.postId, state.isLiked);
-              else if (state is LikeError) {
+              } else if (state is LikeError) {
                 _revertLike(state.postId, state.previousState);
                 SnackbarUtils.showError(context, state.message);
               }
@@ -313,9 +395,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
           ),
           BlocListener<FavoritesBloc, FavoritesState>(
             listener: (context, state) {
-              if (state is FavoriteUpdated)
+              if (state is FavoriteUpdated) {
                 _applyFavoriteUpdate(state.postId, state.isFavorited);
-              else if (state is FavoriteError) {
+              } else if (state is FavoriteError) {
                 _revertFavorite(state.postId, state.previousState);
                 SnackbarUtils.showError(context, state.message);
               }
@@ -325,22 +407,27 @@ class _UserProfilePageState extends State<UserProfilePage> {
             listener: (context, state) {
               if (state is FollowStatusLoaded &&
                   state.followingId == widget.userId) {
-                if (mounted) setState(() => _isFollowing = state.isFollowing);
+                if (mounted) {
+                  setState(() {
+                    _isFollowing = state.isFollowing;
+                  });
+                }
               } else if (state is UserFollowed &&
                   state.followedUserId == widget.userId) {
-                if (mounted)
+                if (mounted) {
                   setState(() {
                     _isFollowing = state.isFollowing;
                     _isProcessingFollow = false;
                   });
-                // REMOVE: The post-UserFollowed refresh, as real-time sub will now handle the followers_count update automatically.
+                }
               } else if (state is FollowersError) {
                 if (mounted) {
-                  if (_isProcessingFollow && _isFollowing != null)
+                  if (_isProcessingFollow && _isFollowing != null) {
                     setState(() {
                       _isFollowing = !_isFollowing!;
                       _isProcessingFollow = false;
                     });
+                  }
                   SnackbarUtils.showError(context, state.message);
                 }
               }
@@ -349,72 +436,82 @@ class _UserProfilePageState extends State<UserProfilePage> {
         ],
         child: BlocBuilder<ProfileBloc, ProfileState>(
           builder: (context, state) {
-            if (state is ProfileLoading || state is ProfileInitial)
+            if (state is ProfileLoading || state is ProfileInitial) {
               return const Center(child: LoadingIndicator());
-            if (state is ProfileError)
+            }
+            if (state is ProfileError) {
               return CustomErrorWidget(
                 message: state.message,
                 onRetry: () => context.read<ProfileBloc>().add(
                   GetProfileDataEvent(widget.userId),
                 ),
               );
+            }
             if (state is ProfileDataLoaded) {
+              // Check if wrong user and reload
+              if (state.userId != widget.userId) {
+                context.read<ProfileBloc>().add(
+                  GetProfileDataEvent(widget.userId),
+                );
+                return const Center(child: LoadingIndicator());
+              }
               return RefreshIndicator(
                 onRefresh: () async {
                   if (_currentUserId != null) {
+                    // Refresh posts on the local PostsBloc
                     context.read<PostsBloc>().add(
                       RefreshUserPostsEvent(
                         profileUserId: widget.userId,
                         currentUserId: _currentUserId!,
                       ),
                     );
-                    if (mounted)
+                    if (mounted) {
                       setState(() {
                         _userPosts.clear();
                         _userPostsError = null;
                         _hasMoreUserPosts = true;
+                        // REMOVED: _lastLoadedPostsProfileId = null; // Reset tracking
                       });
+                    }
                   }
                 },
                 child: CustomScrollView(
-                  // Changed to CustomScrollView
-                  controller: _scrollController, // Added
+                  controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
                   slivers: [
                     SliverToBoxAdapter(
                       child: ProfileHeader(
                         profile: state.profile,
                         isOwnProfile: _isOwnProfile,
-                        // ✅ CHANGED: Pass state variables and the toggle function
+                        // Pass state variables and the toggle function
                         isFollowing: _isFollowing,
                         onFollowToggle: _onFollowToggle,
                         isProcessingFollow: _isProcessingFollow,
                       ),
                     ),
-                    SliverToBoxAdapter(
-                      child: ProfilePostsList(
-                        posts: _userPosts,
-                        userId: _currentUserId ?? '',
-                        isLoading: _isUserPostsLoading,
-                        error: _userPostsError,
-                        hasMore: _hasMoreUserPosts, // Added
-                        isLoadingMore: _isLoadingMoreUserPosts, // Added
-                        loadMoreError: _loadMoreError, // Added
-                        onRetry: () {
-                          if (mounted && _currentUserId != null) {
-                            setState(() {
-                              _userPostsError = null;
-                              _isUserPostsLoading = true;
-                            });
-                            context.read<PostsBloc>().add(
-                              GetUserPostsEvent(
-                                profileUserId: widget.userId,
-                                currentUserId: _currentUserId!,
-                              ),
-                            );
-                          }
-                        },
-                      ),
+                    ProfilePostsList(
+                      posts: _userPosts,
+                      userId: _currentUserId ?? '',
+                      isLoading: _isUserPostsLoading,
+                      error: _userPostsError,
+                      hasMore: _hasMoreUserPosts,
+                      isLoadingMore: _isLoadingMoreUserPosts,
+                      loadMoreError: _loadMoreError,
+                      onRetry: () {
+                        if (mounted && _currentUserId != null) {
+                          setState(() {
+                            _userPostsError = null;
+                            _isUserPostsLoading = true;
+                          });
+                          // Get posts on the local PostsBloc
+                          context.read<PostsBloc>().add(
+                            GetUserPostsEvent(
+                              profileUserId: widget.userId,
+                              currentUserId: _currentUserId!,
+                            ),
+                          );
+                        }
+                      },
                     ),
                   ],
                 ),

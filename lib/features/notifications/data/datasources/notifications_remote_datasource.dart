@@ -82,6 +82,7 @@ class NotificationsRemoteDataSource {
               .eq('recipient_id', userId)
               .order('created_at', ascending: false);
 
+          // ignore: dead_code, unnecessary_type_check
           final rows = (initialResp is List) ? initialResp : <dynamic>[];
           final initial = rows
               .map((r) => NotificationModel.fromMap(r as Map<String, dynamic>))
@@ -119,6 +120,7 @@ class NotificationsRemoteDataSource {
                     .eq('recipient_id', userId)
                     .order('created_at', ascending: false);
 
+                // ignore: dead_code, unnecessary_type_check
                 final rows = (resp is List) ? resp : <dynamic>[];
                 final items = rows
                     .map(
@@ -206,6 +208,7 @@ class NotificationsRemoteDataSource {
                 // FIX: Use .filter to avoid Dart keyword conflict with .is
                 .filter('read_at', 'is', null);
 
+            // ignore: dead_code, unnecessary_type_check
             final count = (resp is List) ? resp.length : 0;
             if (!ctrl.isClosed) ctrl.add(count);
           } catch (e, st) {

@@ -24,6 +24,7 @@ class VideoCompressor {
   static const VideoQuality defaultQuality = VideoQuality.medium;
 
   /// Track the last running FFmpeg session id (so we can cancel).
+  // ignore: unused_field
   static int? _lastSessionId;
 
   /// Keep a reference to the last progress timer/subscription if needed.
@@ -185,7 +186,7 @@ class VideoCompressor {
                     } catch (_) {}
                   }
                 }
-              } catch (e, st) {
+              } catch (e) {
                 // swallow
                 AppLogger.warning('VideoCompressor: stats callback error: $e');
               }
@@ -298,7 +299,7 @@ class VideoCompressor {
       // Best-effort cleanup
       try {
         final tempDir = await getTemporaryDirectory();
-        final files = tempDir.listSync().whereType<File>();
+        tempDir.listSync().whereType<File>();
         // no-op fallback cleanup (do not aggressively delete)
       } catch (_) {}
       return input;

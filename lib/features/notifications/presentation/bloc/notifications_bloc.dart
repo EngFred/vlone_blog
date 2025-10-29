@@ -21,16 +21,13 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
   final MarkAsReadUseCase _markAsReadUseCase;
   final MarkAllAsReadUseCase _markAllAsReadUseCase;
   final DeleteNotificationsUseCase _deleteNotificationsUseCase;
-
   // Subscriptions to the RealtimeService broadcast streams
   StreamSubscription<int>? _rtUnreadCountSub;
-
   // Pagination state
   static const int _pageSize = 20;
   bool _hasMore = true;
   DateTime? _lastCreatedAt;
   String? _lastId;
-
   // RealtimeService (injected)
   final RealtimeService realtimeService;
 
@@ -52,7 +49,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     on<_UnreadCountStreamUpdated>(_onUnreadCountUpdated);
     on<NotificationsMarkOneAsRead>(_onMarkOneAsRead);
     on<NotificationsMarkAllAsRead>(_onMarkAllAsRead);
-
     on<NotificationsDeleteOne>(_onDeleteOne);
     on<NotificationsDeleteSelected>(_onDeleteSelected);
     on<NotificationsEnterSelectionMode>(_onEnterSelectionMode);
@@ -66,11 +62,9 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
   ) async {
     AppLogger.info('Loading initial notifications...');
     emit(const NotificationsLoading());
-
     final result = await _getPaginatedNotificationsUseCase(
       const GetPaginatedNotificationsParams(pageSize: _pageSize),
     );
-
     result.fold(
       (failure) {
         AppLogger.error(
@@ -88,7 +82,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
             : null;
         _lastId = newNotifications.isNotEmpty ? newNotifications.last.id : null;
         _hasMore = newNotifications.length == _pageSize;
-
         AppLogger.info(
           'Loaded ${newNotifications.length} initial notifications, hasMore: $_hasMore',
         );
@@ -108,10 +101,8 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     Emitter<NotificationsState> emit,
   ) async {
     if (!_hasMore || state is NotificationsLoadingMore) return;
-
     final currentState = state as NotificationsLoaded;
     emit(currentState.copyWith(isLoadingMore: true, loadMoreError: null));
-
     final result = await _getPaginatedNotificationsUseCase(
       GetPaginatedNotificationsParams(
         pageSize: _pageSize,
@@ -119,7 +110,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         lastId: _lastId,
       ),
     );
-
     result.fold(
       (failure) {
         AppLogger.error(
@@ -142,7 +132,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
             : null;
         _lastId = newNotifications.isNotEmpty ? newNotifications.last.id : null;
         _hasMore = newNotifications.length == _pageSize;
-
         AppLogger.info(
           'Loaded ${newNotifications.length} more notifications, hasMore: $_hasMore',
         );
@@ -166,11 +155,9 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     _lastCreatedAt = null;
     _lastId = null;
     emit(const NotificationsLoading());
-
     final result = await _getPaginatedNotificationsUseCase(
       const GetPaginatedNotificationsParams(pageSize: _pageSize),
     );
-
     result.fold(
       (failure) {
         AppLogger.error('Failed to refresh notifications: ${failure.message}');
@@ -186,7 +173,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
             : null;
         _lastId = newNotifications.isNotEmpty ? newNotifications.last.id : null;
         _hasMore = newNotifications.length == _pageSize;
-
         AppLogger.info(
           'Refreshed ${newNotifications.length} notifications, hasMore: $_hasMore',
         );
@@ -207,7 +193,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     Emitter<NotificationsState> emit,
   ) {
     AppLogger.info('Subscribing to unread count stream...');
-
     _rtUnreadCountSub?.cancel();
     _rtUnreadCountSub = realtimeService.onUnreadCount.listen(
       (count) {
@@ -246,9 +231,18 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
       },
       (count) {
         AppLogger.info('Unread count stream updated: $count');
-        if (state is NotificationsLoaded) {
-          final currentState = state as NotificationsLoaded;
+        final currentState = state;
+        if (currentState is NotificationsLoaded) {
           emit(currentState.copyWith(unreadCount: count));
+        } else {
+          // Added: Handle non-Loaded states by emitting initial Loaded with unread count
+          emit(
+            NotificationsLoaded(
+              notifications: const [],
+              unreadCount: count,
+              hasMore: _hasMore,
+            ),
+          );
         }
       },
     );
@@ -260,31 +254,24 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     Emitter<NotificationsState> emit,
   ) async {
     AppLogger.info('Marking notification ${event.notificationId} as read.');
-
     if (state is! NotificationsLoaded) return;
     final currentState = state as NotificationsLoaded;
-
     final item = currentState.notifications.firstWhere(
       (n) => n.id == event.notificationId,
       orElse: () => throw Exception('Notification not found'),
     );
-
     if (item.isRead) return;
-
     final updatedList = currentState.notifications.map((n) {
       if (n.id == event.notificationId) return n.copyWith(isRead: true);
       return n;
     }).toList();
-
     final newUnreadCount = (currentState.unreadCount - 1).clamp(0, 9999);
-
     emit(
       currentState.copyWith(
         notifications: updatedList,
         unreadCount: newUnreadCount,
       ),
     );
-
     final result = await _markAsReadUseCase(event.notificationId);
     result.fold(
       (failure) {
@@ -309,13 +296,10 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
     if (state is! NotificationsLoaded) return;
     final currentState = state as NotificationsLoaded;
     if (currentState.unreadCount == 0) return;
-
     final updatedList = currentState.notifications
         .map((n) => n.isRead ? n : n.copyWith(isRead: true))
         .toList();
-
     emit(currentState.copyWith(notifications: updatedList, unreadCount: 0));
-
     final result = await _markAllAsReadUseCase(NoParams());
     result.fold((failure) {
       AppLogger.error('Failed to mark all as read: ${failure.message}');
@@ -331,13 +315,10 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
   ) async {
     if (state is! NotificationsLoaded) return;
     final currentState = state as NotificationsLoaded;
-
     final deletedItem = currentState.notifications.firstWhere(
       (n) => n.id == event.notificationId,
     );
-
     emit(currentState.copyWith(isDeleting: true));
-
     final result = await _deleteNotificationsUseCase(
       DeleteNotificationsParams([event.notificationId]),
     );
@@ -350,19 +331,16 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
       },
       (_) {
         AppLogger.info('Notification ${event.notificationId} deleted via API.');
-
         final updatedList = currentState.notifications
             .where((n) => n.id != event.notificationId)
             .toList();
         final newSelectedIds = Set<String>.from(
           currentState.selectedNotificationIds,
         )..remove(event.notificationId);
-
         int newUnreadCount = currentState.unreadCount;
         if (!deletedItem.isRead) {
           newUnreadCount = (currentState.unreadCount - 1).clamp(0, 9999);
         }
-
         emit(
           NotificationsLoaded(
             notifications: updatedList,
@@ -389,9 +367,7 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
       emit(currentState.copyWith(isSelectionMode: false));
       return;
     }
-
     emit(currentState.copyWith(isDeleting: true));
-
     final result = await _deleteNotificationsUseCase(
       DeleteNotificationsParams(idsToDelete.toList()),
     );
@@ -404,18 +380,15 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
       },
       (_) {
         AppLogger.info('${idsToDelete.length} notifications deleted via API.');
-
         final updatedList = currentState.notifications
             .where((n) => !idsToDelete.contains(n.id))
             .toList();
-
         int unreadDeletedCount = 0;
         for (final n in currentState.notifications) {
           if (idsToDelete.contains(n.id) && !n.isRead) unreadDeletedCount++;
         }
         final newUnreadCount = (currentState.unreadCount - unreadDeletedCount)
             .clamp(0, 9999);
-
         emit(
           NotificationsLoaded(
             notifications: updatedList,
@@ -465,14 +438,12 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
   ) {
     if (state is! NotificationsLoaded) return;
     final currentState = state as NotificationsLoaded;
-
     final newIds = Set<String>.from(currentState.selectedNotificationIds);
     if (newIds.contains(event.notificationId)) {
       newIds.remove(event.notificationId);
     } else {
       newIds.add(event.notificationId);
     }
-
     emit(
       currentState.copyWith(
         selectedNotificationIds: newIds,

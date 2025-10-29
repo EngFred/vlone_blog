@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
+import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/routes/slide_transition_page.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
@@ -11,6 +12,8 @@ import 'package:vlone_blog_app/features/posts/presentation/pages/post_details_pa
 import 'package:vlone_blog_app/features/profile/presentation/pages/edit_profile_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/user_profile_page.dart';
+import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
 import 'package:vlone_blog_app/core/pages/main_page.dart';
 import 'package:vlone_blog_app/features/auth/presentation/pages/login_page.dart';
 import 'package:vlone_blog_app/features/auth/presentation/pages/signup_page.dart';
@@ -74,7 +77,7 @@ final GoRouter appRouter = GoRouter(
           extraPost = extra;
         }
 
-        // --- Pass highlight IDs to PostDetailsPage ---
+        // Pass highlight IDs to PostDetailsPage
         return SlideTransitionPage(
           key: state.pageKey,
           child: PostDetailsPage(
@@ -84,7 +87,6 @@ final GoRouter appRouter = GoRouter(
             parentCommentId: parentCommentId,
           ),
         );
-        // ------------------------------------------------------
       },
     ),
     GoRoute(
@@ -170,22 +172,8 @@ final GoRouter appRouter = GoRouter(
         GoRoute(
           path: '${Constants.profileRoute}/me',
           pageBuilder: (context, state) {
-            final authState = context.read<AuthBloc>().state;
-            if (authState is AuthAuthenticated) {
-              final currentUserId = authState.user.id;
-              return NoTransitionPage(
-                child: ProfilePage(userId: currentUserId),
-              );
-            } else {
-              AppLogger.error('No authenticated user for profile/me route');
-              return const NoTransitionPage(
-                child: Scaffold(
-                  body: Center(
-                    child: Text('Unable to load profile. Please log in again.'),
-                  ),
-                ),
-              );
-            }
+            // ProfilePage now handles getting the current user ID internally.
+            return const NoTransitionPage(child: ProfilePage());
           },
         ),
       ],
@@ -213,7 +201,17 @@ final GoRouter appRouter = GoRouter(
 
         return SlideTransitionPage(
           key: state.pageKey,
-          child: UserProfilePage(userId: userId),
+          // FIX: Use MultiBlocProvider to isolate both ProfileBloc and PostsBloc
+          child: MultiBlocProvider(
+            providers: [
+              // Factory creates fresh, isolated instance for this UserProfilePage
+              BlocProvider<ProfileBloc>(create: (context) => sl<ProfileBloc>()),
+
+              // NEW: Isolated PostsBloc for this specific user's posts
+              BlocProvider<PostsBloc>(create: (context) => sl<PostsBloc>()),
+            ],
+            child: UserProfilePage(userId: userId),
+          ),
         );
       },
     ),

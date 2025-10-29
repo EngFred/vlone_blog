@@ -43,7 +43,7 @@ class ProfileHeader extends StatelessWidget {
             children: [
               // 1. Image Content (Center)
               GestureDetector(
-                // ❌ REMOVED: onTap handler is removed here to prevent closing on image tap
+                // REMOVED: onTap handler is removed here to prevent closing on image tap
                 onTap: () {},
                 child: Center(
                   child: Hero(

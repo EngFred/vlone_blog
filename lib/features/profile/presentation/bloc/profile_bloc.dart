@@ -47,7 +47,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         emit(ProfileError(friendlyMessage));
       },
       (profile) {
-        emit(ProfileDataLoaded(profile: profile));
+        emit(ProfileDataLoaded(profile: profile, userId: event.userId));
       },
     );
   }
@@ -76,7 +76,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       },
       (profile) {
         AppLogger.info('Profile updated successfully: ${profile.id}');
-        emit(ProfileDataLoaded(profile: profile));
+        emit(ProfileDataLoaded(profile: profile, userId: event.userId));
       },
     );
   }
@@ -135,7 +135,9 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
         // Apply only if matches current profile (prevents overwrite)
         if (updateUserId == currentState.profile.id) {
-          emit(ProfileDataLoaded(profile: updatedProfile));
+          emit(
+            ProfileDataLoaded(profile: updatedProfile, userId: updateUserId!),
+          );
           AppLogger.info(
             'Profile updated in real-time for user: ${updatedProfile.id}',
           );
