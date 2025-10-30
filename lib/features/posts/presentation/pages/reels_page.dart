@@ -109,6 +109,9 @@ class _ReelsPageState extends State<ReelsPage>
       if (mounted) setState(() => _isPageChanging = false);
     });
 
+    // Added guard: don't attempt load-more until initial load completed
+    if (!_hasLoadedOnce) return;
+
     // Added: Load more if near the end (preemptive, 2 pages before end)
     if (index >= _posts.length - 2 && _hasMoreReels && !_isLoadingMore) {
       final currentUserId = context.read<AuthBloc>().cachedUser?.id;
@@ -287,14 +290,13 @@ class _ReelsPageState extends State<ReelsPage>
                       _posts.length +
                       (_hasMoreReels
                           ? 1
-                          : 0), // Added: Extra for loading footer if hasMore
+                          : 0), // Extra for loading footer if hasMore
                   onPageChanged: _onPageChanged,
                   physics: const PageScrollPhysics(),
                   itemBuilder: (context, index) {
                     if (_hasMoreReels && index == _posts.length) {
-                      return const Center(
-                        child: LoadingIndicator(),
-                      ); // Added: Loading footer
+                      // Defensive: if we somehow hit loading footer before initial load, show loading
+                      return const Center(child: LoadingIndicator());
                     }
                     final post = _posts[index];
                     final isCurrentPage = index == _currentPage;

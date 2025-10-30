@@ -42,6 +42,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
   String? _lastFeedId;
   String? _currentFeedUserId;
 
+  // Internal guard to prevent concurrent feed fetches (load-more/refresh/get)
+  bool _isFetchingFeed = false;
+
   // Pagination state for Reels
   bool _hasMoreReels = true;
   DateTime? _lastReelsCreatedAt;
@@ -128,15 +131,22 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     AppLogger.info('GetFeedEvent triggered');
     _currentFeedUserId = event.userId;
     emit(const PostsLoading());
-    await _fetchFeed(emit, isRefresh: true);
+    // Use same internal helper but guard concurrent fetches
+    await _safeFetchFeed(emit, isRefresh: true);
   }
 
   Future<void> _onLoadMoreFeed(
     LoadMoreFeedEvent event,
     Emitter<PostsState> emit,
   ) async {
-    if (_currentFeedUserId == null || !_hasMoreFeed || state is FeedLoadingMore)
+    if (_currentFeedUserId == null ||
+        !_hasMoreFeed ||
+        state is FeedLoadingMore) {
       return;
+    }
+
+    // Prevent concurrent load-more calls
+    if (_isFetchingFeed) return;
 
     // Capture current posts snapshot BEFORE we emit LoadingMore
     final currentPostsSnapshot = state is FeedLoaded
@@ -144,7 +154,8 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
         : <PostEntity>[];
 
     emit(const FeedLoadingMore());
-    await _fetchFeed(
+
+    await _safeFetchFeed(
       emit,
       isRefresh: false,
       existingPosts: currentPostsSnapshot,
@@ -160,7 +171,26 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
     _lastFeedCreatedAt = null;
     _lastFeedId = null;
     emit(const PostsLoading());
-    await _fetchFeed(emit, isRefresh: true);
+    await _safeFetchFeed(emit, isRefresh: true);
+  }
+
+  /// Wrapper to ensure only one feed fetch runs at once and that flags are reset.
+  Future<void> _safeFetchFeed(
+    Emitter<PostsState> emit, {
+    required bool isRefresh,
+    List<PostEntity>? existingPosts,
+  }) async {
+    if (_isFetchingFeed) return;
+    _isFetchingFeed = true;
+    try {
+      await _fetchFeed(
+        emit,
+        isRefresh: isRefresh,
+        existingPosts: existingPosts,
+      );
+    } finally {
+      _isFetchingFeed = false;
+    }
   }
 
   // _fetchFeed now accepts an optional existingPosts snapshot to avoid reading `state`
@@ -767,7 +797,7 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
       }).toList();
     }
 
-    if (state is FeedLoaded)
+    if (state is FeedLoaded) {
       emit(
         FeedLoaded(
           _applyUpdate(state.posts),
@@ -775,8 +805,9 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
           isRealtimeActive: state.isRealtimeActive,
         ),
       );
+    }
 
-    if (state is ReelsLoaded)
+    if (state is ReelsLoaded) {
       emit(
         ReelsLoaded(
           _applyUpdate(state.posts),
@@ -784,6 +815,7 @@ class PostsBloc extends Bloc<PostsEvent, PostsState> {
           isRealtimeActive: state.isRealtimeActive,
         ),
       );
+    }
 
     if (state is UserPostsLoaded) {
       // CHANGE: Preserve profileUserId in realtime update

@@ -42,6 +42,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
   final ScrollController _scrollController = ScrollController();
   static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
 
+  // NEW: guard to prevent triggering load-more before initial load completes
+  bool _hasLoadedOnce = false;
+
   @override
   void initState() {
     super.initState();
@@ -56,6 +59,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
           'load_more_user_posts',
           _loadMoreDebounce,
           () {
+            // NEW: don't load more until initial load completed
+            if (!_hasLoadedOnce) return;
             if (_scrollController.position.pixels >=
                     _scrollController.position.maxScrollExtent - 200 &&
                 _hasMoreUserPosts &&
@@ -98,8 +103,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
         // Request user posts (uses local PostsBloc instance)
         // Ensure _currentUserId is set before dispatch
+        // Use RefreshUserPostsEvent to be consistent and reset pagination
         context.read<PostsBloc>().add(
-          GetUserPostsEvent(
+          RefreshUserPostsEvent(
             profileUserId: widget.userId,
             currentUserId: _currentUserId!, // Safe post-setState
           ),
@@ -130,40 +136,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
       );
     }
   }
-
-  // FIX: This entire method is removed as the PostsBloc is now isolated.
-  /*
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-
-    final postsState = context.watch<PostsBloc>().state;
-    // use of _lastLoadedPostsProfileId for mismatch detection.
-    // If it's set to a different ID than widget.userId (stale from previous load),
-    // or if the bloc state mismatches, trigger RefreshUserPostsEvent. log for clarity.
-    if (_currentUserId != null && !_isUserPostsLoading) {
-      final bool idMismatch =
-          _lastLoadedPostsProfileId != null &&
-          _lastLoadedPostsProfileId != widget.userId;
-      final bool stateMismatch =
-          postsState is UserPostsLoaded &&
-          postsState.profileUserId != null &&
-          postsState.profileUserId != widget.userId;
-
-      if (idMismatch || stateMismatch) {
-        AppLogger.info(
-          'UserProfilePage: Posts state/lastLoaded ID mismatch. lastLoaded: $_lastLoadedPostsProfileId, expected: ${widget.userId}, state profile: ${postsState is UserPostsLoaded ? postsState.profileUserId : 'N/A'} - triggering refresh.',
-        );
-        context.read<PostsBloc>().add(
-          RefreshUserPostsEvent(
-            profileUserId: widget.userId,
-            currentUserId: _currentUserId!,
-          ),
-        );
-      }
-    }
-  }
-  */
 
   @override
   void dispose() {
@@ -343,6 +315,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     _isUserPostsLoading = false;
                     _isLoadingMoreUserPosts = false;
                     _loadMoreError = null;
+                    _hasLoadedOnce = true; // NEW: initial load completed
                     // REMOVED: _lastLoadedPostsProfileId = widget.userId;
                   });
                   AppLogger.info(
@@ -354,6 +327,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   setState(() {
                     _userPostsError = state.message;
                     _isUserPostsLoading = false;
+                    _isLoadingMoreUserPosts = false;
                   });
                 }
               } else if (state is UserPostsLoading) {
@@ -470,6 +444,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         _userPosts.clear();
                         _userPostsError = null;
                         _hasMoreUserPosts = true;
+                        _hasLoadedOnce =
+                            false; // reset guard for manual refresh
                         // REMOVED: _lastLoadedPostsProfileId = null; // Reset tracking
                       });
                     }
@@ -502,6 +478,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           setState(() {
                             _userPostsError = null;
                             _isUserPostsLoading = true;
+                            _hasLoadedOnce = false;
                           });
                           // Get posts on the local PostsBloc
                           context.read<PostsBloc>().add(

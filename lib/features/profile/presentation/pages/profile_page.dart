@@ -36,6 +36,10 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _loadMoreError;
   final ScrollController _scrollController = ScrollController();
   static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
+
+  // NEW: guard to prevent triggering load-more before initial load completes
+  bool _hasLoadedOnce = false;
+
   @override
   void initState() {
     super.initState();
@@ -75,6 +79,7 @@ class _ProfilePageState extends State<ProfilePage> {
     _userPostsError = null;
     _loadMoreError = null;
     _hasMoreUserPosts = true;
+    _hasLoadedOnce = false; // reset guard for fresh load
     // Dispatch events to load data for the current user's ID
     context.read<ProfileBloc>().add(GetProfileDataEvent(_currentUserId!));
 
@@ -98,6 +103,8 @@ class _ProfilePageState extends State<ProfilePage> {
           'load_more_user_posts',
           _loadMoreDebounce,
           () {
+            // NEW: do not attempt load-more until initial load completed
+            if (!_hasLoadedOnce) return;
             if (_scrollController.position.pixels >=
                     _scrollController.position.maxScrollExtent - 200 &&
                 _hasMoreUserPosts &&
@@ -388,6 +395,8 @@ class _ProfilePageState extends State<ProfilePage> {
                             _isUserPostsLoading = false; // FINISHED LOADING
                             _isLoadingMoreUserPosts = false;
                             _loadMoreError = null;
+                            _hasLoadedOnce =
+                                true; // NEW: initial load completed
                           });
                           AppLogger.info(
                             'ProfilePage: Loaded ${_userPosts.length} posts for $_currentUserId',
@@ -414,6 +423,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           setState(() {
                             _userPostsError = state.message;
                             _isUserPostsLoading = false;
+                            _isLoadingMoreUserPosts = false;
                           });
                         }
                       } else if (state is UserPostsLoading) {
@@ -500,6 +510,8 @@ class _ProfilePageState extends State<ProfilePage> {
                               _userPostsError = null;
                               _hasMoreUserPosts = true;
                               _isUserPostsLoading = true;
+                              _hasLoadedOnce =
+                                  false; // reset guard for manual refresh
                             });
                           }
                         },
@@ -526,6 +538,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                   setState(() {
                                     _userPostsError = null;
                                     _isUserPostsLoading = true;
+                                    _hasLoadedOnce = false;
                                   });
                                   context.read<PostsBloc>().add(
                                     // Use RefreshUserPostsEvent on retry as well
