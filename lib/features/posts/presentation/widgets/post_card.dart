@@ -33,7 +33,7 @@ class _PostCardState extends State<PostCard> {
   @override
   void didUpdateWidget(covariant PostCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // If parent updates the post (e.g., server real-time), accept it
+    // Accept authoritative updates from parent (PostsBloc). Keep local copy synced.
     if (widget.post != oldWidget.post) {
       _currentPost = widget.post;
     }
@@ -45,106 +45,69 @@ class _PostCardState extends State<PostCard> {
       value: context.read<PostsBloc>(),
       child: MultiBlocListener(
         listeners: [
-          // Likes listener (keeps previous behavior)
+          // Likes listener: ONLY update boolean (icon). Counts must come from PostsBloc.
           BlocListener<LikesBloc, LikesState>(
             listenWhen: (prev, curr) {
-              // Only listen for updates/error for this post
-              if (curr is LikeUpdated && curr.postId == _currentPost.id) {
+              if (curr is LikeUpdated && curr.postId == _currentPost.id)
                 return true;
-              }
               if (curr is LikeError &&
                   curr.postId == _currentPost.id &&
-                  curr.shouldRevert) {
+                  curr.shouldRevert)
                 return true;
-              }
               return false;
             },
             listener: (context, state) {
               if (state is LikeUpdated && state.postId == _currentPost.id) {
                 AppLogger.info(
-                  'PostCard received LikeUpdated for post: ${_currentPost.id}. Applying optimistic/server-corrected update.',
+                  'PostCard received LikeUpdated for post: ${_currentPost.id}. Updating boolean only.',
                 );
                 setState(() {
-                  // apply isLiked directly
-                  final newIsLiked = state.isLiked;
-                  // adjust likes count by delta, ensure non-negative
-                  final newLikesCount = (_currentPost.likesCount + state.delta)
-                      .clamp(0, double.infinity)
-                      .toInt();
-                  _currentPost = _currentPost.copyWith(
-                    isLiked: newIsLiked,
-                    likesCount: newLikesCount,
-                  );
+                  _currentPost = _currentPost.copyWith(isLiked: state.isLiked);
+                  // DO NOT touch likesCount here — PostsBloc is authoritative for counts.
                 });
               } else if (state is LikeError &&
                   state.postId == _currentPost.id &&
                   state.shouldRevert) {
                 AppLogger.info(
-                  'PostCard received LikeError for post: ${_currentPost.id}. Reverting UI.',
+                  'PostCard received LikeError for post: ${_currentPost.id}. Reverting boolean only.',
                 );
                 setState(() {
-                  // revert to previousState and reverse the optimistic delta
-                  final prev = state.previousState;
-                  final revertedLikes = (_currentPost.likesCount - state.delta)
-                      .clamp(0, double.infinity)
-                      .toInt();
                   _currentPost = _currentPost.copyWith(
-                    isLiked: prev,
-                    likesCount: revertedLikes,
+                    isLiked: state.previousState,
                   );
+                  // DO NOT touch likesCount here; PostsBloc should handle reverting counts centrally.
                 });
               }
             },
           ),
 
-          // FAVORITES listener - FIXED listenWhen to include errors
+          // Favorites listener: ONLY update boolean. Counts come from PostsBloc.
           BlocListener<FavoritesBloc, FavoritesState>(
             listenWhen: (prev, curr) {
-              // Allow both success updates and error-with-revert for this post
-              if (curr is FavoriteUpdated && curr.postId == _currentPost.id) {
+              if (curr is FavoriteUpdated && curr.postId == _currentPost.id)
                 return true;
-              }
               if (curr is FavoriteError &&
                   curr.postId == _currentPost.id &&
-                  curr.shouldRevert) {
+                  curr.shouldRevert)
                 return true;
-              }
               return false;
             },
             listener: (context, state) {
               if (state is FavoriteUpdated && state.postId == _currentPost.id) {
-                // Single place that applies optimistic/server-corrected delta to local post
                 setState(() {
-                  final newIsFav = state.isFavorited;
-                  final newFavoritesCount = newIsFav
-                      ? _currentPost.favoritesCount +
-                            (state.delta != 0 ? state.delta : 0)
-                      : (_currentPost.favoritesCount > 0
-                            ? _currentPost.favoritesCount -
-                                  (state.delta != 0 ? state.delta : 0)
-                            : 0);
                   _currentPost = _currentPost.copyWith(
-                    isFavorited: newIsFav,
-                    favoritesCount: newFavoritesCount,
+                    isFavorited: state.isFavorited,
                   );
+                  // DO NOT mutate favoritesCount here.
                 });
               } else if (state is FavoriteError &&
                   state.postId == _currentPost.id &&
                   state.shouldRevert) {
-                // Revert the optimistic update centrally
                 setState(() {
-                  final prev = state.previousState;
-                  final revertedCount = prev
-                      ? _currentPost.favoritesCount +
-                            (state.delta != 0 ? state.delta : 0)
-                      : (_currentPost.favoritesCount > 0
-                            ? _currentPost.favoritesCount -
-                                  (state.delta != 0 ? state.delta : 0)
-                            : 0);
                   _currentPost = _currentPost.copyWith(
-                    isFavorited: prev,
-                    favoritesCount: revertedCount,
+                    isFavorited: state.previousState,
                   );
+                  // DO NOT mutate favoritesCount here.
                 });
               }
             },

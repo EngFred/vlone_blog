@@ -36,11 +36,13 @@ class PostActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Base values from PostEntity (from PostsBloc)
-    final baseIsLiked = post.isLiked;
+    // Base counts come from post (PostsBloc is authoritative).
+    // Likes & favorites: always render the numeric count (including 0) to avoid layout shift.
+    // Comments: left "as it were" — we DO NOT show a 0 count here because comments are not
+    // part of the optimistic update flow and should rely on the realtime/source updates.
     final baseLikesCount = post.likesCount;
-    final baseIsFavorited = post.isFavorited;
     final baseFavoritesCount = post.favoritesCount;
+    final baseCommentsCount = post.commentsCount;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -50,51 +52,75 @@ class PostActions extends StatelessWidget {
           Row(
             children: [
               // ==================== LIKE BUTTON ====================
-              DebouncedInkWell(
-                actionKey: 'like_${post.id}',
-                duration: _defaultDebounce,
-                onTap: () {
-                  // Fire the domain action
-                  context.read<LikesBloc>().add(
-                    LikePostEvent(
-                      postId: post.id,
-                      userId: userId,
-                      isLiked: !baseIsLiked,
-                      previousState: baseIsLiked,
-                    ),
-                  );
+              BlocBuilder<LikesBloc, LikesState>(
+                buildWhen: (prev, curr) {
+                  if (curr is LikesInitial) return true;
+                  if (curr is LikeUpdated && curr.postId == post.id)
+                    return true;
+                  if (curr is LikeError &&
+                      curr.postId == post.id &&
+                      curr.shouldRevert)
+                    return true;
+                  return false;
+                },
+                builder: (context, state) {
+                  // Icon boolean may come from LikesBloc for snappy toggle, fallback to post.
+                  bool isLiked = post.isLiked;
+                  if (state is LikeUpdated && state.postId == post.id) {
+                    isLiked = state.isLiked;
+                  } else if (state is LikeError &&
+                      state.postId == post.id &&
+                      state.shouldRevert) {
+                    isLiked = state.previousState;
+                  }
 
-                  // Immediately update central posts list optimistically so pages/feeds reflect the change.
-                  final int delta = (!baseIsLiked) ? 1 : -1;
-                  context.read<PostsBloc>().add(
-                    OptimisticPostUpdate(
-                      postId: post.id,
-                      deltaLikes: delta,
-                      deltaFavorites: 0,
-                      isLiked: !baseIsLiked,
-                      isFavorited: null,
+                  return DebouncedInkWell(
+                    actionKey: 'like_${post.id}',
+                    duration: _defaultDebounce,
+                    onTap: () {
+                      // Fire the domain action to LikesBloc
+                      context.read<LikesBloc>().add(
+                        LikePostEvent(
+                          postId: post.id,
+                          userId: userId,
+                          isLiked: !isLiked,
+                          previousState: isLiked,
+                        ),
+                      );
+
+                      // Central optimistic update for counts (PostsBloc is single source-of-truth for counts).
+                      final int delta = (!isLiked) ? 1 : -1;
+                      context.read<PostsBloc>().add(
+                        OptimisticPostUpdate(
+                          postId: post.id,
+                          deltaLikes: delta,
+                          deltaFavorites: 0,
+                          isLiked: !isLiked,
+                          isFavorited: null,
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(8.0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4.0,
+                      vertical: 4.0,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isLiked ? Icons.favorite : Icons.favorite_border,
+                          size: 24,
+                        ),
+                        // ALWAYS show the count for likes (including 0) to avoid layout jump.
+                        Padding(
+                          padding: const EdgeInsets.only(left: 6.0),
+                          child: Text(baseLikesCount.toString()),
+                        ),
+                      ],
                     ),
                   );
                 },
-                borderRadius: BorderRadius.circular(8.0),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 4.0,
-                  vertical: 4.0,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      baseIsLiked ? Icons.favorite : Icons.favorite_border,
-                      size: 24,
-                    ),
-                    if (baseLikesCount > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 4.0),
-                        child: Text(baseLikesCount.toString()),
-                      ),
-                  ],
-                ),
               ),
 
               const SizedBox(width: 20),
@@ -113,10 +139,11 @@ class PostActions extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.comment_outlined, size: 24),
-                    if (post.commentsCount > 0)
+                    // **COMMENTS: keep original behavior** — only show the number when > 0.
+                    if (baseCommentsCount > 0)
                       Padding(
-                        padding: const EdgeInsets.only(left: 4.0),
-                        child: Text(post.commentsCount.toString()),
+                        padding: const EdgeInsets.only(left: 6.0),
+                        child: Text(baseCommentsCount.toString()),
                       ),
                   ],
                 ),
@@ -134,15 +161,13 @@ class PostActions extends StatelessWidget {
                   horizontal: 4.0,
                   vertical: 4.0,
                 ),
-                child: Row(
+                child: const Row(
+                  // Changed to const Row since no dynamic children
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.share_outlined, size: 24),
-                    if (post.sharesCount > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 4.0),
-                        child: Text(post.sharesCount.toString()),
-                      ),
+                    Icon(Icons.share_outlined, size: 24),
+                    // Shares count shown only if you prefer; keeping it consistent (always show).
+                    // REMOVED shares count display
                   ],
                 ),
               ),
@@ -163,12 +188,11 @@ class PostActions extends StatelessWidget {
             },
             builder: (context, state) {
               // Use post as source-of-truth for counts to avoid double-applying delta.
-              bool isFavorited = baseIsFavorited;
-              int favoritesCount = baseFavoritesCount;
+              bool isFavorited = post.isFavorited;
 
               if (state is FavoriteUpdated && state.postId == post.id) {
                 isFavorited = state.isFavorited;
-                // DO NOT apply state.delta here (PostCard handles local count).
+                // DO NOT apply delta here — PostsBloc must update counts.
               } else if (state is FavoriteError &&
                   state.postId == post.id &&
                   state.shouldRevert) {
@@ -213,11 +237,11 @@ class PostActions extends StatelessWidget {
                       isFavorited ? Icons.bookmark : Icons.bookmark_border,
                       size: 24,
                     ),
-                    if (favoritesCount > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 4.0),
-                        child: Text(favoritesCount.toString()),
-                      ),
+                    // ALWAYS show favorites count (including 0) — matches likes behavior.
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6.0),
+                      child: Text(baseFavoritesCount.toString()),
+                    ),
                   ],
                 ),
               );

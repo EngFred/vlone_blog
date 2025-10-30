@@ -6,9 +6,9 @@ import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bl
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/reels_comments_overlay.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart'
     as postsbloc;
+import 'package:vlone_blog_app/features/posts/presentation/widgets/reels_comments_overlay.dart';
 
 class ReelActions extends StatelessWidget {
   final PostEntity post;
@@ -35,11 +35,14 @@ class ReelActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use post as authoritative source-of-truth for counts
+    // Use post as authoritative source-of-truth for counts.
+    // Likes & favorites: ALWAYS show counts (including 0) — avoids layout shift.
+    // Comments: left as it was originally (not part of optimistic update). Only displayed if > 0.
     final baseIsLiked = post.isLiked;
     final baseLikesCount = post.likesCount;
     final baseIsFavorited = post.isFavorited;
     final baseFavoritesCount = post.favoritesCount;
+    final baseCommentsCount = post.commentsCount;
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
@@ -103,8 +106,9 @@ class ReelActions extends StatelessWidget {
                     color: isLiked ? Colors.red : Colors.white,
                     size: 32,
                   ),
+                  // ALWAYS show the likes count (including 0) — consistent with feed likes.
                   Text(
-                    '$likesCount',
+                    likesCount.toString(),
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -131,13 +135,16 @@ class ReelActions extends StatelessWidget {
                 color: Colors.white,
                 size: 32,
               ),
-              Text(
-                '${post.commentsCount}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+              // **COMMENTS: keep original behavior** — only show the number when > 0,
+              // because comments are not part of optimistic updates and rely on realtime.
+              if (baseCommentsCount > 0)
+                Text(
+                  baseCommentsCount.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -201,8 +208,9 @@ class ReelActions extends StatelessWidget {
                     color: isFavorited ? Colors.amber : Colors.white,
                     size: 32,
                   ),
+                  // ALWAYS show favorites count (including 0)
                   Text(
-                    '$favoritesCount',
+                    favoritesCount.toString(),
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
