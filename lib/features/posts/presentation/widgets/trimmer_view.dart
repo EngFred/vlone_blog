@@ -261,7 +261,7 @@ class _TrimmerViewState extends State<TrimmerView>
           ),
 
           if (_progressVisibility)
-            const SavingLoadingOverlay(message: 'Saving Video...'),
+            const SavingLoadingOverlay(message: 'Trimming Video...'),
         ],
       ),
       appBar: AppBar(

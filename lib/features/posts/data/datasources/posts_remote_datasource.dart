@@ -12,6 +12,7 @@ import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:vlone_blog_app/core/utils/video_compressor.dart';
+import 'package:vlone_blog_app/core/utils/media_progress_notifier.dart';
 
 class PostsRemoteDataSource {
   final SupabaseClient client;
@@ -49,41 +50,122 @@ class PostsRemoteDataSource {
         File fileToUpload = mediaFile;
 
         try {
-          final compressed = await VideoCompressor.compressIfNeeded(
-            fileToUpload,
-          );
-          if (compressed.path != fileToUpload.path) {
-            AppLogger.info(
-              'createPost: using compressed video at ${compressed.path}',
-            );
-            fileToUpload = compressed;
+          // IMPORTANT: probe duration BEFORE copying or compressing. If duration exceeds allowed
+          // threshold we want to fail fast and avoid expensive compression/IO.
+          if (mediaType == 'video') {
+            try {
+              final duration = await getVideoDuration(fileToUpload);
+              if (duration > Constants.maxVideoDurationSeconds) {
+                AppLogger.warning(
+                  'createPost: video duration $duration exceeds limit of ${Constants.maxVideoDurationSeconds}s',
+                );
+                throw const ServerException('Video exceeds allowed duration');
+              }
+            } catch (e) {
+              // If probing fails, we don't block compression — compressor will also attempt duration checks,
+              // but we log the probe failure for debugging.
+              AppLogger.warning(
+                'createPost: getVideoDuration probe failed: $e',
+              );
+            }
+          }
+
+          // --- NEW: wire up compression progress notifications ---
+          // Determine if it's worth attempting compression (based on size threshold).
+          bool shouldAttemptCompression = false;
+          try {
+            final bytes = await fileToUpload.length();
+            shouldAttemptCompression =
+                bytes > VideoCompressor.defaultMinSizeBytes;
+          } catch (e) {
+            AppLogger.warning('createPost: failed to stat file size: $e');
+            // fall through — still attempt compression to be safe
+            shouldAttemptCompression = true;
+          }
+
+          if (shouldAttemptCompression) {
+            // Notify UI we're starting compression
+            MediaProgressNotifier.notifyCompressing(0.0);
+
+            try {
+              final compressed = await VideoCompressor.compressIfNeeded(
+                fileToUpload,
+                onProgress: (percent) {
+                  // Forward progress to the global notifier (0..100)
+                  MediaProgressNotifier.notifyCompressing(percent);
+                },
+              );
+
+              if (compressed.path != fileToUpload.path) {
+                AppLogger.info(
+                  'createPost: using compressed video at ${compressed.path}',
+                );
+                fileToUpload = compressed;
+              } else {
+                AppLogger.info(
+                  'createPost: compression skipped or no size reduction; using original',
+                );
+              }
+            } catch (e) {
+              // If compression fails, publish an error to UI but continue with original file.
+              AppLogger.warning(
+                'createPost: compression failed, proceeding with original file: $e',
+              );
+              MediaProgressNotifier.notifyError(
+                'Compression failed; uploading original',
+              );
+            }
           } else {
             AppLogger.info(
-              'createPost: compression skipped or no size reduction; using original',
+              'createPost: file below compression threshold; skipping compressor',
             );
           }
+          // --- END compression wiring ---
         } catch (e) {
           AppLogger.warning(
-            'createPost: compression failed, proceeding with original file: $e',
+            'createPost: compression step encountered error, proceeding with original file: $e',
           );
+          // Surface to UI but continue
+          try {
+            MediaProgressNotifier.notifyError(
+              'Compression step failed; uploading original',
+            );
+          } catch (_) {}
         }
 
         if (mediaType == 'video') {
-          // Use fileToUpload (compressed or original) when measuring duration.
-          final duration = await getVideoDuration(fileToUpload);
-          if (duration > Constants.maxVideoDurationSeconds) {
+          // Redundant safety check: confirm duration after any compression/trim step.
+          try {
+            final duration = await getVideoDuration(fileToUpload);
+            if (duration > Constants.maxVideoDurationSeconds) {
+              AppLogger.warning(
+                'Video duration exceeds limit after compression: $duration seconds',
+              );
+              throw const ServerException('Video exceeds allowed duration');
+            }
+          } catch (e) {
+            // If this probe fails, we accept the risk (we've already attempted compression).
             AppLogger.warning(
-              'Video duration exceeds limit: $duration seconds',
+              'createPost: duration probe failed after compression: $e',
             );
-            throw const ServerException('Video exceeds allowed duration');
           }
         }
+
+        // --- NEW: notify uploading stage (UI will show "Uploading video..." and ignore percent) ---
+        try {
+          MediaProgressNotifier.notifyUploading(0.0);
+        } catch (_) {}
 
         mediaUrl = await _uploadFileToStorage(
           file: fileToUpload,
           userId: userId,
           folder: 'posts/media',
         );
+
+        // After upload succeeds, we can mark done for media stage (finalization happens later)
+        try {
+          MediaProgressNotifier.notifyDone();
+        } catch (_) {}
 
         if (mediaType == 'video') {
           // This call now runs on the main thread, as required by the plugin
@@ -129,9 +211,18 @@ class PostsRemoteDataSource {
       final postMap = response;
       postMap['is_liked'] = false;
       postMap['is_favorited'] = false;
+
+      // Final overall done notification (UI will pop on PostCreated listener)
+      try {
+        MediaProgressNotifier.notifyDone();
+      } catch (_) {}
+
       return PostModel.fromMap(postMap);
-    } catch (e) {
-      AppLogger.error('Error creating post: $e', error: e);
+    } catch (e, st) {
+      AppLogger.error('Error creating post: $e', error: e, stackTrace: st);
+      try {
+        MediaProgressNotifier.notifyError(e.toString());
+      } catch (_) {}
       throw ServerException(e.toString());
     }
   }
