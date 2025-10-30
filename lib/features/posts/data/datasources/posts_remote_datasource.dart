@@ -69,7 +69,6 @@ class PostsRemoteDataSource {
         }
 
         if (mediaType == 'video') {
-          // Assuming getVideoDuration is available from helpers.dart
           // Use fileToUpload (compressed or original) when measuring duration.
           final duration = await getVideoDuration(fileToUpload);
           if (duration > Constants.maxVideoDurationSeconds) {

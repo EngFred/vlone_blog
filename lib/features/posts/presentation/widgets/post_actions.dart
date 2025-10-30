@@ -162,12 +162,12 @@ class PostActions extends StatelessWidget {
                   vertical: 4.0,
                 ),
                 child: const Row(
-                  // Changed to const Row since no dynamic children
+                  // Now using const Row and no Text for the count
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.share_outlined, size: 24),
                     // Shares count shown only if you prefer; keeping it consistent (always show).
-                    // REMOVED shares count display
+                    // Shares count display has been removed here.
                   ],
                 ),
               ),
