@@ -10,6 +10,7 @@ class FeedList extends StatelessWidget {
   final bool isRealtimeActive;
   final VoidCallback? onLoadMore;
   final String? loadMoreError;
+  final ScrollController? controller; // NEW
 
   const FeedList({
     super.key,
@@ -19,13 +20,17 @@ class FeedList extends StatelessWidget {
     this.isRealtimeActive = false,
     this.onLoadMore,
     this.loadMoreError,
+    this.controller, // NEW
   });
 
   @override
   Widget build(BuildContext context) {
     if (posts.isEmpty) return const SizedBox.shrink();
+
     return ListView.builder(
       key: const PageStorageKey('feed_list'),
+      controller:
+          controller, // ATTACH controller so outer ScrollController receives events
       cacheExtent: 1500.0,
       itemCount:
           posts.length +

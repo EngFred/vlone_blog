@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -17,6 +18,7 @@ import 'package:vlone_blog_app/features/posts/presentation/widgets/user_greeting
 
 class FeedPage extends StatefulWidget {
   const FeedPage({super.key});
+
   @override
   State<FeedPage> createState() => _FeedPageState();
 }
@@ -70,6 +72,10 @@ class _FeedPageState extends State<FeedPage>
           if (_hasMore &&
               _scrollController.position.pixels >=
                   _scrollController.position.maxScrollExtent - 200) {
+            // NEW: log when we dispatch load-more for easier debugging
+            AppLogger.info(
+              'FeedPage: near bottom; dispatching LoadMoreFeedEvent',
+            );
             context.read<PostsBloc>().add(const LoadMoreFeedEvent());
           }
         });
@@ -121,6 +127,7 @@ class _FeedPageState extends State<FeedPage>
         body: Center(child: LoadingIndicator()),
       ); // Wait for userId
     }
+
     return Scaffold(
       appBar: AppBar(
         title: const UserGreetingTitle(),
@@ -211,6 +218,7 @@ class _FeedPageState extends State<FeedPage>
                   loadMoreError: _loadMoreError,
                   onLoadMore: () =>
                       context.read<PostsBloc>().add(const LoadMoreFeedEvent()),
+                  controller: _scrollController, // PASS IT
                 );
               }
               return const Center(child: LoadingIndicator());

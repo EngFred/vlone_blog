@@ -48,10 +48,7 @@ void main() async {
 
   // Parallelize Workmanager and other feature inits
   await Future.wait([
-    Workmanager().initialize(
-      backgroundCallbackDispatcher,
-      isInDebugMode: false,
-    ),
+    Workmanager().initialize(backgroundCallbackDispatcher),
     di.initPosts(),
     di.initLikes(),
     di.initFavorites(),
