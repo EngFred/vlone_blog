@@ -6,7 +6,9 @@ import 'package:vlone_blog_app/core/widgets/debounced_inkwell.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+
+// ✅ CHANGE 1: Import the new PostActionsBloc
+import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 
 class PostActions extends StatelessWidget {
   final PostEntity post;
@@ -22,8 +24,9 @@ class PostActions extends StatelessWidget {
 
   static const Duration _defaultDebounce = Duration(milliseconds: 500);
 
+  // ✅ CHANGE 2: Update _share to use PostActionsBloc
   void _share(BuildContext context) {
-    context.read<PostsBloc>().add(SharePostEvent(post.id));
+    context.read<PostActionsBloc>().add(SharePostEvent(post.id));
   }
 
   void _handleComment(BuildContext context) {
@@ -88,9 +91,9 @@ class PostActions extends StatelessWidget {
                         ),
                       );
 
-                      // Central optimistic update for counts (PostsBloc is single source-of-truth for counts).
+                      // ✅ CHANGE 3: Dispatch OptimisticPostUpdate to PostActionsBloc
                       final int delta = (!isLiked) ? 1 : -1;
-                      context.read<PostsBloc>().add(
+                      context.read<PostActionsBloc>().add(
                         OptimisticPostUpdate(
                           postId: post.id,
                           deltaLikes: delta,
@@ -166,7 +169,6 @@ class PostActions extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.share_outlined, size: 24),
-                    // Shares count shown only if you prefer; keeping it consistent (always show).
                     // Shares count display has been removed here.
                   ],
                 ),
@@ -213,9 +215,9 @@ class PostActions extends StatelessWidget {
                     ),
                   );
 
-                  // Immediately update central posts list optimistically
+                  // ✅ CHANGE 4: Dispatch OptimisticPostUpdate to PostActionsBloc
                   final int deltaFav = (!isFavorited) ? 1 : -1;
-                  context.read<PostsBloc>().add(
+                  context.read<PostActionsBloc>().add(
                     OptimisticPostUpdate(
                       postId: post.id,
                       deltaLikes: 0,

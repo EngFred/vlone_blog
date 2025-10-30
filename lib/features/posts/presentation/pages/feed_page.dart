@@ -11,7 +11,9 @@ import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+
+import 'package:vlone_blog_app/features/posts/presentation/bloc/feed/feed_bloc.dart';
+
 import 'package:vlone_blog_app/features/posts/presentation/widgets/feed_list.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/notification_icon_with_badge.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -27,15 +29,13 @@ class FeedPage extends StatefulWidget {
 class _FeedPageState extends State<FeedPage>
     with AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
-  String? _userId; // Store userId from AuthBloc
+  String? _userId;
   static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
-  final List<PostEntity> _posts = []; // Added: Local posts list
-  bool _hasMore = true; // Added: Local hasMore
-  bool _isRealtimeActive = false; // Added: Local realtime status
-  bool _hasLoadedOnce = false; // Added: To track initial load
-  String? _loadMoreError; // Added: For load more errors
-
-  // Local guard to avoid dispatching multiple load-more events while one is in-flight
+  final List<PostEntity> _posts = [];
+  bool _hasMore = true;
+  bool _isRealtimeActive = false;
+  bool _hasLoadedOnce = false;
+  String? _loadMoreError;
   bool _isLoadingMore = false;
 
   @override
@@ -47,17 +47,15 @@ class _FeedPageState extends State<FeedPage>
     _setupScrollListener();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authState = context.read<AuthBloc>().state;
-      _userId = _extractUserId(
-        authState,
-      ); // Helper to extract without maybeWhen
+      _userId = _extractUserId(authState);
       if (_userId != null && mounted) {
-        setState(() {}); // Trigger rebuild to pass userId
-        // Removed: GetFeedEvent and StartRealtimeListenersEvent - handled by MainPage
+        setState(() {});
         context.read<NotificationsBloc>().add(
           NotificationsSubscribeUnreadCountStream(),
         );
+        // 💡 Ensure StartFeedRealtime is dispatched here if it's not handled by MainPage
+        context.read<FeedBloc>().add(const StartFeedRealtime());
       } else if (mounted) {
-        // Handle unauthenticated: e.g., redirect or show login
         AppLogger.warning('User not authenticated in FeedPage');
       }
     });
@@ -71,18 +69,16 @@ class _FeedPageState extends State<FeedPage>
   void _setupScrollListener() {
     _scrollController.addListener(() {
       if (_scrollController.hasClients) {
-        // Debounce the load-more check on scroll (resets timer each time)
         Debouncer.instance.debounce('load_more_feed', _loadMoreDebounce, () {
           if (!_hasMore) return;
-          if (_isLoadingMore) return; // prevent duplicate dispatches
+          if (_isLoadingMore) return;
           if (_scrollController.position.pixels >=
               _scrollController.position.maxScrollExtent - 200) {
-            // NEW: log when we dispatch load-more for easier debugging
             AppLogger.info(
               'FeedPage: near bottom; dispatching LoadMoreFeedEvent',
             );
-            _isLoadingMore = true; // set guard until state tells us otherwise
-            context.read<PostsBloc>().add(const LoadMoreFeedEvent());
+            _isLoadingMore = true;
+            context.read<FeedBloc>().add(const LoadMoreFeedEvent());
           }
         });
       }
@@ -93,15 +89,11 @@ class _FeedPageState extends State<FeedPage>
     final authState = context.read<AuthBloc>().state;
     final userId = _extractUserId(authState);
     if (userId != null) {
-      context.read<PostsBloc>().add(RefreshFeedEvent(userId));
+      context.read<FeedBloc>().add(RefreshFeedEvent(userId));
     }
   }
 
-  /// Smart merging strategy:
-  /// - If local list is empty -> replace
-  /// - If newPosts contains old posts as a prefix -> append only the tail (common case for load-more)
-  /// - If newPosts contains old posts as a suffix -> prepend only the head (common for realtime new posts)
-  /// - Otherwise do a conservative replacement while preserving overlapping ids where possible.
+  /// Smart merging strategy: (Logic remains the same)
   void _updatePosts(List<PostEntity> newPosts) {
     if (!mounted) return;
 
@@ -163,39 +155,27 @@ class _FeedPageState extends State<FeedPage>
       return;
     }
 
-    // Fallback: produce merged list that prefers server order but doesn't throw away overlap
-    final merged = <PostEntity>[];
-    for (final np in newPosts) {
-      final idx = _posts.indexWhere((e) => e.id == np.id);
-      if (idx != -1) {
-        // prefer server-provided entity (it contains freshest data)
-        merged.add(np);
-      } else {
-        // new item: add it
-        merged.add(np);
-      }
-    }
-
+    // Fallback: conservative replacement
     setState(() {
       _posts
         ..clear()
-        ..addAll(merged);
+        ..addAll(newPosts); // Rely on the full list from the BLoC
     });
   }
 
   @override
   void dispose() {
+    // 💡 Ensure StopFeedRealtime is dispatched
+    context.read<FeedBloc>().add(const StopFeedRealtime());
     _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // For keepAlive
+    super.build(context);
     if (_userId == null) {
-      return const Scaffold(
-        body: Center(child: LoadingIndicator()),
-      ); // Wait for userId
+      return const Scaffold(body: Center(child: LoadingIndicator()));
     }
 
     return Scaffold(
@@ -207,61 +187,34 @@ class _FeedPageState extends State<FeedPage>
       ),
       body: MultiBlocListener(
         listeners: [
-          BlocListener<PostsBloc, PostsState>(
+          BlocListener<FeedBloc, FeedState>(
             listener: (context, state) {
-              // Keep local loading flag in sync: PostsBloc emits FeedLoadingMore & FeedLoaded
+              // 1. Core Data Update: Handles list replacement, load more, and all realtime changes
               if (state is FeedLoaded) {
+                // The BLoC handles the merging and internal updates (realtime, optimistic)
                 _updatePosts(state.posts);
                 _hasMore = state.hasMore;
                 _isRealtimeActive = state.isRealtimeActive;
                 _hasLoadedOnce = true;
                 _loadMoreError = null;
-                _isLoadingMore = false; // clear guard
-              } else if (state is FeedLoadingMore) {
+                _isLoadingMore = false; // clear guard for any successful fetch
+              }
+              // 2. Loading State Management
+              else if (state is FeedLoadingMore) {
                 _isLoadingMore = true;
-              } else if (state is PostCreated) {
-                if (!mounted) return;
-                final exists = _posts.any((p) => p.id == state.post.id);
-                if (!exists) {
-                  setState(() => _posts.insert(0, state.post));
-                }
-              } else if (state is RealtimePostUpdate) {
-                if (!mounted) return;
-                final index = _posts.indexWhere((p) => p.id == state.postId);
-                if (index != -1) {
-                  final post = _posts[index];
-                  final updatedPost = post.copyWith(
-                    likesCount: (state.likesCount ?? post.likesCount)
-                        .clamp(0, double.infinity)
-                        .toInt(),
-                    commentsCount: (state.commentsCount ?? post.commentsCount)
-                        .clamp(0, double.infinity)
-                        .toInt(),
-                    favoritesCount:
-                        (state.favoritesCount ?? post.favoritesCount)
-                            .clamp(0, double.infinity)
-                            .toInt(),
-                    sharesCount: (state.sharesCount ?? post.sharesCount)
-                        .clamp(0, double.infinity)
-                        .toInt(),
-                  );
-                  setState(() => _posts[index] = updatedPost);
-                }
-              } else if (state is PostDeleted) {
-                if (!mounted) return;
-                final index = _posts.indexWhere((p) => p.id == state.postId);
-                if (index != -1) {
-                  setState(() => _posts.removeAt(index));
-                }
-              } else if (state is FeedLoadMoreError) {
+              }
+              // 3. Error State Management
+              else if (state is FeedLoadMoreError) {
                 if (mounted) {
                   _loadMoreError = state.message;
                   _isLoadingMore = false;
                 }
-              } else if (state is PostsError) {
-                // Handle general error if needed
+              } else if (state is FeedError) {
+                // General error, handled by the Builder below
                 _isLoadingMore = false;
               }
+              // ⚠️ REMOVED: `else if (state is _RealtimeFeedPostReceived)`
+              // This is an internal BLoC event and should not be listened to by the UI.
             },
           ),
         ],
@@ -269,16 +222,19 @@ class _FeedPageState extends State<FeedPage>
           onRefresh: _onRefresh,
           child: Builder(
             builder: (context) {
-              final postsState = context.watch<PostsBloc>().state;
-              if (postsState is PostsLoading || postsState is PostsInitial) {
+              final feedState = context.watch<FeedBloc>().state;
+
+              if (feedState is FeedLoading || feedState is FeedInitial) {
                 return const Center(child: LoadingIndicator());
               }
-              if (postsState is PostsError) {
+              if (feedState is FeedError) {
                 return CustomErrorWidget(
-                  message: postsState.message,
+                  message: feedState.message,
                   onRetry: _onRefresh,
                 );
               }
+
+              // Only rely on local state (_hasLoadedOnce) and posts list
               if (_hasLoadedOnce) {
                 if (_posts.isEmpty) {
                   return const EmptyStateWidget(
@@ -295,9 +251,9 @@ class _FeedPageState extends State<FeedPage>
                   onLoadMore: () {
                     if (_isLoadingMore) return;
                     _isLoadingMore = true;
-                    context.read<PostsBloc>().add(const LoadMoreFeedEvent());
+                    context.read<FeedBloc>().add(const LoadMoreFeedEvent());
                   },
-                  controller: _scrollController, // PASS IT
+                  controller: _scrollController,
                 );
               }
               return const Center(child: LoadingIndicator());

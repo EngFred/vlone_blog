@@ -10,7 +10,10 @@ import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/feed/feed_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/reels/reels_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/user_posts/user_posts_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
@@ -111,7 +114,11 @@ class MyApp extends StatelessWidget {
         BlocProvider<AuthBloc>(
           create: (_) => di.sl<AuthBloc>()..add(CheckAuthStatusEvent()),
         ),
-        BlocProvider<PostsBloc>(create: (_) => di.sl<PostsBloc>()),
+        BlocProvider<FeedBloc>(create: (_) => di.sl<FeedBloc>()),
+        BlocProvider<ReelsBloc>(create: (_) => di.sl<ReelsBloc>()),
+        // UserPostsBloc is often scoped, but keeping it global for now as it replaces part of old PostsBloc
+        BlocProvider<UserPostsBloc>(create: (_) => di.sl<UserPostsBloc>()),
+        BlocProvider<PostActionsBloc>(create: (_) => di.sl<PostActionsBloc>()),
         BlocProvider<ProfileBloc>(create: (_) => di.sl<ProfileBloc>()),
         BlocProvider<CommentsBloc>(create: (_) => di.sl<CommentsBloc>()),
         BlocProvider<FollowersBloc>(create: (_) => di.sl<FollowersBloc>()),

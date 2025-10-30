@@ -72,7 +72,10 @@ import 'package:vlone_blog_app/features/posts/domain/usecases/get_user_posts_use
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/stream_post_deletions_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/stream_posts_usecase.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/feed/feed_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/reels/reels_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/user_posts/user_posts_bloc.dart';
 
 // Profile
 import 'package:vlone_blog_app/features/profile/data/datasources/profile_remote_datasource.dart';
@@ -109,7 +112,7 @@ Future<void> init({SupabaseClient? supabaseClient}) async {
 /// Init only auth-related dependencies first for faster startup
 Future<void> initAuth({SupabaseClient? supabaseClient}) async {
   // External - Use provided client or get from instance
-  // ✅ PERFORMANCE: This prevents the "already initialized" warning
+  // PERFORMANCE: This prevents the "already initialized" warning
   // and saves ~50-100ms by not re-initializing Supabase
   sl.registerLazySingleton<SupabaseClient>(() {
     if (supabaseClient != null) {
@@ -153,7 +156,7 @@ Future<void> initAuth({SupabaseClient? supabaseClient}) async {
 
 Future<void> initPosts() async {
   // -------------------
-  // Posts Feature
+  // Posts Feature Use Cases (No change here)
   // -------------------
   sl.registerLazySingleton<PostsRemoteDataSource>(
     () => PostsRemoteDataSource(sl<SupabaseClient>()),
@@ -184,7 +187,7 @@ Future<void> initPosts() async {
   );
 
   // -------------------
-  // Real-time post streams used in PostsBloc
+  // Real-time post streams used in new BLoCs (No change here)
   // -------------------
   sl.registerLazySingleton<StreamNewPostsUseCase>(
     () => StreamNewPostsUseCase(sl<PostsRepository>()),
@@ -196,17 +199,41 @@ Future<void> initPosts() async {
     () => StreamPostDeletionsUseCase(sl<PostsRepository>()),
   );
 
-  sl.registerFactory<PostsBloc>(
-    () => PostsBloc(
-      createPostUseCase: sl<CreatePostUseCase>(),
+  // -------------------
+  // ✅ NEW: Register Specialized Posts BLoCs
+  // -------------------
+
+  // 1. FeedsBloc
+  sl.registerFactory<FeedBloc>(
+    () => FeedBloc(
       getFeedUseCase: sl<GetFeedUseCase>(),
-      getReelsUseCase: sl<GetReelsUseCase>(),
-      getUserPostsUseCase: sl<GetUserPostsUseCase>(),
-      sharePostUseCase: sl<SharePostUseCase>(),
-      getPostUseCase: sl<GetPostUseCase>(),
-      deletePostUseCase: sl<DeletePostUseCase>(),
       realtimeService: sl<RealtimeService>(),
     ),
+  );
+
+  // 2. ReelsBloc
+  sl.registerFactory<ReelsBloc>(
+    () => ReelsBloc(
+      getReelsUseCase: sl<GetReelsUseCase>(),
+      realtimeService: sl<RealtimeService>(),
+    ),
+  );
+
+  // 3. PostActionsBloc
+  // Handles single post creation, sharing, deletion, and is used for optimistic UI updates
+  sl.registerFactory<PostActionsBloc>(
+    () => PostActionsBloc(
+      createPostUseCase: sl<CreatePostUseCase>(),
+      sharePostUseCase: sl<SharePostUseCase>(),
+      deletePostUseCase: sl<DeletePostUseCase>(),
+      getPostUseCase: sl<GetPostUseCase>(),
+    ),
+  );
+
+  // 4. UserPostsBloc
+  // Handles a specific user's paginated posts
+  sl.registerFactory<UserPostsBloc>(
+    () => UserPostsBloc(getUserPostsUseCase: sl<GetUserPostsUseCase>()),
   );
 }
 

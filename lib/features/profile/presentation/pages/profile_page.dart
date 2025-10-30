@@ -10,12 +10,11 @@ import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/core/widgets/loading_overlay.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/user_posts/user_posts_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_posts_list.dart';
-import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
-import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 
 enum ProfileMenuOption { edit, logout }
 
@@ -67,30 +66,32 @@ class _ProfilePageState extends State<ProfilePage> {
       );
       return; // Early exit if no user ID
     }
-    // 💡 FIX IMPLEMENTED HERE: Ensure UI is showing loading state immediately
-    // If the list is empty, we must be loading or show an error/empty state.
+
+    // 💡 Update local state for immediate loading feedback
     if (_userPosts.isEmpty && _isUserPostsLoading == false) {
       setState(() {
         _isUserPostsLoading = true;
       });
     }
+
     // Clear local lists for a fresh load (posts are rebuilt from BLoC state)
     _userPosts.clear();
     _userPostsError = null;
     _loadMoreError = null;
     _hasMoreUserPosts = true;
     _hasLoadedOnce = false; // reset guard for fresh load
+
     // Dispatch events to load data for the current user's ID
     context.read<ProfileBloc>().add(GetProfileDataEvent(_currentUserId!));
 
-    // 💡 FIX: Changed to RefreshUserPostsEvent to reset pagination
-    context.read<PostsBloc>().add(
+    //Dispatch to UserPostsBloc
+    context.read<UserPostsBloc>().add(
       RefreshUserPostsEvent(
-        // <-- WAS: GetUserPostsEvent
         profileUserId: _currentUserId!,
         currentUserId: _currentUserId!,
       ),
     );
+
     AppLogger.info(
       'ProfilePage: Initialized for current user: $_currentUserId',
     );
@@ -110,7 +111,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 _hasMoreUserPosts &&
                 !_isLoadingMoreUserPosts) {
               setState(() => _isLoadingMoreUserPosts = true);
-              context.read<PostsBloc>().add(LoadMoreUserPostsEvent());
+              // ✅ CHANGE: Dispatch to UserPostsBloc
+              context.read<UserPostsBloc>().add(LoadMoreUserPostsEvent());
             }
           },
         );
@@ -124,91 +126,11 @@ class _ProfilePageState extends State<ProfilePage> {
     super.dispose();
   }
 
-  void _handleRealtimePostUpdate(RealtimePostUpdate state) {
-    final index = _userPosts.indexWhere((p) => p.id == state.postId);
-    if (index != -1 && mounted) {
-      final post = _userPosts[index];
-      final updatedPost = post.copyWith(
-        likesCount: (state.likesCount ?? post.likesCount)
-            .clamp(0, double.infinity)
-            .toInt(),
-        commentsCount: (state.commentsCount ?? post.commentsCount)
-            .clamp(0, double.infinity)
-            .toInt(),
-        favoritesCount: (state.favoritesCount ?? post.favoritesCount)
-            .clamp(0, double.infinity)
-            .toInt(),
-        sharesCount: (state.sharesCount ?? post.sharesCount)
-            .clamp(0, double.infinity)
-            .toInt(),
-      );
-      setState(() => _userPosts[index] = updatedPost);
-    }
-  }
-
-  void _applyLikeUpdate(String postId, bool isLiked) {
-    final index = _userPosts.indexWhere((p) => p.id == postId);
-    if (index == -1 || !mounted) {
-      return;
-    }
-    final old = _userPosts[index];
-    final delta = isLiked ? 1 : -1;
-    final updated = old.copyWith(
-      likesCount: (old.likesCount + delta).clamp(0, double.infinity).toInt(),
-      isLiked: isLiked,
-    );
-    setState(() => _userPosts[index] = updated);
-  }
-
-  void _revertLike(String postId, bool previousState) {
-    final index = _userPosts.indexWhere((p) => p.id == postId);
-    if (index == -1 || !mounted) {
-      return;
-    }
-    final old = _userPosts[index];
-    final correctedCount = previousState
-        ? (old.likesCount + 1)
-        : (old.likesCount - 1);
-    setState(
-      () => _userPosts[index] = old.copyWith(
-        isLiked: previousState,
-        likesCount: correctedCount.clamp(0, double.infinity).toInt(),
-      ),
-    );
-  }
-
-  void _applyFavoriteUpdate(String postId, bool isFavorited) {
-    final index = _userPosts.indexWhere((p) => p.id == postId);
-    if (index == -1 || !mounted) {
-      return;
-    }
-    final old = _userPosts[index];
-    final delta = isFavorited ? 1 : -1;
-    final updated = old.copyWith(
-      favoritesCount: (old.favoritesCount + delta)
-          .clamp(0, double.infinity)
-          .toInt(),
-      isFavorited: isFavorited,
-    );
-    setState(() => _userPosts[index] = updated);
-  }
-
-  void _revertFavorite(String postId, bool previousState) {
-    final index = _userPosts.indexWhere((p) => p.id == postId);
-    if (index == -1 || !mounted) {
-      return;
-    }
-    final old = _userPosts[index];
-    final correctedCount = previousState
-        ? (old.favoritesCount + 1)
-        : (old.favoritesCount - 1);
-    setState(
-      () => _userPosts[index] = old.copyWith(
-        isFavorited: previousState,
-        favoritesCount: correctedCount.clamp(0, double.infinity).toInt(),
-      ),
-    );
-  }
+  // ❌ REMOVED: _handleRealtimePostUpdate (The BLoC should handle this)
+  // ❌ REMOVED: _applyLikeUpdate (The PostActionsBloc update should be sufficient)
+  // ❌ REMOVED: _revertLike (The PostActionsBloc update should be sufficient)
+  // ❌ REMOVED: _applyFavoriteUpdate (The PostActionsBloc update should be sufficient)
+  // ❌ REMOVED: _revertFavorite (The PostActionsBloc update should be sufficient)
 
   void _showLogoutConfirmationDialog() {
     showDialog(
@@ -349,16 +271,18 @@ class _ProfilePageState extends State<ProfilePage> {
                       }
                     },
                   ),
-                  BlocListener<PostsBloc, PostsState>(
+
+                  // ✅ CHANGE: Listen to UserPostsBloc
+                  BlocListener<UserPostsBloc, UserPostsState>(
                     listener: (context, state) {
                       if (state is UserPostsLoaded) {
                         // Check for foreign user state before updating local state
                         if (state.profileUserId != null &&
                             state.profileUserId != _currentUserId) {
                           AppLogger.info(
-                            'ProfilePage: PostsBloc state is for foreign profile (${state.profileUserId}). Triggering refresh for $_currentUserId.',
+                            'ProfilePage: UserPostsBloc state is for foreign profile (${state.profileUserId}). Triggering refresh for $_currentUserId.',
                           );
-                          context.read<PostsBloc>().add(
+                          context.read<UserPostsBloc>().add(
                             RefreshUserPostsEvent(
                               profileUserId: _currentUserId!,
                               currentUserId: _currentUserId!,
@@ -369,28 +293,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         // Normal load/update logic for the correct user:
                         if (mounted) {
                           setState(() {
-                            // Clear only if this is not a load-more, but since UserPostsLoaded
-                            // represents the *entire* current list from the BLoC, we clear and add.
                             _userPosts.clear();
                             _userPostsError = null;
-                            _userPosts.addAll(
-                              state.posts.map(
-                                (p) => p.copyWith(
-                                  likesCount: p.likesCount
-                                      .clamp(0, double.infinity)
-                                      .toInt(),
-                                  commentsCount: p.commentsCount
-                                      .clamp(0, double.infinity)
-                                      .toInt(),
-                                  favoritesCount: p.favoritesCount
-                                      .clamp(0, double.infinity)
-                                      .toInt(),
-                                  sharesCount: p.sharesCount
-                                      .clamp(0, double.infinity)
-                                      .toInt(),
-                                ),
-                              ),
-                            );
+                            _userPosts.addAll(state.posts);
                             _hasMoreUserPosts = state.hasMore;
                             _isUserPostsLoading = false; // FINISHED LOADING
                             _isLoadingMoreUserPosts = false;
@@ -401,18 +306,6 @@ class _ProfilePageState extends State<ProfilePage> {
                           AppLogger.info(
                             'ProfilePage: Loaded ${_userPosts.length} posts for $_currentUserId',
                           );
-                        }
-                      } else if (state is PostCreated) {
-                        if (mounted) {
-                          // Only add if the post was created by the current user
-                          if (state.post.userId == _currentUserId) {
-                            final exists = _userPosts.any(
-                              (p) => p.id == state.post.id,
-                            );
-                            if (!exists) {
-                              setState(() => _userPosts.insert(0, state.post));
-                            }
-                          }
                         }
                       } else if (state is UserPostsError) {
                         if (state.profileUserId != null &&
@@ -432,8 +325,6 @@ class _ProfilePageState extends State<ProfilePage> {
                           return; // Ignore foreign user loading
                         }
                         if (mounted) {
-                          // This state should set loading, but we already set it in _initializeProfile
-                          // to handle the initial load race condition. We keep this to catch subsequent loading states.
                           setState(() => _isUserPostsLoading = true);
                         }
                       } else if (state is UserPostsLoadMoreError) {
@@ -446,40 +337,46 @@ class _ProfilePageState extends State<ProfilePage> {
                             _isLoadingMoreUserPosts = false;
                           });
                         }
-                      } else if (state is RealtimePostUpdate) {
-                        _handleRealtimePostUpdate(state);
-                      } else if (state is PostDeleted) {
-                        final index = _userPosts.indexWhere(
-                          (p) => p.id == state.postId,
-                        );
-                        if (index != -1 && mounted) {
-                          setState(() => _userPosts.removeAt(index));
+                      }
+                      // ❌ REMOVED: RealtimePostUpdate listener (The BLoC should handle this)
+                      // ❌ REMOVED: PostCreated listener (The PostActionsBloc/UserPostsBloc should coordinate this)
+                      // ❌ REMOVED: PostDeleted listener (The PostActionsBloc/UserPostsBloc should coordinate this)
+                    },
+                  ),
+
+                  // ✅ ADDED: Listener for PostActionsBloc to handle post creation/deletion
+                  BlocListener<PostActionsBloc, PostActionsState>(
+                    listenWhen: (previous, current) =>
+                        current is PostCreatedSuccess ||
+                        current is PostDeletedSuccess,
+                    listener: (context, state) {
+                      if (state is PostCreatedSuccess) {
+                        // Only add if created by the current user
+                        if (state.post.userId == _currentUserId) {
+                          final exists = _userPosts.any(
+                            (p) => p.id == state.post.id,
+                          );
+                          if (!exists && mounted) {
+                            setState(() => _userPosts.insert(0, state.post));
+                          }
                         }
-                      } else if (state is PostsError) {
-                        AppLogger.error(
-                          'PostsError in ProfilePage: ${state.message}',
+                      } else if (state is PostDeletedSuccess) {
+                        // Delegate removal to UserPostsBloc for clean state management
+                        context.read<UserPostsBloc>().add(
+                          RemovePostFromUserPosts(state.postId),
                         );
+                        // The UserPostsBloc's state update will remove it from the list.
                       }
+                      // NOTE: We don't need to listen to PostOptimisticallyUpdated here
+                      // because PostCard (the item widget) handles its own optimistic updates.
                     },
                   ),
-                  BlocListener<LikesBloc, LikesState>(
-                    listener: (context, state) {
-                      if (state is LikeUpdated) {
-                        _applyLikeUpdate(state.postId, state.isLiked);
-                      } else if (state is LikeError) {
-                        _revertLike(state.postId, state.previousState);
-                      }
-                    },
-                  ),
-                  BlocListener<FavoritesBloc, FavoritesState>(
-                    listener: (context, state) {
-                      if (state is FavoriteUpdated) {
-                        _applyFavoriteUpdate(state.postId, state.isFavorited);
-                      } else if (state is FavoriteError) {
-                        _revertFavorite(state.postId, state.previousState);
-                      }
-                    },
-                  ),
+
+                  // 💡 NOTE: We no longer need the detailed LikesBloc/FavoritesBloc listeners
+                  // because we removed the manual local list mutation (`_applyLikeUpdate`, etc.).
+                  // The `PostCard` widget now relies solely on its own inner optimistic update
+                  // mechanism (listening to PostActionsBloc) and the data passed in its constructor
+                  // (which should be eventually refreshed from the list BLoC).
                 ],
                 child: BlocBuilder<ProfileBloc, ProfileState>(
                   builder: (context, state) {
@@ -497,7 +394,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     if (state is ProfileDataLoaded) {
                       return RefreshIndicator(
                         onRefresh: () async {
-                          context.read<PostsBloc>().add(
+                          context.read<UserPostsBloc>().add(
                             RefreshUserPostsEvent(
                               profileUserId: _currentUserId!,
                               currentUserId: _currentUserId!,
@@ -540,7 +437,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                     _isUserPostsLoading = true;
                                     _hasLoadedOnce = false;
                                   });
-                                  context.read<PostsBloc>().add(
+                                  context.read<UserPostsBloc>().add(
                                     // Use RefreshUserPostsEvent on retry as well
                                     RefreshUserPostsEvent(
                                       profileUserId: _currentUserId!,

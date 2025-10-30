@@ -8,11 +8,10 @@ import 'package:vlone_blog_app/features/auth/domain/entities/user_entity.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
-import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_tile.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_input_field.dart';
 import 'package:vlone_blog_app/features/comments/presentation/widgets/comments_section.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_details_content.dart';
@@ -67,9 +66,9 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   void _fetchPost() {
     if (_userId != null && widget.post == null && mounted) {
       AppLogger.info(
-        'PostDetailsPage: Fetching post ${widget.postId} for user $_userId',
+        'PostDetailsPage: Fetching post ${widget.postId} for user $_userId using PostActionsBloc',
       );
-      context.read<PostsBloc>().add(
+      context.read<PostActionsBloc>().add(
         GetPostEvent(postId: widget.postId, currentUserId: _userId!),
       );
     }
@@ -94,47 +93,22 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
       return;
     }
 
-    // Updated: Use ensureVisible for reliable scrolling in CustomScrollView/slivers
     Scrollable.ensureVisible(
       key.currentContext!,
-      alignment: 0.0, // Align to top of the viewport (below AppBar)
+      alignment: 0.0,
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeInOut,
     ).then((_) {
       if (mounted) {
         setState(() {
           _highlightedCommentId = commentId;
-          _commentToScrollId = null; // Clear target after successful scroll
+          _commentToScrollId = null;
         });
         AppLogger.info(
           'PostDetailsPage: Scrolled to and highlighted comment $commentId.',
         );
       }
     });
-  }
-
-  void _handleRealtimePostUpdate(RealtimePostUpdate state) {
-    if (state.postId == widget.postId &&
-        _post != null &&
-        mounted &&
-        !_isDeleting) {
-      setState(() {
-        _post = _post!.copyWith(
-          likesCount: (state.likesCount ?? _post!.likesCount)
-              .clamp(0, double.infinity)
-              .toInt(),
-          commentsCount: (state.commentsCount ?? _post!.commentsCount)
-              .clamp(0, double.infinity)
-              .toInt(),
-          favoritesCount: (state.favoritesCount ?? _post!.favoritesCount)
-              .clamp(0, double.infinity)
-              .toInt(),
-          sharesCount: (state.sharesCount ?? _post!.sharesCount)
-              .clamp(0, double.infinity)
-              .toInt(),
-        );
-      });
-    }
   }
 
   void _addComment() {
@@ -156,12 +130,10 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     _focusNode.unfocus();
   }
 
-  void _postsBlocListener(BuildContext context, PostsState state) {
+  void _postActionsBlocListener(BuildContext context, PostActionsState state) {
     if (state is PostLoaded && state.post.id == widget.postId) {
       setState(() => _post = state.post);
       _subscribeToCommentsIfNeeded();
-    } else if (state is RealtimePostUpdate) {
-      _handleRealtimePostUpdate(state);
     } else if (state is PostDeleting && state.postId == widget.postId) {
       if (mounted && !_isDeleting) setState(() => _isDeleting = true);
     } else if (state is PostDeleteError && state.postId == widget.postId) {
@@ -169,7 +141,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
         setState(() => _isDeleting = false);
         SnackbarUtils.showError(context, state.message);
       }
-    } else if (state is PostDeleted && state.postId == widget.postId) {
+    } else if (state is PostDeletedSuccess && state.postId == widget.postId) {
       if (mounted) {
         setState(() => _isDeleting = false);
         Future.microtask(() {
@@ -179,9 +151,9 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
           }
         });
       }
-    } else if (state is PostsError) {
-      AppLogger.error('PostsError in PostDetailsPage: ${state.message}');
-      if (_post == null && state.message.contains('not found')) {
+    } else if (state is PostActionError) {
+      AppLogger.error('PostActionError in PostDetailsPage: ${state.message}');
+      if (_post == null && state.message.toLowerCase().contains('not found')) {
         SnackbarUtils.showError(context, 'Error: ${state.message}');
         Future.microtask(() => context.pop());
       }
@@ -204,6 +176,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
       });
     } else if (state is LikeError && state.postId == widget.postId) {
       if (_post != null && mounted) {
+        // Revert local optimistic changes
         setState(() {
           _post = _post!.copyWith(isLiked: state.previousState);
           final corrected = state.previousState
@@ -213,6 +186,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
             likesCount: corrected.clamp(0, double.infinity).toInt(),
           );
         });
+        SnackbarUtils.showError(context, state.message);
       }
     }
   }
@@ -233,6 +207,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
       });
     } else if (state is FavoriteError && state.postId == widget.postId) {
       if (_post != null && mounted) {
+        // Revert local optimistic changes
         setState(() {
           _post = _post!.copyWith(isFavorited: state.previousState);
           final corrected = state.previousState
@@ -242,11 +217,12 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
             favoritesCount: corrected.clamp(0, double.infinity).toInt(),
           );
         });
+        SnackbarUtils.showError(context, state.message);
       }
     }
   }
 
-  // Recursively assign GlobalKeys to all comments and their replies
+  // Recursively assign GlobalKeys to all comments and their replies (Unchanged)
   void _assignCommentKeys(List<CommentEntity> comments) {
     for (var comment in comments) {
       if (!_commentKeys.containsKey(comment.id)) {
@@ -256,7 +232,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     }
   }
 
-  // Check if a comment ID is in the subtree of a given comment
+  // Check if a comment ID is in the subtree of a given comment (Unchanged)
   bool _isInSubtree(String id, CommentEntity comment) {
     if (comment.id == id) return true;
     for (var reply in comment.replies) {
@@ -265,7 +241,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     return false;
   }
 
-  // Find the root (top-level) comment ID that contains the target ID in its subtree
+  // Find the root (top-level) comment ID that contains the target ID in its subtree (Unchanged)
   String? _findRootCommentId(String targetId, List<CommentEntity> comments) {
     for (var comment in comments) {
       if (_isInSubtree(targetId, comment)) {
@@ -277,33 +253,23 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
 
   void _commentsBlocListener(BuildContext context, CommentsState state) {
     if (state is CommentsLoaded) {
-      // Assign keys recursively to all comments and replies
       _assignCommentKeys(state.comments);
 
       if (_commentToScrollId != null) {
-        // Delay to allow build to complete
         Future.delayed(const Duration(milliseconds: 300), () {
-          // Increased delay for expansion
           if (!mounted) return;
 
           final targetId = _commentToScrollId!;
-
-          // If target is nested, find and expand the root comment's replies
           final rootId = _findRootCommentId(targetId, state.comments);
+
           if (rootId != null && rootId != targetId) {
-            // Only if nested
             final rootKey = _commentKeys[rootId];
             if (rootKey != null && rootKey.currentState != null) {
-              (rootKey.currentState as CommentTileState)
-                  .expandReplies(); // Updated: Cast to public state class
-            } else {
-              AppLogger.warning(
-                'PostDetailsPage: Root key not found for expansion: $rootId',
-              );
+              // Assuming CommentTileState has a public method or public state for expansion
+              (rootKey.currentState as dynamic).expandReplies();
             }
           }
 
-          // Now scroll if the key exists
           if (_commentKeys.containsKey(targetId)) {
             _scrollToComment(targetId);
           } else {
@@ -367,8 +333,8 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                 ),
                 body: MultiBlocListener(
                   listeners: [
-                    BlocListener<PostsBloc, PostsState>(
-                      listener: _postsBlocListener,
+                    BlocListener<PostActionsBloc, PostActionsState>(
+                      listener: _postActionsBlocListener,
                     ),
                     BlocListener<LikesBloc, LikesState>(
                       listener: _likesBlocListener,
@@ -409,8 +375,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                                       commentKeys: _commentKeys,
                                       highlightedCommentId:
                                           _highlightedCommentId,
-                                      postId: widget
-                                          .postId, // FIX: Added required postId param.
+                                      postId: widget.postId,
                                     ),
                                   ),
                                 ],

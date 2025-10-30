@@ -5,16 +5,16 @@ import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/reels/reels_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/reel_item.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 class ReelsPage extends StatefulWidget {
-  final bool isVisible;
-  const ReelsPage({super.key, this.isVisible = true});
+  const ReelsPage({super.key});
   @override
   State<ReelsPage> createState() => _ReelsPageState();
 }
@@ -26,8 +26,9 @@ class _ReelsPageState extends State<ReelsPage>
   late PageController _pageController;
   int _currentPage = 0;
   bool _isPageChanging = false;
-  bool _hasMoreReels = true; // Added: Track hasMore locally
-  bool _isLoadingMore = false; // Added: Prevent duplicate loads
+  bool _hasMoreReels = true;
+  bool _isLoadingMore = false;
+  bool _isPageVisible = true; // NEW: Local state to track page visibility
 
   @override
   bool get wantKeepAlive => true;
@@ -40,27 +41,17 @@ class _ReelsPageState extends State<ReelsPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userId = context.read<AuthBloc>().cachedUser?.id;
       if (userId != null) {
-        // Removed: StartRealtimeListenersEvent and GetReelsEvent - handled by MainPage
+        // 💡 Dispatch StartReelsRealtime now that we are using the dedicated BLoC
+        context.read<ReelsBloc>().add(const StartReelsRealtime());
       } else {
         AppLogger.warning(
-          'FeedPage: userId null at init; waiting for AuthBloc',
+          'ReelsPage: userId null at init; waiting for AuthBloc',
         );
       }
     });
   }
 
-  @override
-  void didUpdateWidget(covariant ReelsPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isVisible != oldWidget.isVisible) {
-      AppLogger.info('ReelsPage visibility changed: ${widget.isVisible}');
-      if (!widget.isVisible) {
-        VideoPlaybackManager.pause();
-      } else if (widget.isVisible && _posts.isNotEmpty) {
-        setState(() {});
-      }
-    }
-  }
+  // REMOVED: didUpdateWidget (no longer needed for isVisible prop)
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -76,25 +67,23 @@ class _ReelsPageState extends State<ReelsPage>
     if (!mounted) return;
     final oldIds = _posts.map((p) => p.id).toSet();
     final newIds = newPosts.map((p) => p.id).toSet();
-    if (oldIds.length == newIds.length && oldIds.containsAll(newIds)) {
-      setState(() {
-        for (int i = 0; i < newPosts.length; i++) {
-          if (_posts[i] != newPosts[i]) _posts[i] = newPosts[i];
-        }
-      });
-    } else {
-      AppLogger.info(
-        'Updating reels list. Old: ${oldIds.length}, New: ${newIds.length}',
-      );
-      setState(() {
-        _posts
-          ..clear()
-          ..addAll(newPosts);
-      });
-      if (_posts.isNotEmpty && _pageController.hasClients) {
-        _pageController.jumpToPage(0);
-        _currentPage = 0;
-      }
+
+    // Simple update logic: replace all for now, but preserve position if possible
+    final shouldJumpToStart =
+        newIds.isNotEmpty && !oldIds.contains(newIds.first);
+
+    AppLogger.info(
+      'Updating reels list. Old: ${oldIds.length}, New: ${newIds.length}',
+    );
+    setState(() {
+      _posts
+        ..clear()
+        ..addAll(newPosts);
+    });
+
+    if (_posts.isNotEmpty && _pageController.hasClients && shouldJumpToStart) {
+      _pageController.jumpToPage(0);
+      _currentPage = 0;
     }
   }
 
@@ -109,15 +98,14 @@ class _ReelsPageState extends State<ReelsPage>
       if (mounted) setState(() => _isPageChanging = false);
     });
 
-    // Added guard: don't attempt load-more until initial load completed
     if (!_hasLoadedOnce) return;
 
-    // Added: Load more if near the end (preemptive, 2 pages before end)
+    // ⚠️ CHANGE 2: Dispatch LoadMoreReelsEvent to ReelsBloc
     if (index >= _posts.length - 2 && _hasMoreReels && !_isLoadingMore) {
       final currentUserId = context.read<AuthBloc>().cachedUser?.id;
       if (currentUserId != null) {
         setState(() => _isLoadingMore = true);
-        context.read<PostsBloc>().add(LoadMoreReelsEvent());
+        context.read<ReelsBloc>().add(const LoadMoreReelsEvent());
       }
     }
   }
@@ -130,200 +118,201 @@ class _ReelsPageState extends State<ReelsPage>
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     return Scaffold(
-      body: MultiBlocListener(
-        listeners: [
-          // PostsBloc: authoritative updates (server)
-          BlocListener<PostsBloc, PostsState>(
-            listener: (context, state) {
-              if (state is ReelsLoaded) {
-                AppLogger.info('Reels loaded with ${state.posts.length} posts');
-                if (mounted) {
-                  _updatePosts(state.posts);
-                  _hasMoreReels = state.hasMore; // Added: Update hasMore
-                  _hasLoadedOnce = true;
-                  _isLoadingMore = false; // Added: Reset loading flag
-                }
-              } else if (state is PostCreated &&
-                  state.post.mediaType == 'video') {
-                final exists = _posts.any((p) => p.id == state.post.id);
-                if (!exists && mounted)
-                  setState(() => _posts.insert(0, state.post));
-              } else if (state is RealtimePostUpdate) {
-                // Server authoritative counts — overwrite the local post
-                final index = _posts.indexWhere((p) => p.id == state.postId);
-                if (index != -1 && mounted) {
-                  final post = _posts[index];
-                  final updatedPost = post.copyWith(
-                    likesCount: (state.likesCount ?? post.likesCount)
-                        .clamp(0, double.infinity)
-                        .toInt(),
-                    commentsCount: (state.commentsCount ?? post.commentsCount)
-                        .clamp(0, double.infinity)
-                        .toInt(),
-                    favoritesCount:
-                        (state.favoritesCount ?? post.favoritesCount)
-                            .clamp(0, double.infinity)
-                            .toInt(),
-                    sharesCount: (state.sharesCount ?? post.sharesCount)
-                        .clamp(0, double.infinity)
-                        .toInt(),
+      body: VisibilityDetector(
+        // NEW: Wrap body to detect visibility changes
+        key: const Key('reels_page_visibility'),
+        onVisibilityChanged: (VisibilityInfo info) {
+          final visibleFraction = info.visibleFraction;
+          if (visibleFraction == 0 && _isPageVisible) {
+            AppLogger.info('ReelsPage hidden - pausing video');
+            VideoPlaybackManager.pause();
+            setState(() => _isPageVisible = false);
+          } else if (visibleFraction > 0 && !_isPageVisible) {
+            AppLogger.info('ReelsPage visible - resuming video');
+            setState(
+              () => _isPageVisible = true,
+            ); // Triggers rebuild to resume current reel
+          }
+        },
+        child: MultiBlocListener(
+          listeners: [
+            // ⚠️ CHANGE 3: Listen to ReelsBloc and ReelsState
+            BlocListener<ReelsBloc, ReelsState>(
+              listener: (context, state) {
+                if (state is ReelsLoaded) {
+                  AppLogger.info(
+                    'Reels loaded with ${state.posts.length} posts',
                   );
-                  setState(() => _posts[index] = updatedPost);
+                  if (mounted) {
+                    _updatePosts(state.posts);
+                    _hasMoreReels = state.hasMore;
+                    _hasLoadedOnce = true;
+                    _isLoadingMore = false;
+                  }
                 }
-              } else if (state is PostDeleted) {
-                final index = _posts.indexWhere((p) => p.id == state.postId);
-                if (index != -1 && mounted)
-                  setState(() => _posts.removeAt(index));
-              } else if (state is ReelsLoadingMore) {
-                // Optional: Handle loading more state if needed
-              } else if (state is ReelsLoadMoreError) {
-                AppLogger.error('Load more reels error: ${state.message}');
-                if (mounted) setState(() => _isLoadingMore = false);
-              }
-            },
-          ),
-          // LikesBloc: only handle server confirmations or errors (do NOT apply optimistic deltas at page level).
-          BlocListener<LikesBloc, LikesState>(
-            listener: (context, state) {
-              if (state is LikeSuccess) {
-                final idx = _posts.indexWhere((p) => p.id == state.postId);
-                if (idx != -1 && mounted) {
-                  final old = _posts[idx];
-                  final updated = old.copyWith(isLiked: state.isLiked);
-                  setState(() => _posts[idx] = updated);
+                // ⚠️ REMOVED: PostCreated/RealtimePostUpdate/PostDeleted handling
+                // This is now handled internally by ReelsBloc and results in a ReelsLoaded state.
+                else if (state is ReelsLoadMoreError) {
+                  AppLogger.error('Load more reels error: ${state.message}');
+                  if (mounted) setState(() => _isLoadingMore = false);
                 }
-              } else if (state is LikeError && state.shouldRevert) {
-                AppLogger.error('Like error in ReelsPage: ${state.message}');
-                final idx = _posts.indexWhere((p) => p.id == state.postId);
-                if (idx != -1 && mounted) {
-                  final old = _posts[idx];
-                  final revertedCount = (old.likesCount - state.delta)
-                      .clamp(0, double.infinity)
-                      .toInt();
-                  final updated = old.copyWith(
-                    isLiked: state.previousState,
-                    likesCount: revertedCount,
+                // ReelsLoadingMore/ReelsLoading/ReelsInitial are primarily used for UI checks in the Builder/Watcher
+              },
+            ),
+            // LikesBloc: Revert optimistic update on error
+            BlocListener<LikesBloc, LikesState>(
+              listener: (context, state) {
+                if (state is LikeSuccess) {
+                  final idx = _posts.indexWhere((p) => p.id == state.postId);
+                  if (idx != -1 && mounted) {
+                    final old = _posts[idx];
+                    // The count is updated by the RealtimePostUpdate listener in ReelsBloc,
+                    // so we only update the local `isLiked` state optimistically here.
+                    final updated = old.copyWith(isLiked: state.isLiked);
+                    setState(() => _posts[idx] = updated);
+                  }
+                } else if (state is LikeError && state.shouldRevert) {
+                  AppLogger.error('Like error in ReelsPage: ${state.message}');
+                  // Revert local list state based on delta
+                  final idx = _posts.indexWhere((p) => p.id == state.postId);
+                  if (idx != -1 && mounted) {
+                    final old = _posts[idx];
+                    final revertedCount = (old.likesCount - state.delta)
+                        .clamp(0, double.infinity)
+                        .toInt();
+                    final updated = old.copyWith(
+                      isLiked: state.previousState,
+                      likesCount: revertedCount,
+                    );
+                    setState(() => _posts[idx] = updated);
+                  }
+
+                  // ⚠️ CHANGE 4: Revert central optimistic update by dispatching to ReelsBloc
+                  context.read<ReelsBloc>().add(
+                    UpdateReelsPostOptimistic(
+                      postId: state.postId,
+                      deltaLikes: -state.delta,
+                      deltaFavorites: 0,
+                      isLiked: state.previousState,
+                      isFavorited: null,
+                    ),
                   );
-                  setState(() => _posts[idx] = updated);
                 }
-                // Revert central optimistic update so all pages remain consistent
-                context.read<PostsBloc>().add(
-                  OptimisticPostUpdate(
-                    postId: state.postId,
-                    deltaLikes: -state.delta,
-                    deltaFavorites: 0,
-                    isLiked: state.previousState,
-                    isFavorited: null,
-                  ),
-                );
-              }
-            },
-          ),
-          // FavoritesBloc: same approach as likes — do NOT apply optimistic deltas at page level
-          BlocListener<FavoritesBloc, FavoritesState>(
-            listener: (context, state) {
-              if (state is FavoriteSuccess) {
-                final idx = _posts.indexWhere((p) => p.id == state.postId);
-                if (idx != -1 && mounted) {
-                  final old = _posts[idx];
-                  final updated = old.copyWith(isFavorited: state.isFavorited);
-                  setState(() => _posts[idx] = updated);
-                }
-              } else if (state is FavoriteError && state.shouldRevert) {
-                AppLogger.error(
-                  'Favorite error in ReelsPage: ${state.message}',
-                );
-                final idx = _posts.indexWhere((p) => p.id == state.postId);
-                if (idx != -1 && mounted) {
-                  final old = _posts[idx];
-                  final revertedCount = (old.favoritesCount - state.delta)
-                      .clamp(0, double.infinity)
-                      .toInt();
-                  final updated = old.copyWith(
-                    isFavorited: state.previousState,
-                    favoritesCount: revertedCount,
+              },
+            ),
+            // FavoritesBloc: Revert optimistic update on error
+            BlocListener<FavoritesBloc, FavoritesState>(
+              listener: (context, state) {
+                if (state is FavoriteSuccess) {
+                  final idx = _posts.indexWhere((p) => p.id == state.postId);
+                  if (idx != -1 && mounted) {
+                    final old = _posts[idx];
+                    final updated = old.copyWith(
+                      isFavorited: state.isFavorited,
+                    );
+                    setState(() => _posts[idx] = updated);
+                  }
+                } else if (state is FavoriteError && state.shouldRevert) {
+                  AppLogger.error(
+                    'Favorite error in ReelsPage: ${state.message}',
                   );
-                  setState(() => _posts[idx] = updated);
+                  // Revert local list state based on delta
+                  final idx = _posts.indexWhere((p) => p.id == state.postId);
+                  if (idx != -1 && mounted) {
+                    final old = _posts[idx];
+                    final revertedCount = (old.favoritesCount - state.delta)
+                        .clamp(0, double.infinity)
+                        .toInt();
+                    final updated = old.copyWith(
+                      isFavorited: state.previousState,
+                      favoritesCount: revertedCount,
+                    );
+                    setState(() => _posts[idx] = updated);
+                  }
+
+                  // ⚠️ CHANGE 5: Revert central optimistic update by dispatching to ReelsBloc
+                  context.read<ReelsBloc>().add(
+                    UpdateReelsPostOptimistic(
+                      postId: state.postId,
+                      deltaLikes: 0,
+                      deltaFavorites: -state.delta,
+                      isLiked: null,
+                      isFavorited: state.previousState,
+                    ),
+                  );
                 }
-                // Revert central optimistic update so all pages remain consistent
-                context.read<PostsBloc>().add(
-                  OptimisticPostUpdate(
-                    postId: state.postId,
-                    deltaLikes: 0,
-                    deltaFavorites: -state.delta,
-                    isLiked: null,
-                    isFavorited: state.previousState,
-                  ),
-                );
-              }
+              },
+            ),
+          ],
+          child: RefreshIndicator(
+            onRefresh: () async {
+              AppLogger.info('Refreshing reels for user: $currentUserId');
+              // ⚠️ CHANGE 6: Use ReelsBloc
+              final bloc = context.read<ReelsBloc>();
+              bloc.add(RefreshReelsEvent(currentUserId));
+              // ⚠️ CHANGE 7: Wait for ReelsLoaded or ReelsError
+              await bloc.stream.firstWhere(
+                (state) => state is ReelsLoaded || state is ReelsError,
+              );
             },
-          ),
-        ],
-        child: RefreshIndicator(
-          onRefresh: () async {
-            AppLogger.info('Refreshing reels for user: $currentUserId');
-            final bloc = context.read<PostsBloc>();
-            bloc.add(
-              RefreshReelsEvent(currentUserId),
-            ); // Changed to RefreshReelsEvent for consistency
-            await bloc.stream.firstWhere(
-              (state) => state is ReelsLoaded || state is PostsError,
-            );
-          },
-          child: Builder(
-            builder: (context) {
-              if (_hasLoadedOnce) {
-                if (_posts.isEmpty) {
-                  return EmptyStateWidget(
-                    message: 'No reels yet. Create a video post!',
-                    icon: Icons.video_library,
-                    actionText: 'Check Again',
-                    onRetry: () => context.read<PostsBloc>().add(
+            child: Builder(
+              builder: (context) {
+                // ⚠️ CHANGE 8: Watch ReelsBloc
+                final reelsState = context.watch<ReelsBloc>().state;
+
+                if (_hasLoadedOnce) {
+                  if (_posts.isEmpty) {
+                    return EmptyStateWidget(
+                      message: 'No reels yet. Create a video post!',
+                      icon: Icons.video_library,
+                      actionText: 'Check Again',
+                      // ⚠️ CHANGE 9: Use ReelsBloc and GetReelsEvent
+                      onRetry: () => context.read<ReelsBloc>().add(
+                        GetReelsEvent(currentUserId),
+                      ),
+                    );
+                  }
+                  return PageView.builder(
+                    controller: _pageController,
+                    scrollDirection: Axis.vertical,
+                    itemCount: _posts.length + (_hasMoreReels ? 1 : 0),
+                    onPageChanged: _onPageChanged,
+                    physics: const PageScrollPhysics(),
+                    itemBuilder: (context, index) {
+                      if (_hasMoreReels && index == _posts.length) {
+                        return const Center(child: LoadingIndicator());
+                      }
+                      final post = _posts[index];
+                      final isCurrentPage = index == _currentPage;
+                      return ReelItem(
+                        key: ValueKey(post.id),
+                        post: post,
+                        userId: currentUserId,
+                        isActive:
+                            isCurrentPage &&
+                            _isPageVisible, // UPDATED: Use local _isPageVisible
+                        isPrevious: index == _currentPage - 1,
+                        isNext: index == _currentPage + 1,
+                      );
+                    },
+                  );
+                }
+
+                // ⚠️ CHANGE 10: Use ReelsBloc states
+                if (reelsState is ReelsLoading || reelsState is ReelsInitial)
+                  return const LoadingIndicator();
+                if (reelsState is ReelsError) {
+                  return CustomErrorWidget(
+                    message: reelsState.message,
+                    // ⚠️ CHANGE 11: Use ReelsBloc and GetReelsEvent
+                    onRetry: () => context.read<ReelsBloc>().add(
                       GetReelsEvent(currentUserId),
                     ),
                   );
                 }
-                return PageView.builder(
-                  controller: _pageController,
-                  scrollDirection: Axis.vertical,
-                  itemCount:
-                      _posts.length +
-                      (_hasMoreReels
-                          ? 1
-                          : 0), // Extra for loading footer if hasMore
-                  onPageChanged: _onPageChanged,
-                  physics: const PageScrollPhysics(),
-                  itemBuilder: (context, index) {
-                    if (_hasMoreReels && index == _posts.length) {
-                      // Defensive: if we somehow hit loading footer before initial load, show loading
-                      return const Center(child: LoadingIndicator());
-                    }
-                    final post = _posts[index];
-                    final isCurrentPage = index == _currentPage;
-                    return ReelItem(
-                      key: ValueKey(post.id),
-                      post: post,
-                      userId: currentUserId,
-                      isActive: isCurrentPage && widget.isVisible,
-                      isPrevious: index == _currentPage - 1,
-                      isNext: index == _currentPage + 1,
-                    );
-                  },
-                );
-              }
-              final postsState = context.watch<PostsBloc>().state;
-              if (postsState is PostsLoading || postsState is PostsInitial)
                 return const LoadingIndicator();
-              if (postsState is PostsError) {
-                return CustomErrorWidget(
-                  message: postsState.message,
-                  onRetry: () => context.read<PostsBloc>().add(
-                    GetReelsEvent(currentUserId),
-                  ),
-                );
-              }
-              return const LoadingIndicator();
-            },
+              },
+            ),
           ),
         ),
       ),
@@ -336,6 +325,8 @@ class _ReelsPageState extends State<ReelsPage>
     WidgetsBinding.instance.removeObserver(this);
     VideoPlaybackManager.pause();
     _pageController.dispose();
+    // 💡 Dispatch StopReelsRealtime
+    context.read<ReelsBloc>().add(const StopReelsRealtime());
     super.dispose();
   }
 }

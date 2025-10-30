@@ -8,7 +8,7 @@ import 'package:video_player/video_player.dart';
 /// Adds a simple LRU eviction to bound memory usage on low-end devices.
 /// Also dedupes concurrent initializations for the same post id.
 ///
-/// NEW: supports short-lived "hold for navigation" to prevent immediate release
+///supports short-lived "hold for navigation" to prevent immediate release
 /// when a source widget is disposed during a hero / route transition.
 class VideoControllerManager {
   VideoControllerManager._({this.maxControllers = 6});

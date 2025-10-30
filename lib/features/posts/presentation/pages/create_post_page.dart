@@ -1,12 +1,11 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/widgets/loading_overlay.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/media_upload_widget.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/core/utils/media_progress_notifier.dart';
@@ -162,13 +161,12 @@ class _CreatePostPageState extends State<CreatePostPage> {
     // Read user id from AuthBloc reactively
     final currentUserId = context.select((AuthBloc b) => b.cachedUser?.id);
 
-    return BlocListener<PostsBloc, PostsState>(
+    return BlocListener<PostActionsBloc, PostActionsState>(
       listener: (context, state) {
-        if (state is PostCreated) {
-          // Clear any progress notifications and pop when created
+        if (state is PostCreatedSuccess) {
           MediaProgressNotifier.notifyDone();
           if (context.mounted) context.pop();
-        } else if (state is PostsError) {
+        } else if (state is PostActionError) {
           MediaProgressNotifier.notifyError(state.message);
           SnackbarUtils.showError(context, state.message);
         }
@@ -184,9 +182,11 @@ class _CreatePostPageState extends State<CreatePostPage> {
           scrolledUnderElevation: 0.0,
           elevation: 0,
           actions: [
-            BlocBuilder<PostsBloc, PostsState>(
+            // 🎯 CHANGE 5: Use PostActionsBloc for building/button state
+            BlocBuilder<PostActionsBloc, PostActionsState>(
               builder: (context, state) {
-                final isLoading = state is PostsLoading;
+                // 🎯 CHANGE 6: Check for PostActionLoading state
+                final isLoading = state is PostActionLoading;
                 return Padding(
                   padding: const EdgeInsets.only(right: 12.0),
                   child: FilledButton(
@@ -195,8 +195,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
                             _isPostButtonEnabled &&
                             !isLoading)
                         ? () {
-                            // Use userId from AuthBloc
-                            context.read<PostsBloc>().add(
+                            context.read<PostActionsBloc>().add(
                               CreatePostEvent(
                                 userId: currentUserId,
                                 content: _contentController.text.trim().isEmpty
@@ -217,10 +216,9 @@ class _CreatePostPageState extends State<CreatePostPage> {
           ],
         ),
         // We use a Stack to layer the main content and the overlay
-        body: BlocBuilder<PostsBloc, PostsState>(
+        body: BlocBuilder<PostActionsBloc, PostActionsState>(
           builder: (context, state) {
-            // Keep previous isLoading check, but overlay is now informed by MediaProgressNotifier
-            final isLoading = state is PostsLoading;
+            final isLoading = state is PostActionLoading;
             return Stack(
               children: [
                 // 1. Main Content (always visible)
@@ -254,19 +252,11 @@ class _CreatePostPageState extends State<CreatePostPage> {
                         onMediaSelected: _onMediaSelected,
                         onProcessing: _onProcessingChanged,
                       ),
-                      // NOTE: Removed the Text widget from here to move it to the footer position.
-                      // const SizedBox(height: 16),
-                      // Text(
-                      //   'Large videos and images will be compressed before uploading.',
-                      //   style: theme.textTheme.bodySmall?.copyWith(
-                      //     color: theme.colorScheme.onSurfaceVariant,
-                      //   ),
-                      //   textAlign: TextAlign.center,
-                      // ),
                     ],
                   ),
                 ),
                 // 2. Loading Overlay for post upload (covers screen)
+                // Now checks for PostActionLoading
                 if (isLoading && !_isProcessingMedia)
                   SavingLoadingOverlay(message: _computedUploadMessage),
                 // 3. Media-processing overlay driven by MediaProgressNotifier

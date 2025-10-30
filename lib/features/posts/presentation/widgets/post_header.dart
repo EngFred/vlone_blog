@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/widgets/debounced_inkwell.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 
 class PostHeader extends StatelessWidget {
   final PostEntity post;
@@ -81,7 +81,7 @@ class PostHeader extends StatelessWidget {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              context.read<PostsBloc>().add(DeletePostEvent(post.id));
+              context.read<PostActionsBloc>().add(DeletePostEvent(post.id));
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),

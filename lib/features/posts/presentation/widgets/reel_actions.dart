@@ -5,9 +5,8 @@ import 'package:vlone_blog_app/core/widgets/debounced_inkwell.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/posts_bloc.dart'
-    as postsbloc;
+import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
+
 import 'package:vlone_blog_app/features/posts/presentation/widgets/reels_comments_overlay.dart';
 
 class ReelActions extends StatelessWidget {
@@ -25,10 +24,10 @@ class ReelActions extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (modalContext) {
-        return BlocProvider.value(
-          value: context.read<postsbloc.PostsBloc>(),
-          child: ReelsCommentsOverlay(post: post, userId: userId),
-        );
+        // NOTE: The consuming widget (ReelsPage) must now provide the correct BLoC
+        // to this modal (e.g., CommentsBloc/PostActionsBloc for the details).
+        // Since we don't know the list bloc for reels, we remove the BlocProvider.value here.
+        return ReelsCommentsOverlay(post: post, userId: userId);
       },
     );
   }
@@ -36,12 +35,9 @@ class ReelActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Use post as authoritative source-of-truth for counts.
-    // Likes & favorites: ALWAYS show counts (including 0) — avoids layout shift.
-    // Comments: left as it was originally (not part of optimistic update). Only displayed if > 0.
     final baseIsLiked = post.isLiked;
     final baseLikesCount = post.likesCount;
     final baseIsFavorited = post.isFavorited;
-    final baseFavoritesCount = post.favoritesCount;
     final baseCommentsCount = post.commentsCount;
 
     return Column(
@@ -54,8 +50,9 @@ class ReelActions extends StatelessWidget {
             if (curr is LikeUpdated && curr.postId == post.id) return true;
             if (curr is LikeError &&
                 curr.postId == post.id &&
-                curr.shouldRevert)
+                curr.shouldRevert) {
               return true;
+            }
             return false;
           },
           builder: (context, state) {
@@ -85,9 +82,9 @@ class ReelActions extends StatelessWidget {
                   ),
                 );
 
-                // Central optimistic update (PostsBloc is source-of-truth for counts)
+                // ✅ CHANGE 1: Dispatch OptimisticPostUpdate to PostActionsBloc
                 final int delta = (!isLiked) ? 1 : -1;
-                context.read<PostsBloc>().add(
+                context.read<PostActionsBloc>().add(
                   OptimisticPostUpdate(
                     postId: post.id,
                     deltaLikes: delta,
@@ -157,13 +154,14 @@ class ReelActions extends StatelessWidget {
             if (curr is FavoriteUpdated && curr.postId == post.id) return true;
             if (curr is FavoriteError &&
                 curr.postId == post.id &&
-                curr.shouldRevert)
+                curr.shouldRevert) {
               return true;
+            }
             return false;
           },
           builder: (context, state) {
             bool isFavorited = baseIsFavorited;
-            int favoritesCount = baseFavoritesCount;
+            int favoritesCount = post.favoritesCount;
 
             if (state is FavoriteUpdated && state.postId == post.id) {
               isFavorited = state.isFavorited;
@@ -187,9 +185,9 @@ class ReelActions extends StatelessWidget {
                   ),
                 );
 
-                // Central optimistic update only
+                // ✅ CHANGE 2: Dispatch OptimisticPostUpdate to PostActionsBloc
                 final int deltaFav = (!isFavorited) ? 1 : -1;
-                context.read<PostsBloc>().add(
+                context.read<PostActionsBloc>().add(
                   OptimisticPostUpdate(
                     postId: post.id,
                     deltaLikes: 0,
@@ -229,7 +227,7 @@ class ReelActions extends StatelessWidget {
           duration: _debounce,
           onTap: () {
             AppLogger.info('Share button tapped for post: ${post.id}');
-            context.read<PostsBloc>().add(SharePostEvent(post.id));
+            context.read<PostActionsBloc>().add(SharePostEvent(post.id));
           },
           borderRadius: BorderRadius.circular(24),
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
