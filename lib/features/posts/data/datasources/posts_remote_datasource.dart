@@ -12,6 +12,7 @@ import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:vlone_blog_app/core/utils/video_compressor.dart';
+import 'package:vlone_blog_app/core/utils/image_compressor.dart';
 import 'package:vlone_blog_app/core/utils/media_progress_notifier.dart';
 
 class PostsRemoteDataSource {
@@ -70,13 +71,15 @@ class PostsRemoteDataSource {
             }
           }
 
-          // --- NEW: wire up compression progress notifications ---
+          // --- Compression logic for both video and image ---
           // Determine if it's worth attempting compression (based on size threshold).
           bool shouldAttemptCompression = false;
           try {
             final bytes = await fileToUpload.length();
-            shouldAttemptCompression =
-                bytes > VideoCompressor.defaultMinSizeBytes;
+            final threshold = mediaType == 'video'
+                ? VideoCompressor.defaultMinSizeBytes
+                : ImageCompressor.defaultMaxSizeBytes;
+            shouldAttemptCompression = bytes > threshold;
           } catch (e) {
             AppLogger.warning('createPost: failed to stat file size: $e');
             // fall through — still attempt compression to be safe
@@ -84,35 +87,34 @@ class PostsRemoteDataSource {
           }
 
           if (shouldAttemptCompression) {
-            // Notify UI we're starting compression
-            MediaProgressNotifier.notifyCompressing(0.0);
+            File? compressedFile;
+            if (mediaType == 'video') {
+              // Notify UI we're starting compression for video only
+              MediaProgressNotifier.notifyCompressing(0.0);
 
-            try {
-              final compressed = await VideoCompressor.compressIfNeeded(
+              compressedFile = await VideoCompressor.compressIfNeeded(
                 fileToUpload,
                 onProgress: (percent) {
                   // Forward progress to the global notifier (0..100)
                   MediaProgressNotifier.notifyCompressing(percent);
                 },
               );
-
-              if (compressed.path != fileToUpload.path) {
-                AppLogger.info(
-                  'createPost: using compressed video at ${compressed.path}',
-                );
-                fileToUpload = compressed;
-              } else {
-                AppLogger.info(
-                  'createPost: compression skipped or no size reduction; using original',
-                );
-              }
-            } catch (e) {
-              // If compression fails, publish an error to UI but continue with original file.
-              AppLogger.warning(
-                'createPost: compression failed, proceeding with original file: $e',
+            } else if (mediaType == 'image') {
+              // For images, compress silently without progress notifications
+              compressedFile = await ImageCompressor.compressIfNeeded(
+                fileToUpload,
               );
-              MediaProgressNotifier.notifyError(
-                'Compression failed; uploading original',
+            }
+
+            if (compressedFile != null &&
+                compressedFile.path != fileToUpload.path) {
+              AppLogger.info(
+                'createPost: using compressed ${mediaType} at ${compressedFile.path}',
+              );
+              fileToUpload = compressedFile;
+            } else {
+              AppLogger.info(
+                'createPost: compression skipped or no size reduction; using original',
               );
             }
           } else {

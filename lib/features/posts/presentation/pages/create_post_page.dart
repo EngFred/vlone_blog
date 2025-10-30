@@ -225,51 +225,75 @@ class _CreatePostPageState extends State<CreatePostPage> {
               children: [
                 // 1. Main Content (always visible)
                 SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        TextField(
-                          controller: _contentController,
-                          decoration: InputDecoration(
-                            hintText: "What's on your mind?",
-                            filled: true,
-                            fillColor: theme.colorScheme.secondaryContainer
-                                .withOpacity(0.2),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
+                  // IMPORTANT: Added padding at the bottom (60.0) to make room for the fixed footer
+                  padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 60.0),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _contentController,
+                        decoration: InputDecoration(
+                          hintText: "What's on your mind?",
+                          filled: true,
+                          fillColor: theme.colorScheme.secondaryContainer
+                              .withOpacity(0.2),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
                           ),
-                          maxLines: 8,
-                          minLines: 3,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
                         ),
-                        const SizedBox(height: 20),
-                        // Pass the processing callback to the widget so it can toggle the page overlay
-                        MediaUploadWidget(
-                          onMediaSelected: _onMediaSelected,
-                          onProcessing: _onProcessingChanged,
-                        ),
-                      ],
-                    ),
+                        maxLines: 8,
+                        minLines: 3,
+                      ),
+                      const SizedBox(height: 20),
+                      // Pass the processing callback to the widget so it can toggle the page overlay
+                      MediaUploadWidget(
+                        onMediaSelected: _onMediaSelected,
+                        onProcessing: _onProcessingChanged,
+                      ),
+                      // NOTE: Removed the Text widget from here to move it to the footer position.
+                      // const SizedBox(height: 16),
+                      // Text(
+                      //   'Large videos and images will be compressed before uploading.',
+                      //   style: theme.textTheme.bodySmall?.copyWith(
+                      //     color: theme.colorScheme.onSurfaceVariant,
+                      //   ),
+                      //   textAlign: TextAlign.center,
+                      // ),
+                    ],
                   ),
                 ),
                 // 2. Loading Overlay for post upload (covers screen)
-                // Previously this always said "Uploading post...". Now we compute the message
-                // from the currently selected media type so it's consistent for the whole upload.
                 if (isLoading && !_isProcessingMedia)
                   SavingLoadingOverlay(message: _computedUploadMessage),
                 // 3. Media-processing overlay driven by MediaProgressNotifier
-                // NOTE: we pass _processingPercent which is nullable. When null, overlay shows indeterminate spinner.
                 if (_isProcessingMedia)
                   SavingLoadingOverlay(
                     message: _processingMessage,
                     percent: _processingPercent,
                   ),
+
+                // 4. FOOTER TEXT PLACED AT THE BOTTOM OF THE PAGE
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: 16.0,
+                      left: 16.0,
+                      right: 16.0,
+                    ), // Padding from the very bottom
+                    child: Text(
+                      'Large videos and images will be compressed before uploading.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
               ],
             );
           },
