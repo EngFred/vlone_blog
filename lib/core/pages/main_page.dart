@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Added for Haptic Feedback
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -118,6 +119,12 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
       AppLogger.warning('Cannot navigate, userId is null');
       return;
     }
+
+    // --- UX Touch ---
+    // Add haptic feedback for a more tactile feel
+    HapticFeedback.lightImpact();
+    // --- End UX Touch ---
+
     AppLogger.info('Bottom nav tapped: ${_tabNames[index]} (index $index)');
 
     if (!mounted) return;
@@ -195,21 +202,40 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     return Scaffold(
       body: widget.navigationShell,
       bottomNavigationBar: BottomNavigationBar(
+        // --- UX Touch: Use activeIcon for filled/outline state ---
         items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(icon: Icon(Icons.feed), label: 'Feed'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.video_library),
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home_filled),
+            label: 'Feed',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.video_library_outlined),
+            activeIcon: Icon(Icons.video_library),
             label: 'Reels',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Users'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people_outline),
+            activeIcon: Icon(Icons.people),
+            label: 'Users',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
+            label: 'Profile',
+          ),
         ],
+        // --- End UX Touch ---
         currentIndex: _selectedIndex,
         selectedItemColor: Constants.primaryColor,
         unselectedItemColor: unselectedColor,
         backgroundColor: barBackgroundColor,
         type: BottomNavigationBarType.fixed,
         onTap: _onItemTapped,
+        // --- UX Touch: Explicitly show labels ---
+        showSelectedLabels: true,
+        showUnselectedLabels: true,
+        // --- End UX Touch ---
       ),
     );
   }
