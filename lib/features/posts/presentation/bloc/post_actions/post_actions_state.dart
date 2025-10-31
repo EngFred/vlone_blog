@@ -21,10 +21,6 @@ class PostActionError extends PostActionsState {
   List<Object?> get props => [message];
 }
 
-// --- Success States ---
-// These are transient. The UI listens for them and then
-// the BLoC should ideally return to Initial.
-
 class PostCreatedSuccess extends PostActionsState {
   final PostEntity post;
   const PostCreatedSuccess(this.post);

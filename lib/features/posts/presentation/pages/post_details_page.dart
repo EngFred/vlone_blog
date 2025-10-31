@@ -43,23 +43,17 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   bool _subscribedToComments = false;
   bool _isDeleting = false;
 
-  final ScrollController _scrollController = ScrollController();
-  final Map<String, GlobalKey> _commentKeys = {};
-  String? _commentToScrollId;
-  String? _highlightedCommentId;
-
   @override
   void initState() {
     super.initState();
     if (widget.post != null) _post = widget.post;
-    _commentToScrollId = widget.highlightCommentId;
   }
 
   @override
   void dispose() {
     _commentController.dispose();
     _focusNode.dispose();
-    _scrollController.dispose();
+    // REMOVED: _scrollController.dispose();
     super.dispose();
   }
 
@@ -80,35 +74,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
       context.read<CommentsBloc>().add(SubscribeToCommentsEvent(widget.postId));
       _subscribedToComments = true;
     }
-  }
-
-  void _scrollToComment(String commentId) {
-    if (_highlightedCommentId == commentId) return;
-
-    final key = _commentKeys[commentId];
-    if (key == null || key.currentContext == null) {
-      AppLogger.warning(
-        'PostDetailsPage: Cannot scroll, key not found or context is null for ID $commentId',
-      );
-      return;
-    }
-
-    Scrollable.ensureVisible(
-      key.currentContext!,
-      alignment: 0.0,
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-    ).then((_) {
-      if (mounted) {
-        setState(() {
-          _highlightedCommentId = commentId;
-          _commentToScrollId = null;
-        });
-        AppLogger.info(
-          'PostDetailsPage: Scrolled to and highlighted comment $commentId.',
-        );
-      }
-    });
   }
 
   void _addComment() {
@@ -222,66 +187,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     }
   }
 
-  // Recursively assign GlobalKeys to all comments and their replies (Unchanged)
-  void _assignCommentKeys(List<CommentEntity> comments) {
-    for (var comment in comments) {
-      if (!_commentKeys.containsKey(comment.id)) {
-        _commentKeys[comment.id] = GlobalKey();
-      }
-      _assignCommentKeys(comment.replies);
-    }
-  }
-
-  // Check if a comment ID is in the subtree of a given comment (Unchanged)
-  bool _isInSubtree(String id, CommentEntity comment) {
-    if (comment.id == id) return true;
-    for (var reply in comment.replies) {
-      if (_isInSubtree(id, reply)) return true;
-    }
-    return false;
-  }
-
-  // Find the root (top-level) comment ID that contains the target ID in its subtree (Unchanged)
-  String? _findRootCommentId(String targetId, List<CommentEntity> comments) {
-    for (var comment in comments) {
-      if (_isInSubtree(targetId, comment)) {
-        return comment.id;
-      }
-    }
-    return null;
-  }
-
-  void _commentsBlocListener(BuildContext context, CommentsState state) {
-    if (state is CommentsLoaded) {
-      _assignCommentKeys(state.comments);
-
-      if (_commentToScrollId != null) {
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (!mounted) return;
-
-          final targetId = _commentToScrollId!;
-          final rootId = _findRootCommentId(targetId, state.comments);
-
-          if (rootId != null && rootId != targetId) {
-            final rootKey = _commentKeys[rootId];
-            if (rootKey != null && rootKey.currentState != null) {
-              // Assuming CommentTileState has a public method or public state for expansion
-              (rootKey.currentState as dynamic).expandReplies();
-            }
-          }
-
-          if (_commentKeys.containsKey(targetId)) {
-            _scrollToComment(targetId);
-          } else {
-            AppLogger.warning(
-              'PostDetailsPage: Key not found for $targetId after assignment',
-            );
-          }
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return BlocSelector<AuthBloc, AuthState, UserEntity?>(
@@ -301,12 +206,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
           } else {
             _subscribeToCommentsIfNeeded();
           }
-        }
-
-        if (!_focusNode.hasFocus &&
-            _highlightedCommentId != null &&
-            _commentToScrollId == null) {
-          Future.microtask(() => setState(() => _highlightedCommentId = null));
         }
 
         return WillPopScope(
@@ -342,9 +241,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                     BlocListener<FavoritesBloc, FavoritesState>(
                       listener: _favoritesBlocListener,
                     ),
-                    BlocListener<CommentsBloc, CommentsState>(
-                      listener: _commentsBlocListener,
-                    ),
+                    // REMOVED: BlocListener<CommentsBloc, CommentsState>
                   ],
                   child: _post == null
                       ? const LoadingIndicator()
@@ -352,7 +249,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                           children: [
                             Expanded(
                               child: CustomScrollView(
-                                controller: _scrollController,
+                                // REMOVED: controller: _scrollController,
                                 slivers: [
                                   SliverToBoxAdapter(
                                     child: PostDetailsContent(
@@ -372,9 +269,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                                         setState(() => _replyingTo = comment);
                                         _focusNode.requestFocus();
                                       },
-                                      commentKeys: _commentKeys,
-                                      highlightedCommentId:
-                                          _highlightedCommentId,
                                       postId: widget.postId,
                                     ),
                                   ),

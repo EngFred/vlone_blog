@@ -7,23 +7,16 @@ import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_input_field.dart';
 import 'package:vlone_blog_app/features/comments/presentation/widgets/comments_section.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
-import 'package:vlone_blog_app/core/utils/app_logger.dart';
 
 /// Bottom-sheet style comments overlay for reels (TikTok / IG style).
-/// Use by calling:
-///   await ReelsCommentsOverlay.show(context, post, userId);
 class ReelsCommentsOverlay extends StatefulWidget {
   final PostEntity post;
   final String userId;
-  final String? highlightCommentId;
-  final String? parentCommentId;
 
   const ReelsCommentsOverlay({
     super.key,
     required this.post,
     required this.userId,
-    this.highlightCommentId,
-    this.parentCommentId,
   });
 
   /// Helper to show the overlay as a modal bottom sheet.
@@ -45,12 +38,7 @@ class ReelsCommentsOverlay extends StatefulWidget {
           right: false,
           top: false,
           bottom: false,
-          child: ReelsCommentsOverlay(
-            post: post,
-            userId: userId,
-            highlightCommentId: highlightCommentId,
-            parentCommentId: parentCommentId,
-          ),
+          child: ReelsCommentsOverlay(post: post, userId: userId),
         );
       },
     );
@@ -65,15 +53,9 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
   final FocusNode _focusNode = FocusNode();
   CommentEntity? _replyingTo;
 
-  // State management for highlight/scroll
-  final Map<String, GlobalKey> _commentKeys = {};
-  String? _commentToScrollId;
-  String? _highlightedCommentId;
-
   @override
   void initState() {
     super.initState();
-    _commentToScrollId = widget.highlightCommentId; // Capture ID from route
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -99,7 +81,7 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
     _focusNode.unfocus();
   }
 
-  /// Helper to count total comments recursively (same logic as CommentsSection)
+  /// Helper to count total comments recursively (logic is fine, kept)
   int _countAllComments(List<CommentEntity> comments) {
     int total = 0;
     for (final comment in comments) {
@@ -110,78 +92,6 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
     }
     return total;
   }
-
-  // --- NEW SCROLL LOGIC ---
-  void _scrollToComment(String commentId, ScrollController controller) {
-    if (_highlightedCommentId == commentId) return;
-
-    final key = _commentKeys[commentId];
-    if (key == null || key.currentContext == null) {
-      AppLogger.warning(
-        'ReelsCommentsOverlay: Cannot scroll, key not found or context is null for ID $commentId',
-      );
-      return;
-    }
-
-    final RenderBox renderBox =
-        key.currentContext!.findRenderObject() as RenderBox;
-    final viewportRenderBox =
-        controller.position.context.notificationContext!.findRenderObject()
-            as RenderBox;
-
-    // Calculate the position of the comment tile relative to the sheet's scrolling viewport
-    final position = renderBox.localToGlobal(
-      Offset.zero,
-      ancestor: viewportRenderBox,
-    );
-
-    const double fixedHeaderHeight = 72.0;
-    const double padding = 8.0;
-
-    // Calculate the scroll position to place the item just below the fixed header.
-    final scrollPosition =
-        controller.offset + position.dy - fixedHeaderHeight - padding;
-
-    controller
-        .animateTo(
-          scrollPosition.clamp(0.0, controller.position.maxScrollExtent),
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOut,
-        )
-        .then((_) {
-          if (mounted) {
-            setState(() {
-              _highlightedCommentId = commentId;
-              _commentToScrollId = null; // Clear target after successful scroll
-            });
-            AppLogger.info(
-              'ReelsCommentsOverlay: Scrolled to and highlighted comment $commentId.',
-            );
-            // Clear highlight after the animation has completed and the user has likely seen it
-            Future.delayed(const Duration(seconds: 3), () {
-              if (mounted && _highlightedCommentId == commentId) {
-                setState(() => _highlightedCommentId = null);
-              }
-            });
-          }
-        });
-  }
-
-  void _commentsBlocListener(
-    BuildContext context,
-    CommentsState state,
-    ScrollController controller,
-  ) {
-    if (state is CommentsLoaded && _commentToScrollId != null) {
-      // Delay slightly to ensure the list has rendered the GlobalKeys
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted && _commentKeys.containsKey(_commentToScrollId)) {
-          _scrollToComment(_commentToScrollId!, controller);
-        }
-      });
-    }
-  }
-  // --- END NEW SCROLL LOGIC ---
 
   @override
   void dispose() {
@@ -196,14 +106,7 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
       selector: (state) =>
           (state is AuthAuthenticated) ? state.user.profileImageUrl : null,
       builder: (context, userAvatarUrl) {
-        // Clear highlight if focus is lost and no new scroll is pending
-        if (!_focusNode.hasFocus &&
-            _highlightedCommentId != null &&
-            _commentToScrollId == null) {
-          Future.microtask(() => setState(() => _highlightedCommentId = null));
-        }
-
-        // start taller (user requested increased height)
+        // Retaining DraggableScrollableSheet fraction logic:
         final initialFraction = 0.70; // start ~70% of screen height
         final minFraction = 0.40; // allow small peek
         final maxFraction = min(0.92, 0.95); // never truly full-screen
@@ -231,7 +134,7 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                     color: Theme.of(context).scaffoldBackgroundColor,
                     child: Column(
                       children: [
-                        // HEADER with fixed height to prevent tiny overflow
+                        // HEADER
                         SizedBox(
                           height: 72,
                           child: Column(
@@ -295,35 +198,22 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
 
                         // Comments list: Expanded so remaining space is used
                         Expanded(
-                          child: BlocListener<CommentsBloc, CommentsState>(
-                            listener: (context, state) => _commentsBlocListener(
-                              context,
-                              state,
-                              scrollController,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 0.0,
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 0.0,
-                              ),
-                              child: CommentsSection(
-                                postId: widget
-                                    .post
-                                    .id, // FIX: Added required postId param (from widget.post.id).
-                                commentsCount: null,
-                                showCountHeader: false,
-                                onReply: (comment) {
-                                  setState(() => _replyingTo = comment);
-                                  Future.microtask(
-                                    () => _focusNode.requestFocus(),
-                                  );
-                                },
-                                scrollable: true,
-                                currentUserId: widget.userId,
-                                controller:
-                                    scrollController, // <- pass controller for smooth drag
-                                commentKeys: _commentKeys,
-                                highlightedCommentId: _highlightedCommentId,
-                              ),
+                            child: CommentsSection(
+                              postId: widget.post.id,
+                              commentsCount: null,
+                              showCountHeader: false,
+                              onReply: (comment) {
+                                setState(() => _replyingTo = comment);
+                                Future.microtask(
+                                  () => _focusNode.requestFocus(),
+                                );
+                              },
+                              scrollable: true,
+                              currentUserId: widget.userId,
                             ),
                           ),
                         ),

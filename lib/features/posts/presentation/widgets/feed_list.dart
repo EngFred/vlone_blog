@@ -10,7 +10,7 @@ class FeedList extends StatelessWidget {
   final bool isRealtimeActive;
   final VoidCallback? onLoadMore;
   final String? loadMoreError;
-  final ScrollController? controller; // NEW
+  final ScrollController? controller;
 
   const FeedList({
     super.key,
@@ -20,7 +20,7 @@ class FeedList extends StatelessWidget {
     this.isRealtimeActive = false,
     this.onLoadMore,
     this.loadMoreError,
-    this.controller, // NEW
+    this.controller,
   });
 
   @override
@@ -29,12 +29,9 @@ class FeedList extends StatelessWidget {
 
     return ListView.builder(
       key: const PageStorageKey('feed_list'),
-      controller:
-          controller, // ATTACH controller so outer ScrollController receives events
+      controller: controller,
       cacheExtent: 1500.0,
-      itemCount:
-          posts.length +
-          (hasMore ? 1 : 0), // Extra item for loading footer if hasMore
+      itemCount: posts.length + (hasMore ? 1 : 0),
       itemBuilder: (context, index) {
         if (index == posts.length) {
           // Loading footer if hasMore

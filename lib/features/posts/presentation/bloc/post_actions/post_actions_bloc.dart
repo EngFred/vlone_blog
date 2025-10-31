@@ -24,19 +24,13 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
     required this.getPostUseCase,
     required this.deletePostUseCase,
     required this.sharePostUseCase,
-    // required this.realtimeService,
   }) : super(const PostActionsInitial()) {
     on<CreatePostEvent>(_onCreatePost);
     on<GetPostEvent>(_onGetPost);
     on<DeletePostEvent>(_onDeletePost);
     on<SharePostEvent>(_onSharePost);
-    // ✅ ADDED: Optimistic Post Update Handler
     on<OptimisticPostUpdate>(_onOptimisticPostUpdate);
   }
-
-  // ... (previous handlers: _onCreatePost, _onGetPost, _onDeletePost, _onSharePost) ...
-
-  // ℹ️ Note: Placing handlers here for brevity. In your file, they should be in order.
 
   Future<void> _onCreatePost(
     CreatePostEvent event,
@@ -133,38 +127,43 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
     );
   }
 
-  // ✅ ADDED: Handler for optimistic updates
   Future<void> _onOptimisticPostUpdate(
     OptimisticPostUpdate event,
     Emitter<PostActionsState> emit,
   ) async {
-    // Optimistic update should only happen if we have a PostLoaded state currently,
-    // as PostActionsBloc is acting like the detail screen's source of truth.
-    if (state is PostLoaded && (state as PostLoaded).post.id == event.postId) {
-      final currentPost = (state as PostLoaded).post;
+    // 1. Get the post from the EVENT, not the state.
+    final currentPost = event.post;
 
-      final updatedPost = currentPost.copyWith(
-        likesCount: (currentPost.likesCount + event.deltaLikes)
-            .clamp(0, double.infinity)
-            .toInt(),
-        favoritesCount: (currentPost.favoritesCount + event.deltaFavorites)
-            .clamp(0, double.infinity)
-            .toInt(),
-        // Only update the boolean state if it was explicitly passed
-        isLiked: event.isLiked ?? currentPost.isLiked,
-        isFavorited: event.isFavorited ?? currentPost.isFavorited,
-      );
+    // 2. Calculate the updated post
+    final updatedPost = currentPost.copyWith(
+      likesCount: (currentPost.likesCount + event.deltaLikes)
+          .clamp(0, double.infinity) // Use clamp for safety
+          .toInt(),
+      favoritesCount: (currentPost.favoritesCount + event.deltaFavorites)
+          .clamp(0, double.infinity)
+          .toInt(),
+      // Only update the boolean state if it was explicitly passed
+      isLiked: event.isLiked ?? currentPost.isLiked,
+      isFavorited: event.isFavorited ?? currentPost.isFavorited,
+    );
 
-      AppLogger.info('Post ${event.postId} updated optimistically.');
+    AppLogger.info(
+      'PostActionsBloc: Post ${updatedPost.id} updated optimistically.',
+    );
 
-      // Emit the updated state
-      emit(PostOptimisticallyUpdated(updatedPost));
-      // Revert to PostLoaded state to maintain the persistent data state for the screen
+    // 3. ALWAYS emit PostOptimisticallyUpdated
+    // The PostCard on the feed is listening for this.
+    emit(PostOptimisticallyUpdated(updatedPost));
+
+    // 4. ALSO, if we are on a detail screen (PostLoaded), update the BLoC's own state.
+    // This makes the fix work for both the feed AND the detail screen.
+    if (state is PostLoaded &&
+        (state as PostLoaded).post.id == updatedPost.id) {
       emit(PostLoaded(updatedPost));
-    } else {
-      AppLogger.warning(
-        'PostActionsBloc: OptimisticPostUpdate ignored for ${event.postId} - PostLoaded state not found.',
-      );
     }
+
+    // Note: We no longer emit PostActionsInitial here. We let PostOptimisticallyUpdated
+    // be a transient state that the UI listents to. The BLoC's "resting" state
+    // remains either PostActionsInitial or PostLoaded.
   }
 }

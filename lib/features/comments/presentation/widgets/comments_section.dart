@@ -14,10 +14,9 @@ class CommentsSection extends StatefulWidget {
   final bool scrollable;
   final bool showCountHeader;
   final String currentUserId;
-  final ScrollController? controller;
-  final Map<String, GlobalKey> commentKeys; // Received from parent
-  final String? highlightedCommentId;
-  final String postId; // NEW: Required for dispatching events.
+  // final Map<String, GlobalKey> commentKeys; // REMOVED: Retained prop
+  // final String? highlightedCommentId; // REMOVED: Retained prop
+  final String postId; // Required for dispatching events.
 
   const CommentsSection({
     super.key,
@@ -26,10 +25,10 @@ class CommentsSection extends StatefulWidget {
     this.scrollable = false,
     this.showCountHeader = true,
     required this.currentUserId,
-    this.controller,
-    required this.commentKeys,
-    this.highlightedCommentId,
-    required this.postId, // NEW: Pass postId from parent (e.g., PostDetailsPage).
+    // this.controller, // REMOVED: ScrollController
+    // required this.commentKeys, // REMOVED
+    // this.highlightedCommentId, // REMOVED
+    required this.postId, // Pass postId from parent (e.g., PostDetailsPage).
   });
 
   @override
@@ -37,12 +36,12 @@ class CommentsSection extends StatefulWidget {
 }
 
 class _CommentsSectionState extends State<CommentsSection> {
-  bool _hasDispatchedInitial = false; // NEW: Prevent double-dispatch on init.
+  bool _hasDispatchedInitial = false; // Prevent double-dispatch on init.
 
   @override
   void initState() {
     super.initState();
-    // CHANGE: Dispatch initial load if scrollable (for bottom sheets/full pages).
+    // Dispatch initial load if scrollable (for bottom sheets/full pages).
     if (widget.scrollable && !_hasDispatchedInitial) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -56,28 +55,10 @@ class _CommentsSectionState extends State<CommentsSection> {
         }
       });
     }
-    // NEW: Setup scroll listener for auto-load-more (only if scrollable).
-    if (widget.scrollable && widget.controller != null) {
-      widget.controller!.addListener(_onScroll);
-    }
-  }
-
-  void _onScroll() {
-    final blocState = context.read<CommentsBloc>().state;
-    if (blocState is CommentsLoaded &&
-        blocState.hasMore &&
-        !blocState.isLoadingMore &&
-        widget.controller!.position.pixels >=
-            widget.controller!.position.maxScrollExtent - 200) {
-      context.read<CommentsBloc>().add(const LoadMoreCommentsEvent());
-    }
   }
 
   @override
   void dispose() {
-    if (widget.scrollable && widget.controller != null) {
-      widget.controller!.removeListener(_onScroll);
-    }
     super.dispose();
   }
 
@@ -106,9 +87,8 @@ class _CommentsSectionState extends State<CommentsSection> {
           return _buildCommentList(context, commentList, state);
         }
 
-        // NEW: Handle loading more (footer).
         if (state is CommentsLoadingMore) {
-          return _buildLoadingMore();
+          return const SizedBox.shrink();
         }
 
         return const SizedBox.shrink();
@@ -119,7 +99,6 @@ class _CommentsSectionState extends State<CommentsSection> {
   Widget _buildLoading() {
     if (widget.scrollable) {
       return ListView(
-        controller: widget.controller,
         padding: EdgeInsets.zero,
         children: const [
           SizedBox(height: 40),
@@ -141,7 +120,6 @@ class _CommentsSectionState extends State<CommentsSection> {
     );
   }
 
-  // NEW: Footer for load-more.
   Widget _buildLoadingMore() {
     if (widget.scrollable) {
       return Padding(
@@ -159,11 +137,7 @@ class _CommentsSectionState extends State<CommentsSection> {
     );
 
     if (widget.scrollable) {
-      return ListView(
-        controller: widget.controller,
-        padding: EdgeInsets.zero,
-        children: [errorWidget],
-      );
+      return ListView(padding: EdgeInsets.zero, children: [errorWidget]);
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -180,7 +154,6 @@ class _CommentsSectionState extends State<CommentsSection> {
       return RefreshIndicator(
         onRefresh: _onRefresh,
         child: ListView(
-          controller: widget.controller,
           padding: EdgeInsets.zero,
           children: [const SizedBox(height: 40), emptyWidget],
         ),
@@ -198,7 +171,8 @@ class _CommentsSectionState extends State<CommentsSection> {
     CommentsLoaded state,
   ) {
     final commentTiles = comments.map((comment) {
-      final key = widget.commentKeys[comment.id] ?? ValueKey(comment.id);
+      // Use ValueKey now that GlobalKeys are not needed for scrolling/highlighting
+      final key = ValueKey(comment.id);
 
       return CommentTile(
         key: key,
@@ -206,8 +180,8 @@ class _CommentsSectionState extends State<CommentsSection> {
         onReply: widget.onReply,
         depth: 0,
         currentUserId: widget.currentUserId,
-        commentKeys: widget.commentKeys,
-        highlightedCommentId: widget.highlightedCommentId,
+        // REMOVED: commentKeys: widget.commentKeys,
+        // REMOVED: highlightedCommentId: widget.highlightedCommentId,
       );
     }).toList();
 
@@ -220,12 +194,11 @@ class _CommentsSectionState extends State<CommentsSection> {
       list = RefreshIndicator(
         onRefresh: _onRefresh,
         child: ListView.builder(
-          controller: widget.controller,
           padding: EdgeInsets.zero,
           itemCount: commentTiles.length + (state.hasMore ? 1 : 0),
           itemBuilder: (context, index) {
             if (index == commentTiles.length) {
-              // Load more footer.
+              // Load more footer/retry button.
               if (state.loadMoreError != null) {
                 return ListTile(
                   title: Text('Error: ${state.loadMoreError}'),

@@ -43,25 +43,29 @@ class SharePostEvent extends PostActionsEvent {
   List<Object?> get props => [postId];
 }
 
-// ✅ ADDED: Optimistic update event
+// ✅ MODIFIED: OptimisticPostUpdate now carries the full PostEntity
 class OptimisticPostUpdate extends PostActionsEvent {
-  final String postId;
+  // We pass the *current* post to be updated
+  final PostEntity post;
   final int deltaLikes;
   final int deltaFavorites;
   final bool? isLiked;
   final bool? isFavorited;
 
   const OptimisticPostUpdate({
-    required this.postId,
-    required this.deltaLikes,
-    required this.deltaFavorites,
+    required this.post,
+    this.deltaLikes = 0,
+    this.deltaFavorites = 0,
     this.isLiked,
     this.isFavorited,
   });
 
+  // Helper to maintain compatibility if needed, but props is what matters
+  String get postId => post.id;
+
   @override
   List<Object?> get props => [
-    postId,
+    post,
     deltaLikes,
     deltaFavorites,
     isLiked,

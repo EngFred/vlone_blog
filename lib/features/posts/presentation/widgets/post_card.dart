@@ -44,9 +44,6 @@ class _PostCardState extends State<PostCard> {
 
   @override
   Widget build(BuildContext context) {
-    // ❌ REMOVED: BlocProvider.value(value: context.read<PostsBloc>(), ...)
-    // PostActions and PostHeader can read the necessary BLoCs from the tree root.
-
     return MultiBlocListener(
       listeners: [
         // Likes listener: ONLY update boolean (icon). Counts must come from PostActionsBloc.

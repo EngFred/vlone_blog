@@ -213,8 +213,6 @@ class _FeedPageState extends State<FeedPage>
                 // General error, handled by the Builder below
                 _isLoadingMore = false;
               }
-              // ⚠️ REMOVED: `else if (state is _RealtimeFeedPostReceived)`
-              // This is an internal BLoC event and should not be listened to by the UI.
             },
           ),
         ],

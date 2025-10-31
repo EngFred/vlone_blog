@@ -6,8 +6,6 @@ import 'package:vlone_blog_app/core/widgets/debounced_inkwell.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-
-// ✅ CHANGE 1: Import the new PostActionsBloc
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 
 class PostActions extends StatelessWidget {
@@ -24,7 +22,7 @@ class PostActions extends StatelessWidget {
 
   static const Duration _defaultDebounce = Duration(milliseconds: 500);
 
-  // ✅ CHANGE 2: Update _share to use PostActionsBloc
+  // Update _share to use PostActionsBloc
   void _share(BuildContext context) {
     context.read<PostActionsBloc>().add(SharePostEvent(post.id));
   }
@@ -39,10 +37,6 @@ class PostActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Base counts come from post (PostsBloc is authoritative).
-    // Likes & favorites: always render the numeric count (including 0) to avoid layout shift.
-    // Comments: left "as it were" — we DO NOT show a 0 count here because comments are not
-    // part of the optimistic update flow and should rely on the realtime/source updates.
     final baseLikesCount = post.likesCount;
     final baseFavoritesCount = post.favoritesCount;
     final baseCommentsCount = post.commentsCount;
@@ -91,15 +85,14 @@ class PostActions extends StatelessWidget {
                         ),
                       );
 
-                      // ✅ CHANGE 3: Dispatch OptimisticPostUpdate to PostActionsBloc
+                      // ✅ Dispatch OptimisticPostUpdate to PostActionsBloc
                       final int delta = (!isLiked) ? 1 : -1;
                       context.read<PostActionsBloc>().add(
                         OptimisticPostUpdate(
-                          postId: post.id,
+                          post: post, // ✅ Pass the full post object
                           deltaLikes: delta,
                           deltaFavorites: 0,
                           isLiked: !isLiked,
-                          isFavorited: null,
                         ),
                       );
                     },
@@ -115,7 +108,6 @@ class PostActions extends StatelessWidget {
                           isLiked ? Icons.favorite : Icons.favorite_border,
                           size: 24,
                         ),
-                        // ALWAYS show the count for likes (including 0) to avoid layout jump.
                         Padding(
                           padding: const EdgeInsets.only(left: 6.0),
                           child: Text(baseLikesCount.toString()),
@@ -142,7 +134,6 @@ class PostActions extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.comment_outlined, size: 24),
-                    // **COMMENTS: keep original behavior** — only show the number when > 0.
                     if (baseCommentsCount > 0)
                       Padding(
                         padding: const EdgeInsets.only(left: 6.0),
@@ -165,12 +156,8 @@ class PostActions extends StatelessWidget {
                   vertical: 4.0,
                 ),
                 child: const Row(
-                  // Now using const Row and no Text for the count
                   mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.share_outlined, size: 24),
-                    // Shares count display has been removed here.
-                  ],
+                  children: [Icon(Icons.share_outlined, size: 24)],
                 ),
               ),
             ],
@@ -189,12 +176,10 @@ class PostActions extends StatelessWidget {
               return false;
             },
             builder: (context, state) {
-              // Use post as source-of-truth for counts to avoid double-applying delta.
               bool isFavorited = post.isFavorited;
 
               if (state is FavoriteUpdated && state.postId == post.id) {
                 isFavorited = state.isFavorited;
-                // DO NOT apply delta here — PostsBloc must update counts.
               } else if (state is FavoriteError &&
                   state.postId == post.id &&
                   state.shouldRevert) {
@@ -215,14 +200,12 @@ class PostActions extends StatelessWidget {
                     ),
                   );
 
-                  // ✅ CHANGE 4: Dispatch OptimisticPostUpdate to PostActionsBloc
+                  // ✅ Dispatch OptimisticPostUpdate to PostActionsBloc
                   final int deltaFav = (!isFavorited) ? 1 : -1;
                   context.read<PostActionsBloc>().add(
                     OptimisticPostUpdate(
-                      postId: post.id,
-                      deltaLikes: 0,
+                      post: post, // ✅ Pass the full post object
                       deltaFavorites: deltaFav,
-                      isLiked: null,
                       isFavorited: !isFavorited,
                     ),
                   );
@@ -239,7 +222,6 @@ class PostActions extends StatelessWidget {
                       isFavorited ? Icons.bookmark : Icons.bookmark_border,
                       size: 24,
                     ),
-                    // ALWAYS show favorites count (including 0) — matches likes behavior.
                     Padding(
                       padding: const EdgeInsets.only(left: 6.0),
                       child: Text(baseFavoritesCount.toString()),

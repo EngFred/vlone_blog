@@ -24,9 +24,6 @@ class ReelActions extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (modalContext) {
-        // NOTE: The consuming widget (ReelsPage) must now provide the correct BLoC
-        // to this modal (e.g., CommentsBloc/PostActionsBloc for the details).
-        // Since we don't know the list bloc for reels, we remove the BlocProvider.value here.
         return ReelsCommentsOverlay(post: post, userId: userId);
       },
     );
@@ -34,7 +31,7 @@ class ReelActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use post as authoritative source-of-truth for counts.
+    // Use post as authoritative source-of-truth for initial counts/states.
     final baseIsLiked = post.isLiked;
     final baseLikesCount = post.likesCount;
     final baseIsFavorited = post.isFavorited;
@@ -56,7 +53,7 @@ class ReelActions extends StatelessWidget {
             return false;
           },
           builder: (context, state) {
-            // Show icon state from LikesBloc if provided, but counts only from post
+            // Icon boolean may come from LikesBloc for snappy toggle, fallback to post.
             bool isLiked = baseIsLiked;
             int likesCount = baseLikesCount;
 
@@ -82,11 +79,11 @@ class ReelActions extends StatelessWidget {
                   ),
                 );
 
-                // ✅ CHANGE 1: Dispatch OptimisticPostUpdate to PostActionsBloc
+                // ✅ UPDATED: Dispatch OptimisticPostUpdate with the full post
                 final int delta = (!isLiked) ? 1 : -1;
                 context.read<PostActionsBloc>().add(
                   OptimisticPostUpdate(
-                    postId: post.id,
+                    post: post, // Pass the full PostEntity
                     deltaLikes: delta,
                     deltaFavorites: 0,
                     isLiked: !isLiked,
@@ -103,7 +100,7 @@ class ReelActions extends StatelessWidget {
                     color: isLiked ? Colors.red : Colors.white,
                     size: 32,
                   ),
-                  // ALWAYS show the likes count (including 0) — consistent with feed likes.
+                  // ALWAYS show the likes count (including 0)
                   Text(
                     likesCount.toString(),
                     style: const TextStyle(
@@ -132,8 +129,7 @@ class ReelActions extends StatelessWidget {
                 color: Colors.white,
                 size: 32,
               ),
-              // **COMMENTS: keep original behavior** — only show the number when > 0,
-              // because comments are not part of optimistic updates and rely on realtime.
+              // Only show the comments count when > 0
               if (baseCommentsCount > 0)
                 Text(
                   baseCommentsCount.toString(),
@@ -185,11 +181,11 @@ class ReelActions extends StatelessWidget {
                   ),
                 );
 
-                // ✅ CHANGE 2: Dispatch OptimisticPostUpdate to PostActionsBloc
+                // ✅ UPDATED: Dispatch OptimisticPostUpdate with the full post
                 final int deltaFav = (!isFavorited) ? 1 : -1;
                 context.read<PostActionsBloc>().add(
                   OptimisticPostUpdate(
-                    postId: post.id,
+                    post: post, // Pass the full PostEntity
                     deltaLikes: 0,
                     deltaFavorites: deltaFav,
                     isLiked: null,

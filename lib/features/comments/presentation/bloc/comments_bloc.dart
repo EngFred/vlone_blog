@@ -117,7 +117,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
         );
       },
       (newRootComments) {
-        // CHANGE: Append new roots to existing (chronological order: newer at top, older appended).
+        // Append new roots to existing (chronological order: newer at top, older appended).
         final updatedComments = [...currentState.comments, ...newRootComments];
         _lastCreatedAt = newRootComments.isNotEmpty
             ? newRootComments.last.createdAt
@@ -233,7 +233,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
       ),
     );
 
-    // CHANGE: No initial emit—let GetInitialCommentsEvent drive pagination load.
+    //No initial emit—let GetInitialCommentsEvent drive pagination load.
   }
 
   Future<void> _onStopCommentsStream(
@@ -246,7 +246,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     await _rtCommentsSub?.cancel();
     _rtCommentsSub = null;
     _currentPostId = null;
-    // CHANGE: Reset pagination on stop (for re-init).
+    //Reset pagination on stop (for re-init).
     _hasMore = true;
     _lastCreatedAt = null;
     _lastId = null;
