@@ -5,7 +5,6 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 
-//Used both on post details and reels comments in bottom sheet
 class CommentTile extends StatefulWidget {
   final CommentEntity comment;
   final void Function(CommentEntity) onReply;
@@ -26,26 +25,6 @@ class CommentTile extends StatefulWidget {
 
 class CommentTileState extends State<CommentTile> {
   bool _isRepliesExpanded = false;
-
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-  }
-
-  @override
-  void didUpdateWidget(covariant CommentTile oldWidget) {
-    super.didUpdateWidget(oldWidget);
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
 
   void _navigateToProfile(BuildContext context) {
     if (widget.comment.userId == widget.currentUserId) {
@@ -70,45 +49,111 @@ class CommentTileState extends State<CommentTile> {
     return flatList;
   }
 
+  Widget _buildReplyButton(BuildContext context) {
+    return GestureDetector(
+      onTap: () => widget.onReply(widget.comment),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.reply,
+              size: 16,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              'Reply',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final comment = widget.comment;
     final hasReplies = comment.replies.isNotEmpty;
     final replyCount = comment.repliesCount ?? comment.replies.length;
-    final replyText = replyCount == 1 ? 'reply' : 'replies';
     const avatarRadius = 20.0;
-    final horizontalPadding = widget.depth == 0 ? 16.0 : 40.0;
+    final horizontalPadding = widget.depth == 0 ? 20.0 : 36.0;
     final flatReplies = _flattenReplies(comment.replies);
 
     return Container(
-      // Highlighting logic removed, using base canvas color.
-      decoration: BoxDecoration(color: theme.canvasColor),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: widget.depth == 0
+            ? Border(
+                bottom: BorderSide(
+                  color: theme.colorScheme.outline.withOpacity(0.1),
+                  width: 1,
+                ),
+              )
+            : null,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(horizontalPadding, 8.0, 16.0, 8.0),
+            padding: EdgeInsets.fromLTRB(horizontalPadding, 12.0, 20.0, 12.0),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Avatar
                 GestureDetector(
                   onTap: () => _navigateToProfile(context),
-                  child: CircleAvatar(
-                    radius: avatarRadius,
-                    backgroundImage: comment.avatarUrl != null
-                        ? CachedNetworkImageProvider(comment.avatarUrl!)
-                        : null,
-                    child: comment.avatarUrl == null
-                        ? const Icon(Icons.person)
-                        : null,
+                  child: Container(
+                    width: avatarRadius * 2,
+                    height: avatarRadius * 2,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          theme.colorScheme.primary.withOpacity(0.3),
+                          theme.colorScheme.secondary.withOpacity(0.3),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: CircleAvatar(
+                      radius: avatarRadius - 1,
+                      backgroundColor: theme.colorScheme.surface,
+                      child: CircleAvatar(
+                        radius: avatarRadius - 2,
+                        backgroundImage: comment.avatarUrl != null
+                            ? CachedNetworkImageProvider(comment.avatarUrl!)
+                            : null,
+                        child: comment.avatarUrl == null
+                            ? Icon(
+                                Icons.person,
+                                size: 16,
+                                color: theme.colorScheme.onSurface.withOpacity(
+                                  0.6,
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Header with username and time
                       Row(
                         children: [
                           GestureDetector(
@@ -116,13 +161,16 @@ class CommentTileState extends State<CommentTile> {
                             child: Text(
                               comment.username ?? 'Anonymous',
                               style: theme.textTheme.bodyLarge?.copyWith(
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            '• ${timeago.format(comment.createdAt, locale: 'en_short')}',
+                            timeago.format(
+                              comment.createdAt,
+                              locale: 'en_short',
+                            ),
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurface.withOpacity(
                                 0.6,
@@ -131,19 +179,24 @@ class CommentTileState extends State<CommentTile> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
+                      // Reply mention
                       if (comment.parentUsername != null)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 4.0),
                           child: Text.rich(
                             TextSpan(
                               text: 'Replying to ',
-                              style: theme.textTheme.bodySmall,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withOpacity(
+                                  0.6,
+                                ),
+                              ),
                               children: [
                                 TextSpan(
                                   text: '@${comment.parentUsername}',
                                   style: theme.textTheme.bodySmall?.copyWith(
-                                    fontWeight: FontWeight.bold,
+                                    fontWeight: FontWeight.w600,
                                     color: theme.colorScheme.primary,
                                   ),
                                 ),
@@ -151,23 +204,19 @@ class CommentTileState extends State<CommentTile> {
                             ),
                           ),
                         ),
-                      Text(comment.text, style: theme.textTheme.bodyMedium),
+                      // Comment text
+                      Text(
+                        comment.text,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          height: 1.4,
+                        ),
+                      ),
                       const SizedBox(height: 8),
+                      // Actions row
                       Row(
                         children: [
-                          GestureDetector(
-                            onTap: () => widget.onReply(comment),
-                            child: Padding(
-                              padding: const EdgeInsets.only(right: 16.0),
-                              child: Text(
-                                'Reply',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.primary,
-                                ),
-                              ),
-                            ),
-                          ),
+                          _buildReplyButton(context),
+                          const SizedBox(width: 12),
                           if (hasReplies && widget.depth < 1)
                             GestureDetector(
                               onTap: () {
@@ -175,14 +224,46 @@ class CommentTileState extends State<CommentTile> {
                                   _isRepliesExpanded = !_isRepliesExpanded;
                                 });
                               },
-                              child: Text(
-                                _isRepliesExpanded
-                                    ? 'Hide $replyCount $replyText'
-                                    : 'View $replyCount $replyText',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.onSurface
-                                      .withOpacity(0.6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _isRepliesExpanded
+                                      ? theme.colorScheme.primary.withOpacity(
+                                          0.1,
+                                        )
+                                      : theme.colorScheme.surfaceVariant
+                                            .withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _isRepliesExpanded
+                                          ? Icons.expand_less
+                                          : Icons.expand_more,
+                                      size: 16,
+                                      color: _isRepliesExpanded
+                                          ? theme.colorScheme.primary
+                                          : theme.colorScheme.onSurface
+                                                .withOpacity(0.6),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '$replyCount ${replyCount == 1 ? 'reply' : 'replies'}',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: _isRepliesExpanded
+                                                ? theme.colorScheme.primary
+                                                : theme.colorScheme.onSurface
+                                                      .withOpacity(0.6),
+                                          ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -194,30 +275,34 @@ class CommentTileState extends State<CommentTile> {
               ],
             ),
           ),
-          if (widget.depth == 0)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0),
-              child: Divider(height: 1, indent: 50),
-            ),
+          // Replies section
           if (hasReplies && widget.depth < 1)
             AnimatedSize(
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
               child: !_isRepliesExpanded
                   ? const SizedBox.shrink()
-                  : Column(
-                      children: flatReplies.map((reply) {
-                        // Use ValueKey now that GlobalKeys are not needed
-                        final replyKey = ValueKey(reply.id);
-
-                        return CommentTile(
-                          key: replyKey,
-                          comment: reply,
-                          onReply: widget.onReply,
-                          depth: 1,
-                          currentUserId: widget.currentUserId,
-                        );
-                      }).toList(),
+                  : Container(
+                      margin: EdgeInsets.only(left: horizontalPadding),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          left: BorderSide(
+                            color: theme.colorScheme.outline.withOpacity(0.2),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      child: Column(
+                        children: flatReplies.map((reply) {
+                          return CommentTile(
+                            key: ValueKey(reply.id),
+                            comment: reply,
+                            onReply: widget.onReply,
+                            depth: 1,
+                            currentUserId: widget.currentUserId,
+                          );
+                        }).toList(),
+                      ),
                     ),
             ),
         ],

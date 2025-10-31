@@ -53,7 +53,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   void dispose() {
     _commentController.dispose();
     _focusNode.dispose();
-    // REMOVED: _scrollController.dispose();
     super.dispose();
   }
 
@@ -194,8 +193,28 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
       builder: (context, user) {
         if (user == null) {
           return Scaffold(
-            appBar: AppBar(title: const Text('Post')),
-            body: const LoadingIndicator(),
+            appBar: AppBar(
+              title: const Text('Post'),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+            ),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  LoadingIndicator(size: 32),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Loading post...',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           );
         }
 
@@ -222,13 +241,31 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
           child: Stack(
             children: [
               Scaffold(
+                backgroundColor: Theme.of(context).colorScheme.background,
                 appBar: AppBar(
-                  title: const Text('Post'),
-                  centerTitle: false,
-                  backgroundColor: Theme.of(context).colorScheme.surface,
-                  iconTheme: IconThemeData(
-                    color: Theme.of(context).colorScheme.onSurface,
+                  title: const Text(
+                    'Post',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
                   ),
+                  centerTitle: false,
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  scrolledUnderElevation: 4,
+                  iconTheme: IconThemeData(
+                    color: Theme.of(context).colorScheme.onBackground,
+                  ),
+                  actions: [
+                    if (_post != null)
+                      IconButton(
+                        icon: Icon(
+                          Icons.bookmark_border,
+                          color: Theme.of(context).colorScheme.onBackground,
+                        ),
+                        onPressed: () {
+                          // Add to favorites functionality
+                        },
+                      ),
+                  ],
                 ),
                 body: MultiBlocListener(
                   listeners: [
@@ -241,15 +278,30 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                     BlocListener<FavoritesBloc, FavoritesState>(
                       listener: _favoritesBlocListener,
                     ),
-                    // REMOVED: BlocListener<CommentsBloc, CommentsState>
                   ],
                   child: _post == null
-                      ? const LoadingIndicator()
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              LoadingIndicator(size: 32),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Loading post content...',
+                                style: Theme.of(context).textTheme.bodyLarge
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface.withOpacity(0.6),
+                                    ),
+                              ),
+                            ],
+                          ),
+                        )
                       : Column(
                           children: [
                             Expanded(
                               child: CustomScrollView(
-                                // REMOVED: controller: _scrollController,
                                 slivers: [
                                   SliverToBoxAdapter(
                                     child: PostDetailsContent(
@@ -289,21 +341,45 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                 ),
               ),
               if (_isDeleting)
-                Container(
+                ModalBarrier(
                   color: Colors.black.withOpacity(0.7),
-                  child: const Center(
+                  dismissible: false,
+                ),
+              if (_isDeleting)
+                Center(
+                  child: Container(
+                    width: 160,
+                    height: 160,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
+                        LoadingIndicator(size: 32),
+                        const SizedBox(height: 16),
                         Text(
                           'Deleting post...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            decoration: TextDecoration.none,
-                          ),
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Please wait',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withOpacity(0.6),
+                              ),
                         ),
                       ],
                     ),

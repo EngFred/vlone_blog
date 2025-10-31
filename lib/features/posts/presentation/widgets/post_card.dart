@@ -5,7 +5,6 @@ import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bl
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
-
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_actions.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_header.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_media.dart';
@@ -22,7 +21,6 @@ class PostCard extends StatefulWidget {
 
 class _PostCardState extends State<PostCard> {
   static const double _kMediaDefaultHeight = 420.0;
-  // local copy of the post so we can mutate quickly on optimistic updates
   late PostEntity _currentPost;
 
   @override
@@ -34,9 +32,6 @@ class _PostCardState extends State<PostCard> {
   @override
   void didUpdateWidget(covariant PostCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Accept authoritative updates from parent. Keep local copy synced.
-    // This is typically coming from a FeedBloc/PostListBloc, but currently defaults
-    // to the post passed in the constructor.
     if (widget.post != oldWidget.post) {
       _currentPost = widget.post;
     }
@@ -46,7 +41,6 @@ class _PostCardState extends State<PostCard> {
   Widget build(BuildContext context) {
     return MultiBlocListener(
       listeners: [
-        // Likes listener: ONLY update boolean (icon). Counts must come from PostActionsBloc.
         BlocListener<LikesBloc, LikesState>(
           listenWhen: (prev, curr) {
             if (curr is LikeUpdated && curr.postId == _currentPost.id)
@@ -64,7 +58,6 @@ class _PostCardState extends State<PostCard> {
               );
               setState(() {
                 _currentPost = _currentPost.copyWith(isLiked: state.isLiked);
-                // DO NOT touch likesCount here — PostActionsBloc is authoritative for counts.
               });
             } else if (state is LikeError &&
                 state.postId == _currentPost.id &&
@@ -76,13 +69,10 @@ class _PostCardState extends State<PostCard> {
                 _currentPost = _currentPost.copyWith(
                   isLiked: state.previousState,
                 );
-                // DO NOT touch likesCount here; PostActionsBloc should handle reverting counts centrally.
               });
             }
           },
         ),
-
-        // Favorites listener: ONLY update boolean. Counts come from PostActionsBloc.
         BlocListener<FavoritesBloc, FavoritesState>(
           listenWhen: (prev, curr) {
             if (curr is FavoriteUpdated && curr.postId == _currentPost.id) {
@@ -101,7 +91,6 @@ class _PostCardState extends State<PostCard> {
                 _currentPost = _currentPost.copyWith(
                   isFavorited: state.isFavorited,
                 );
-                // DO NOT mutate favoritesCount here.
               });
             } else if (state is FavoriteError &&
                 state.postId == _currentPost.id &&
@@ -110,13 +99,10 @@ class _PostCardState extends State<PostCard> {
                 _currentPost = _currentPost.copyWith(
                   isFavorited: state.previousState,
                 );
-                // DO NOT mutate favoritesCount here.
               });
             }
           },
         ),
-
-        // Listener for the central optimistic update (counts/booleans)
         BlocListener<PostActionsBloc, PostActionsState>(
           listenWhen: (prev, curr) =>
               curr is PostOptimisticallyUpdated &&
@@ -127,36 +113,67 @@ class _PostCardState extends State<PostCard> {
                 'PostCard received PostOptimisticallyUpdated for post: ${state.post.id}. Updating post.',
               );
               setState(() {
-                // Update the local PostEntity with the one carrying the new counts/booleans
                 _currentPost = state.post;
               });
             }
           },
         ),
       ],
-      child: Card(
-        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
-        elevation: 2,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            PostHeader(post: _currentPost, currentUserId: widget.userId),
-            if (_currentPost.content != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
-                  vertical: 8,
-                ),
-                child: Text(_currentPost.content!),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+        child: PhysicalModel(
+          color: Colors.transparent,
+          elevation: 8,
+          shadowColor: Colors.black.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Theme.of(context).colorScheme.surface,
+                  Theme.of(context).colorScheme.surface.withOpacity(0.9),
+                ],
               ),
-            if (_currentPost.mediaUrl != null) const SizedBox(height: 8),
-            if (_currentPost.mediaUrl != null)
-              PostMedia(post: _currentPost, height: _kMediaDefaultHeight),
-            const SizedBox(height: 8),
-            PostActions(post: _currentPost, userId: widget.userId),
-            const SizedBox(height: 8),
-          ],
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+                width: 1,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  PostHeader(post: _currentPost, currentUserId: widget.userId),
+                  if (_currentPost.content != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20.0,
+                        vertical: 12,
+                      ),
+                      child: Text(
+                        _currentPost.content!,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          height: 1.5,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.8),
+                        ),
+                      ),
+                    ),
+                  if (_currentPost.mediaUrl != null) const SizedBox(height: 4),
+                  if (_currentPost.mediaUrl != null)
+                    PostMedia(post: _currentPost, height: _kMediaDefaultHeight),
+                  const SizedBox(height: 12),
+                  PostActions(post: _currentPost, userId: widget.userId),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

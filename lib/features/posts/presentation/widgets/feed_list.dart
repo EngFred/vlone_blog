@@ -27,22 +27,68 @@ class FeedList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (posts.isEmpty) return const SizedBox.shrink();
 
-    return ListView.builder(
+    return CustomScrollView(
       key: const PageStorageKey('feed_list'),
       controller: controller,
       cacheExtent: 1500.0,
-      itemCount: posts.length + (hasMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == posts.length) {
-          // Loading footer if hasMore
-          if (loadMoreError != null) {
-            return ListTile(title: Text(loadMoreError!), onTap: onLoadMore);
-          }
-          return const ListTile(title: Center(child: LoadingIndicator()));
-        }
-        final post = posts[index];
-        return PostCard(key: ValueKey(post.id), post: post, userId: userId);
-      },
+      slivers: [
+        SliverList(
+          delegate: SliverChildBuilderDelegate((context, index) {
+            final post = posts[index];
+            return PostCard(key: ValueKey(post.id), post: post, userId: userId);
+          }, childCount: posts.length),
+        ),
+        if (hasMore) SliverToBoxAdapter(child: _buildLoadMoreFooter(context)),
+      ],
+    );
+  }
+
+  Widget _buildLoadMoreFooter(BuildContext context) {
+    if (loadMoreError != null) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.errorContainer,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            Text(
+              loadMoreError!,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            FilledButton.tonal(
+              onPressed: onLoadMore,
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+              child: const Text('Try Again'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: const Center(
+        child: Column(
+          children: [
+            LoadingIndicator(size: 20),
+            SizedBox(height: 12),
+            Text(
+              'Loading more posts...',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/debouncer.dart';
+import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
@@ -28,7 +29,7 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
   VideoPlayerController? _videoController;
   bool _initialized = false;
   bool _isDisposed = false;
-  bool _isInitializing = false; //Prevent double initialization
+  bool _isInitializing = false;
   final VideoControllerManager _videoManager = VideoControllerManager();
 
   @override
@@ -115,7 +116,6 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
     } catch (e) {
       AppLogger.error('Failed to initialize video controller: $e');
       _isInitializing = false;
-      // silently fall back to thumbnail
       if (mounted) setState(() {});
     }
   }
@@ -158,11 +158,40 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
     }
   }
 
+  Widget _buildPlayPauseOverlay() {
+    final isPlaying =
+        _videoController != null &&
+        _initialized &&
+        VideoPlaybackManager.isPlaying(_videoController!);
+
+    return AnimatedOpacity(
+      opacity: isPlaying ? 0.0 : 1.0,
+      duration: const Duration(milliseconds: 300),
+      child: Container(
+        color: Colors.black.withOpacity(0.3),
+        child: Center(
+          child: Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.6),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withOpacity(0.8),
+                width: 2,
+              ),
+            ),
+            child: Icon(Icons.play_arrow, color: Colors.white, size: 40),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
-    // throttle taps when initialized
     final onTapHandler = _initialized
         ? () => Debouncer.instance.throttle(
             'reel_toggle_${widget.post.id}',
@@ -186,45 +215,55 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
                   child: VideoPlayer(_videoController!),
                 ),
               )
-            else
-              (widget.post.thumbnailUrl != null)
-                  ? CachedNetworkImage(
-                      imageUrl: widget.post.thumbnailUrl!,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
-                    )
-                  : Container(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
-                      child: const Center(
-                        child: Icon(
-                          Icons.play_circle_outline,
-                          size: 64,
-                          color: Colors.white54,
-                        ),
-                      ),
+            else if (widget.post.thumbnailUrl != null)
+              CachedNetworkImage(
+                imageUrl: widget.post.thumbnailUrl!,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                placeholder: (context, url) => Container(
+                  color: Colors.grey[900],
+                  child: const Center(child: LoadingIndicator(size: 24)),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  color: Colors.grey[900],
+                  child: const Center(
+                    child: Icon(
+                      Icons.error_outline,
+                      color: Colors.white54,
+                      size: 48,
                     ),
+                  ),
+                ),
+              )
+            else
+              Container(
+                color: Colors.grey[900],
+                child: const Center(
+                  child: Icon(
+                    Icons.videocam_outlined,
+                    size: 64,
+                    color: Colors.white54,
+                  ),
+                ),
+              ),
 
-            // If initializing show spinner (higher priority)
+            // Loading indicator
             if (_isInitializing)
               const Center(
                 child: SizedBox(
                   width: 44,
                   height: 44,
-                  child: CircularProgressIndicator(color: Colors.white),
-                ),
-              )
-            // Play icon overlay (only show when NOT initializing and paused)
-            else if (!_initialized ||
-                (_videoController != null &&
-                    !VideoPlaybackManager.isPlaying(_videoController!)))
-              const Center(
-                child: Icon(
-                  Icons.play_circle_fill,
-                  size: 80.0,
-                  color: Colors.white,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 3,
+                  ),
                 ),
               ),
+
+            // Play/pause overlay
+            if (_initialized && _videoController != null)
+              _buildPlayPauseOverlay(),
           ],
         ),
       ),

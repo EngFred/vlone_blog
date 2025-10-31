@@ -18,31 +18,70 @@ class PostDetailsContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final double detailsMediaHeight = MediaQuery.of(context).size.height * 0.5;
-    return Column(
-      // Updated: Use Column instead of SingleChildScrollView to avoid nested scroll
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        PostHeader(
-          post: post,
-          currentUserId: userId, // New: Pass for conditional delete
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: PhysicalModel(
+        color: Colors.transparent,
+        elevation: 8,
+        shadowColor: Colors.black.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Theme.of(context).colorScheme.surface,
+                Theme.of(context).colorScheme.surface.withOpacity(0.9),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+              width: 1,
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                PostHeader(post: post, currentUserId: userId),
+                if (post.content != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20.0,
+                      vertical: 12,
+                    ),
+                    child: Text(
+                      post.content!,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        height: 1.5,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withOpacity(0.8),
+                      ),
+                    ),
+                  ),
+                if (post.mediaUrl != null) const SizedBox(height: 4),
+                if (post.mediaUrl != null)
+                  PostMedia(
+                    post: post,
+                    height: detailsMediaHeight,
+                    useVisibilityDetector: false,
+                  ),
+                PostActions(
+                  post: post,
+                  userId: userId,
+                  onCommentTap: onCommentTap,
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
         ),
-        if (post.content != null)
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(post.content!),
-          ),
-        if (post.mediaUrl != null)
-          // IMPORTANT: on the Post Details page we explicitly disable
-          // the visibility detector so scrolling through comments below
-          // won't pause the video.
-          PostMedia(
-            post: post,
-            height: detailsMediaHeight,
-            useVisibilityDetector: false, // <--- key change
-          ),
-        PostActions(post: post, userId: userId, onCommentTap: onCommentTap),
-        const Divider(),
-      ],
+      ),
     );
   }
 }

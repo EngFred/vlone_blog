@@ -39,6 +39,9 @@ dependencies:
   video_trimmer: ^5.0.0
   flutter_launcher_icons: ^0.14.4
   ffmpeg_kit_flutter_new: ^4.1.0
+  dio: ^5.9.0
+  device_info_plus: ^12.2.0
+  image_gallery_saver_plus: ^4.0.1
 
 dev_dependencies:
   flutter_test:

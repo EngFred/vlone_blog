@@ -28,7 +28,7 @@ class _ReelsPageState extends State<ReelsPage>
   bool _isPageChanging = false;
   bool _hasMoreReels = true;
   bool _isLoadingMore = false;
-  bool _isPageVisible = true; // NEW: Local state to track page visibility
+  bool _isPageVisible = true;
 
   @override
   bool get wantKeepAlive => true;
@@ -41,7 +41,6 @@ class _ReelsPageState extends State<ReelsPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userId = context.read<AuthBloc>().cachedUser?.id;
       if (userId != null) {
-        // 💡 Dispatch StartReelsRealtime now that we are using the dedicated BLoC
         context.read<ReelsBloc>().add(const StartReelsRealtime());
       } else {
         AppLogger.warning(
@@ -50,8 +49,6 @@ class _ReelsPageState extends State<ReelsPage>
       }
     });
   }
-
-  // REMOVED: didUpdateWidget (no longer needed for isVisible prop)
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -68,7 +65,6 @@ class _ReelsPageState extends State<ReelsPage>
     final oldIds = _posts.map((p) => p.id).toSet();
     final newIds = newPosts.map((p) => p.id).toSet();
 
-    // Simple update logic: replace all for now, but preserve position if possible
     final shouldJumpToStart =
         newIds.isNotEmpty && !oldIds.contains(newIds.first);
 
@@ -100,7 +96,6 @@ class _ReelsPageState extends State<ReelsPage>
 
     if (!_hasLoadedOnce) return;
 
-    // ⚠️ CHANGE 2: Dispatch LoadMoreReelsEvent to ReelsBloc
     if (index >= _posts.length - 2 && _hasMoreReels && !_isLoadingMore) {
       final currentUserId = context.read<AuthBloc>().cachedUser?.id;
       if (currentUserId != null) {
@@ -110,16 +105,81 @@ class _ReelsPageState extends State<ReelsPage>
     }
   }
 
+  Widget _buildLoadingReel() {
+    return Container(
+      color: Colors.black,
+      child: Stack(
+        children: [
+          Center(
+            child: Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: const LoadingIndicator(size: 24),
+            ),
+          ),
+          Positioned(
+            bottom: 120,
+            left: 20,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 120,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: 200,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final currentUserId = context.select((AuthBloc b) => b.cachedUser?.id);
     if (currentUserId == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              LoadingIndicator(size: 32),
+              const SizedBox(height: 16),
+              Text(
+                'Loading reels...',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.8),
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
     return Scaffold(
+      backgroundColor: Colors.black,
       body: VisibilityDetector(
-        // NEW: Wrap body to detect visibility changes
         key: const Key('reels_page_visibility'),
         onVisibilityChanged: (VisibilityInfo info) {
           final visibleFraction = info.visibleFraction;
@@ -129,14 +189,11 @@ class _ReelsPageState extends State<ReelsPage>
             setState(() => _isPageVisible = false);
           } else if (visibleFraction > 0 && !_isPageVisible) {
             AppLogger.info('ReelsPage visible - resuming video');
-            setState(
-              () => _isPageVisible = true,
-            ); // Triggers rebuild to resume current reel
+            setState(() => _isPageVisible = true);
           }
         },
         child: MultiBlocListener(
           listeners: [
-            // ⚠️ CHANGE 3: Listen to ReelsBloc and ReelsState
             BlocListener<ReelsBloc, ReelsState>(
               listener: (context, state) {
                 if (state is ReelsLoaded) {
@@ -149,31 +206,23 @@ class _ReelsPageState extends State<ReelsPage>
                     _hasLoadedOnce = true;
                     _isLoadingMore = false;
                   }
-                }
-                // ⚠️ REMOVED: PostCreated/RealtimePostUpdate/PostDeleted handling
-                // This is now handled internally by ReelsBloc and results in a ReelsLoaded state.
-                else if (state is ReelsLoadMoreError) {
+                } else if (state is ReelsLoadMoreError) {
                   AppLogger.error('Load more reels error: ${state.message}');
                   if (mounted) setState(() => _isLoadingMore = false);
                 }
-                // ReelsLoadingMore/ReelsLoading/ReelsInitial are primarily used for UI checks in the Builder/Watcher
               },
             ),
-            // LikesBloc: Revert optimistic update on error
             BlocListener<LikesBloc, LikesState>(
               listener: (context, state) {
                 if (state is LikeSuccess) {
                   final idx = _posts.indexWhere((p) => p.id == state.postId);
                   if (idx != -1 && mounted) {
                     final old = _posts[idx];
-                    // The count is updated by the RealtimePostUpdate listener in ReelsBloc,
-                    // so we only update the local `isLiked` state optimistically here.
                     final updated = old.copyWith(isLiked: state.isLiked);
                     setState(() => _posts[idx] = updated);
                   }
                 } else if (state is LikeError && state.shouldRevert) {
                   AppLogger.error('Like error in ReelsPage: ${state.message}');
-                  // Revert local list state based on delta
                   final idx = _posts.indexWhere((p) => p.id == state.postId);
                   if (idx != -1 && mounted) {
                     final old = _posts[idx];
@@ -186,8 +235,6 @@ class _ReelsPageState extends State<ReelsPage>
                     );
                     setState(() => _posts[idx] = updated);
                   }
-
-                  // ⚠️ CHANGE 4: Revert central optimistic update by dispatching to ReelsBloc
                   context.read<ReelsBloc>().add(
                     UpdateReelsPostOptimistic(
                       postId: state.postId,
@@ -200,7 +247,6 @@ class _ReelsPageState extends State<ReelsPage>
                 }
               },
             ),
-            // FavoritesBloc: Revert optimistic update on error
             BlocListener<FavoritesBloc, FavoritesState>(
               listener: (context, state) {
                 if (state is FavoriteSuccess) {
@@ -216,7 +262,6 @@ class _ReelsPageState extends State<ReelsPage>
                   AppLogger.error(
                     'Favorite error in ReelsPage: ${state.message}',
                   );
-                  // Revert local list state based on delta
                   final idx = _posts.indexWhere((p) => p.id == state.postId);
                   if (idx != -1 && mounted) {
                     final old = _posts[idx];
@@ -229,8 +274,6 @@ class _ReelsPageState extends State<ReelsPage>
                     );
                     setState(() => _posts[idx] = updated);
                   }
-
-                  // ⚠️ CHANGE 5: Revert central optimistic update by dispatching to ReelsBloc
                   context.read<ReelsBloc>().add(
                     UpdateReelsPostOptimistic(
                       postId: state.postId,
@@ -245,28 +288,26 @@ class _ReelsPageState extends State<ReelsPage>
             ),
           ],
           child: RefreshIndicator(
+            backgroundColor: Colors.black,
+            color: Colors.white,
             onRefresh: () async {
               AppLogger.info('Refreshing reels for user: $currentUserId');
-              // ⚠️ CHANGE 6: Use ReelsBloc
               final bloc = context.read<ReelsBloc>();
               bloc.add(RefreshReelsEvent(currentUserId));
-              // ⚠️ CHANGE 7: Wait for ReelsLoaded or ReelsError
               await bloc.stream.firstWhere(
                 (state) => state is ReelsLoaded || state is ReelsError,
               );
             },
             child: Builder(
               builder: (context) {
-                // ⚠️ CHANGE 8: Watch ReelsBloc
                 final reelsState = context.watch<ReelsBloc>().state;
 
                 if (_hasLoadedOnce) {
                   if (_posts.isEmpty) {
                     return EmptyStateWidget(
-                      message: 'No reels yet. Create a video post!',
-                      icon: Icons.video_library,
-                      actionText: 'Check Again',
-                      // ⚠️ CHANGE 9: Use ReelsBloc and GetReelsEvent
+                      message: 'No reels yet',
+                      icon: Icons.video_library_outlined,
+                      actionText: 'Refresh',
                       onRetry: () => context.read<ReelsBloc>().add(
                         GetReelsEvent(currentUserId),
                       ),
@@ -280,7 +321,7 @@ class _ReelsPageState extends State<ReelsPage>
                     physics: const PageScrollPhysics(),
                     itemBuilder: (context, index) {
                       if (_hasMoreReels && index == _posts.length) {
-                        return const Center(child: LoadingIndicator());
+                        return _buildLoadingReel();
                       }
                       final post = _posts[index];
                       final isCurrentPage = index == _currentPage;
@@ -288,9 +329,7 @@ class _ReelsPageState extends State<ReelsPage>
                         key: ValueKey(post.id),
                         post: post,
                         userId: currentUserId,
-                        isActive:
-                            isCurrentPage &&
-                            _isPageVisible, // UPDATED: Use local _isPageVisible
+                        isActive: isCurrentPage && _isPageVisible,
                         isPrevious: index == _currentPage - 1,
                         isNext: index == _currentPage + 1,
                       );
@@ -298,19 +337,17 @@ class _ReelsPageState extends State<ReelsPage>
                   );
                 }
 
-                // ⚠️ CHANGE 10: Use ReelsBloc states
                 if (reelsState is ReelsLoading || reelsState is ReelsInitial)
-                  return const LoadingIndicator();
+                  return const Center(child: LoadingIndicator(size: 32));
                 if (reelsState is ReelsError) {
                   return CustomErrorWidget(
                     message: reelsState.message,
-                    // ⚠️ CHANGE 11: Use ReelsBloc and GetReelsEvent
                     onRetry: () => context.read<ReelsBloc>().add(
                       GetReelsEvent(currentUserId),
                     ),
                   );
                 }
-                return const LoadingIndicator();
+                return const Center(child: LoadingIndicator(size: 32));
               },
             ),
           ),
@@ -325,7 +362,6 @@ class _ReelsPageState extends State<ReelsPage>
     WidgetsBinding.instance.removeObserver(this);
     VideoPlaybackManager.pause();
     _pageController.dispose();
-    // 💡 Dispatch StopReelsRealtime
     context.read<ReelsBloc>().add(const StopReelsRealtime());
     super.dispose();
   }

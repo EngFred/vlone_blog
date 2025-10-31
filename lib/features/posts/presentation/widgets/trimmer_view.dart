@@ -213,7 +213,7 @@ class _TrimmerViewState extends State<TrimmerView>
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Live duration indicator / warning
-                _buildDurationIndicator(context, trimHighlightColor),
+                _buildEnhancedDurationIndicator(context, trimHighlightColor),
                 const SizedBox(height: 12),
                 // Trimmer scrubber
                 TrimViewer(
@@ -293,181 +293,152 @@ class _TrimmerViewState extends State<TrimmerView>
     );
   }
 
-  Widget _buildDurationIndicator(BuildContext context, Color highlightColor) {
+  // Add this enhanced duration indicator method to replace the existing one:
+  Widget _buildEnhancedDurationIndicator(
+    BuildContext context,
+    Color highlightColor,
+  ) {
     final theme = Theme.of(context);
 
     final selectedTimeText = _formatMsToTime(_trimDurationMs);
     final maxTimeText = _formatMsToTime(_maxDurationMs);
 
-    // Message and icon for the state
     final bool showWarning = _isOverMax || _isTooShort;
     final IconData stateIcon = _isOverMax
-        ? Icons.error_outline
-        : (_isTooShort ? Icons.info_outline : Icons.check_circle_outline);
+        ? Icons.error_outline_rounded
+        : (_isTooShort
+              ? Icons.info_outline_rounded
+              : Icons.check_circle_rounded);
 
-    // More opaque background for both valid & invalid states so text is readable on light videos.
-    // Valid: semi-opaque surfaceVariant; Invalid: slightly stronger opacity.
-    final Color bgColor = showWarning
-        ? theme.colorScheme.surfaceVariant.withOpacity(0.46)
-        : theme.colorScheme.surfaceVariant.withOpacity(0.36);
-
-    final Color pillColor = _isOverMax
+    final Color statusColor = _isOverMax
         ? theme.colorScheme.error
-        : theme.colorScheme.primary;
+        : (_isTooShort ? Colors.orange : theme.colorScheme.primary);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOut,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    return Container(
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.black.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: statusColor.withOpacity(0.3), width: 1),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left: icon + messages
-          Expanded(
-            child: Row(
-              children: [
-                // round icon
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: pillColor.withOpacity(0.22),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    stateIcon,
-                    size: 18,
-                    color: _isOverMax
-                        ? theme.colorScheme.error
-                        : theme.colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                // Text area
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // top row: selected / max
-                      RichText(
-                        text: TextSpan(
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: Colors.white70,
-                          ),
-                          children: [
-                            TextSpan(text: 'Selection: '),
-                            TextSpan(
-                              text: selectedTimeText,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                            ),
-                            TextSpan(text: '  •  Max: '),
-                            TextSpan(
-                              text: maxTimeText,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      // status message
-                      Builder(
-                        builder: (context) {
-                          if (_isOverMax) {
-                            return Text(
-                              'Selected clip is too long — trim to $maxTimeText or shorter to save.',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.error,
-                              ),
-                            );
-                          } else if (_isTooShort) {
-                            return Text(
-                              'Select a clip (length must be greater than 0).',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: Colors.white70,
-                              ),
-                            );
-                          } else {
-                            return Text(
-                              'Selection good — ready to save.',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: Colors.white70,
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Right: Visual pill showing percentage of allowed length and save affordance
-          const SizedBox(width: 12),
-          Column(
-            mainAxisSize: MainAxisSize.min,
+          // Header Row
+          Row(
             children: [
-              // numeric badge: positive 0..100 or negative -0..-100 for overflow
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(stateIcon, size: 16, color: statusColor),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _isOverMax
+                      ? 'Clip Too Long'
+                      : (_isTooShort ? 'Clip Too Short' : 'Ready to Save'),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
+                  horizontal: 12,
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: _isOverMax
-                      ? theme.colorScheme.error.withOpacity(0.22)
-                      : highlightColor.withOpacity(0.22),
-                  borderRadius: BorderRadius.circular(999),
+                  color: statusColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   _buildPercentText(),
                   style: TextStyle(
-                    color: _isOverMax
-                        ? theme.colorScheme.error
-                        : highlightColor,
+                    color: statusColor,
                     fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              // small save affordance (disabled/enabled)
-              SizedBox(
-                height: 32,
-                child: OutlinedButton(
-                  onPressed: _isSaveEnabled && !_progressVisibility
-                      ? _saveVideo
-                      : null,
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(
-                      color: _isSaveEnabled ? highlightColor : Colors.white12,
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 0,
-                    ),
-                    minimumSize: const Size(0, 32),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(
-                    'Save',
-                    style: TextStyle(
-                      color: _isSaveEnabled ? highlightColor : Colors.white38,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    fontSize: 12,
                   ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 12),
+
+          // Time Information
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Selected Duration',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  Text(
+                    selectedTimeText,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Maximum Allowed',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  Text(
+                    maxTimeText,
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          // Progress Bar
+          if (_maxDurationMs > 0)
+            Column(
+              children: [
+                const SizedBox(height: 12),
+                LinearProgressIndicator(
+                  value: _trimDurationMs / _maxDurationMs,
+                  backgroundColor: Colors.white.withOpacity(0.2),
+                  color: statusColor,
+                  minHeight: 4,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ],
+            ),
+
+          // Status Message
+          if (showWarning)
+            Column(
+              children: [
+                const SizedBox(height: 8),
+                Text(
+                  _isOverMax
+                      ? 'Please trim the video to $maxTimeText or shorter'
+                      : 'Select a portion of the video to continue',
+                  style: TextStyle(color: statusColor, fontSize: 12),
+                ),
+              ],
+            ),
         ],
       ),
     );

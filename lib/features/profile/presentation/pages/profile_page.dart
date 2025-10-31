@@ -28,29 +28,24 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _currentUserId;
   final List<PostEntity> _userPosts = [];
   bool _hasMoreUserPosts = true;
-  // Initialize to true for the *first* load to ensure loading indicator is shown
   bool _isUserPostsLoading = true;
   bool _isLoadingMoreUserPosts = false;
   String? _userPostsError;
   String? _loadMoreError;
   final ScrollController _scrollController = ScrollController();
   static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
-
-  // NEW: guard to prevent triggering load-more before initial load completes
   bool _hasLoadedOnce = false;
 
   @override
   void initState() {
     super.initState();
     _setupScrollListener();
-    // 1. Get the ID once in initState.
     final authState = context.read<AuthBloc>().state;
     if (authState is AuthAuthenticated) {
       _currentUserId = authState.user.id;
     } else {
       _currentUserId = null;
     }
-    // 2. Guarantee initialization after the frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _initializeProfile();
@@ -58,33 +53,27 @@ class _ProfilePageState extends State<ProfilePage> {
     });
   }
 
-  // Simplified and renamed to reflect single purpose
   void _initializeProfile() {
     if (_currentUserId == null) {
       AppLogger.error(
         'ProfilePage: User is not authenticated. Cannot initialize.',
       );
-      return; // Early exit if no user ID
+      return;
     }
 
-    // 💡 Update local state for immediate loading feedback
     if (_userPosts.isEmpty && _isUserPostsLoading == false) {
       setState(() {
         _isUserPostsLoading = true;
       });
     }
 
-    // Clear local lists for a fresh load (posts are rebuilt from BLoC state)
     _userPosts.clear();
     _userPostsError = null;
     _loadMoreError = null;
     _hasMoreUserPosts = true;
-    _hasLoadedOnce = false; // reset guard for fresh load
+    _hasLoadedOnce = false;
 
-    // Dispatch events to load data for the current user's ID
     context.read<ProfileBloc>().add(GetProfileDataEvent(_currentUserId!));
-
-    //Dispatch to UserPostsBloc
     context.read<UserPostsBloc>().add(
       RefreshUserPostsEvent(
         profileUserId: _currentUserId!,
@@ -104,14 +93,12 @@ class _ProfilePageState extends State<ProfilePage> {
           'load_more_user_posts',
           _loadMoreDebounce,
           () {
-            // NEW: do not attempt load-more until initial load completed
             if (!_hasLoadedOnce) return;
             if (_scrollController.position.pixels >=
                     _scrollController.position.maxScrollExtent - 200 &&
                 _hasMoreUserPosts &&
                 !_isLoadingMoreUserPosts) {
               setState(() => _isLoadingMoreUserPosts = true);
-              // ✅ CHANGE: Dispatch to UserPostsBloc
               context.read<UserPostsBloc>().add(LoadMoreUserPostsEvent());
             }
           },
@@ -126,59 +113,83 @@ class _ProfilePageState extends State<ProfilePage> {
     super.dispose();
   }
 
-  // ❌ REMOVED: _handleRealtimePostUpdate (The BLoC should handle this)
-  // ❌ REMOVED: _applyLikeUpdate (The PostActionsBloc update should be sufficient)
-  // ❌ REMOVED: _revertLike (The PostActionsBloc update should be sufficient)
-  // ❌ REMOVED: _applyFavoriteUpdate (The PostActionsBloc update should be sufficient)
-  // ❌ REMOVED: _revertFavorite (The PostActionsBloc update should be sufficient)
-
   void _showLogoutConfirmationDialog() {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
         final theme = Theme.of(dialogContext);
-        return AlertDialog(
+        return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(20),
           ),
-          title: Row(
-            children: [
-              const Icon(Icons.warning, color: Colors.orange),
-              const SizedBox(width: 8),
-              const Text('Logout Confirmation'),
-            ],
-          ),
-          content: const Text(
-            'Are you sure you want to log out? You will need to sign in again to access your account.',
-            style: TextStyle(fontSize: 16),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-              ),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(20),
             ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                context.read<AuthBloc>().add(LogoutEvent());
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.error,
-                foregroundColor: theme.colorScheme.onError,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.orange,
+                  size: 48,
                 ),
-              ),
-              child: const Text(
-                'Logout',
-                style: TextStyle(color: Colors.white),
-              ),
+                const SizedBox(height: 16),
+                Text(
+                  'Logout Confirmation',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Are you sure you want to log out? You will need to sign in again to access your account.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop();
+                          context.read<AuthBloc>().add(LogoutEvent());
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: theme.colorScheme.error,
+                          foregroundColor: theme.colorScheme.onError,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: const Text('Logout'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
@@ -187,8 +198,34 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     if (_currentUserId == null) {
-      AppLogger.error('ProfilePage: Rendering Error - Unauthenticated User');
-      return const Center(child: Text('Error: User not logged in.'));
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 48,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Authentication Required',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please sign in to view your profile',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withOpacity(0.6),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
     return BlocConsumer<AuthBloc, AuthState>(
       listener: (context, state) {
@@ -199,15 +236,34 @@ class _ProfilePageState extends State<ProfilePage> {
       builder: (context, authState) {
         final isLoggingOut = authState is AuthLoading;
         return Scaffold(
+          backgroundColor: Theme.of(context).colorScheme.background,
           appBar: AppBar(
-            title: const Text('My Profile'),
+            title: const Text(
+              'My Profile',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+            ),
             centerTitle: false,
-            backgroundColor: Theme.of(context).colorScheme.surface,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 4,
             actions: [
+              Container(
+                margin: const EdgeInsets.only(right: 8),
+                child: IconButton(
+                  onPressed: () => context.push(
+                    '${Constants.profileRoute}/$_currentUserId/edit',
+                  ),
+                  icon: Icon(
+                    Icons.edit_outlined,
+                    color: Theme.of(context).colorScheme.onBackground,
+                  ),
+                  tooltip: 'Edit Profile',
+                ),
+              ),
               PopupMenuButton<ProfileMenuOption>(
                 icon: Icon(
                   Icons.more_vert,
-                  color: Theme.of(context).colorScheme.onSurface,
+                  color: Theme.of(context).colorScheme.onBackground,
                 ),
                 onSelected: (value) {
                   switch (value) {
@@ -229,8 +285,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       value: ProfileMenuOption.edit,
                       child: Row(
                         children: [
-                          Icon(Icons.edit, color: iconColor),
-                          const SizedBox(width: 8),
+                          Icon(Icons.edit, color: iconColor, size: 20),
+                          const SizedBox(width: 12),
                           Text('Edit Profile', style: textStyle),
                         ],
                       ),
@@ -239,8 +295,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       value: ProfileMenuOption.logout,
                       child: Row(
                         children: [
-                          Icon(Icons.logout, color: iconColor),
-                          const SizedBox(width: 8),
+                          Icon(Icons.logout, color: iconColor, size: 20),
+                          const SizedBox(width: 12),
                           Text('Logout', style: textStyle),
                         ],
                       ),
@@ -257,7 +313,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   BlocListener<ProfileBloc, ProfileState>(
                     listener: (context, state) {
                       if (state is ProfileDataLoaded) {
-                        // FIX: Refresh posts if the loaded profile ID is NOT the current user's ID.
                         if (state.userId != _currentUserId) {
                           AppLogger.info(
                             'ProfilePage: ProfileBloc updated to foreign user (${state.userId}). Re-initializing.',
@@ -271,12 +326,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       }
                     },
                   ),
-
-                  // ✅ CHANGE: Listen to UserPostsBloc
                   BlocListener<UserPostsBloc, UserPostsState>(
                     listener: (context, state) {
                       if (state is UserPostsLoaded) {
-                        // Check for foreign user state before updating local state
                         if (state.profileUserId != null &&
                             state.profileUserId != _currentUserId) {
                           AppLogger.info(
@@ -288,20 +340,18 @@ class _ProfilePageState extends State<ProfilePage> {
                               currentUserId: _currentUserId!,
                             ),
                           );
-                          return; // Stop processing this event.
+                          return;
                         }
-                        // Normal load/update logic for the correct user:
                         if (mounted) {
                           setState(() {
                             _userPosts.clear();
                             _userPostsError = null;
                             _userPosts.addAll(state.posts);
                             _hasMoreUserPosts = state.hasMore;
-                            _isUserPostsLoading = false; // FINISHED LOADING
+                            _isUserPostsLoading = false;
                             _isLoadingMoreUserPosts = false;
                             _loadMoreError = null;
-                            _hasLoadedOnce =
-                                true; // NEW: initial load completed
+                            _hasLoadedOnce = true;
                           });
                           AppLogger.info(
                             'ProfilePage: Loaded ${_userPosts.length} posts for $_currentUserId',
@@ -310,7 +360,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       } else if (state is UserPostsError) {
                         if (state.profileUserId != null &&
                             state.profileUserId != _currentUserId) {
-                          return; // Ignore foreign user errors
+                          return;
                         }
                         if (mounted) {
                           setState(() {
@@ -322,7 +372,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       } else if (state is UserPostsLoading) {
                         if (state.profileUserId != null &&
                             state.profileUserId != _currentUserId) {
-                          return; // Ignore foreign user loading
+                          return;
                         }
                         if (mounted) {
                           setState(() => _isUserPostsLoading = true);
@@ -330,7 +380,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       } else if (state is UserPostsLoadMoreError) {
                         if (state.profileUserId != null &&
                             state.profileUserId != _currentUserId)
-                          return; // Ignore foreign user errors
+                          return;
                         if (mounted) {
                           setState(() {
                             _loadMoreError = state.message;
@@ -338,20 +388,14 @@ class _ProfilePageState extends State<ProfilePage> {
                           });
                         }
                       }
-                      // ❌ REMOVED: RealtimePostUpdate listener (The BLoC should handle this)
-                      // ❌ REMOVED: PostCreated listener (The PostActionsBloc/UserPostsBloc should coordinate this)
-                      // ❌ REMOVED: PostDeleted listener (The PostActionsBloc/UserPostsBloc should coordinate this)
                     },
                   ),
-
-                  // ✅ ADDED: Listener for PostActionsBloc to handle post creation/deletion
                   BlocListener<PostActionsBloc, PostActionsState>(
                     listenWhen: (previous, current) =>
                         current is PostCreatedSuccess ||
                         current is PostDeletedSuccess,
                     listener: (context, state) {
                       if (state is PostCreatedSuccess) {
-                        // Only add if created by the current user
                         if (state.post.userId == _currentUserId) {
                           final exists = _userPosts.any(
                             (p) => p.id == state.post.id,
@@ -361,27 +405,32 @@ class _ProfilePageState extends State<ProfilePage> {
                           }
                         }
                       } else if (state is PostDeletedSuccess) {
-                        // Delegate removal to UserPostsBloc for clean state management
                         context.read<UserPostsBloc>().add(
                           RemovePostFromUserPosts(state.postId),
                         );
-                        // The UserPostsBloc's state update will remove it from the list.
                       }
-                      // NOTE: We don't need to listen to PostOptimisticallyUpdated here
-                      // because PostCard (the item widget) handles its own optimistic updates.
                     },
                   ),
-
-                  // 💡 NOTE: We no longer need the detailed LikesBloc/FavoritesBloc listeners
-                  // because we removed the manual local list mutation (`_applyLikeUpdate`, etc.).
-                  // The `PostCard` widget now relies solely on its own inner optimistic update
-                  // mechanism (listening to PostActionsBloc) and the data passed in its constructor
-                  // (which should be eventually refreshed from the list BLoC).
                 ],
                 child: BlocBuilder<ProfileBloc, ProfileState>(
                   builder: (context, state) {
                     if (state is ProfileLoading || state is ProfileInitial) {
-                      return const Center(child: LoadingIndicator());
+                      return const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            LoadingIndicator(size: 32),
+                            SizedBox(height: 16),
+                            Text(
+                              'Loading profile...',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
                     }
                     if (state is ProfileError) {
                       return CustomErrorWidget(
@@ -401,14 +450,12 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                           );
                           if (mounted) {
-                            // Set local state variables for immediate UI feedback
                             setState(() {
                               _userPosts.clear();
                               _userPostsError = null;
                               _hasMoreUserPosts = true;
                               _isUserPostsLoading = true;
-                              _hasLoadedOnce =
-                                  false; // reset guard for manual refresh
+                              _hasLoadedOnce = false;
                             });
                           }
                         },
@@ -438,7 +485,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                     _hasLoadedOnce = false;
                                   });
                                   context.read<UserPostsBloc>().add(
-                                    // Use RefreshUserPostsEvent on retry as well
                                     RefreshUserPostsEvent(
                                       profileUserId: _currentUserId!,
                                       currentUserId: _currentUserId!,

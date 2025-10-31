@@ -23,24 +23,35 @@ class MediaPreview extends StatelessWidget {
     required this.onEdit,
   });
 
-  // Helper widget to create a modern, elevated action chip (like a floating button)
   Widget _buildActionChip({
     required BuildContext context,
     required IconData icon,
     required VoidCallback onPressed,
-    required Color buttonColor,
+    required Color backgroundColor,
     required Color iconColor,
+    String? tooltip,
   }) {
-    return Material(
-      color: buttonColor,
-      borderRadius: BorderRadius.circular(10),
-      elevation: 4, // Subtle elevation for a floating look
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.all(6.0),
-          child: Icon(icon, color: iconColor, size: 20),
+    return Container(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, color: iconColor, size: 20),
+        tooltip: tooltip,
+        style: IconButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.all(8),
         ),
       ),
     );
@@ -49,89 +60,153 @@ class MediaPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Use a lighter, semi-transparent color for better contrast against media
-    final floatingControlBgColor = theme.colorScheme.surface.withOpacity(0.8);
+    final floatingControlBgColor = theme.colorScheme.surface.withOpacity(0.9);
     final floatingControlIconColor = theme.colorScheme.onSurface;
 
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // 1. Media Content (Image or Video)
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 400),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: mediaType == 'image'
-                ? Image.file(file, width: double.infinity, fit: BoxFit.cover)
-                : (videoController != null &&
-                      videoController!.value.isInitialized)
-                ? GestureDetector(
-                    onTap: onPlayPause,
-                    child: AspectRatio(
-                      aspectRatio: videoController!.value.aspectRatio,
-                      child: VideoPlayer(videoController!),
-                    ),
-                  )
-                : Container(
-                    height: 200,
-                    color: Colors.black,
-                    child: const Center(child: LoadingIndicator()),
-                  ),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
-        ),
-        // 2. Play/Pause Button (Modernized)
-        if (mediaType == 'video' && !isPlaying)
-          GestureDetector(
-            onTap: onPlayPause,
-            child: Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: floatingControlBgColor,
-                shape: BoxShape.circle,
-                // Add a stronger shadow for a cinematic/prominent play button
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.4),
-                    blurRadius: 15,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Icon(
-                Icons.play_arrow_rounded,
-                color: floatingControlIconColor,
-                size: 48.0, // A larger, more compelling icon
-              ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Media Content
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 400),
+              child: mediaType == 'image'
+                  ? Image.file(file, width: double.infinity, fit: BoxFit.cover)
+                  : (videoController != null &&
+                        videoController!.value.isInitialized)
+                  ? GestureDetector(
+                      onTap: onPlayPause,
+                      child: AspectRatio(
+                        aspectRatio: videoController!.value.aspectRatio,
+                        child: VideoPlayer(videoController!),
+                      ),
+                    )
+                  : Container(
+                      height: 200,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceVariant,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Center(child: LoadingIndicator()),
+                    ),
             ),
           ),
-        // 3. Grouped Edit and Remove Buttons (Modern Pill/Chip Style)
-        Positioned(
-          top: 12, // Slightly offset from the corner
-          right: 12,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Edit Button (Right side, top corner)
-              _buildActionChip(
-                context: context,
-                icon: Icons.edit_rounded,
-                onPressed: onEdit,
-                buttonColor: floatingControlBgColor,
-                iconColor: floatingControlIconColor,
+
+          // Play/Pause Overlay for Video
+          if (mediaType == 'video')
+            Positioned.fill(
+              child: AnimatedOpacity(
+                opacity: isPlaying ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: onPlayPause,
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: floatingControlBgColor,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.4),
+                              blurRadius: 15,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          Icons.play_arrow_rounded,
+                          color: floatingControlIconColor,
+                          size: 40,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(width: 8),
-              // Remove Button (Right side, top corner)
-              _buildActionChip(
-                context: context,
-                icon: Icons.close_rounded,
-                onPressed: onRemove,
-                buttonColor: floatingControlBgColor,
-                iconColor: floatingControlIconColor,
-              ),
-            ],
+            ),
+
+          // Action Buttons
+          Positioned(
+            top: 12,
+            right: 12,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildActionChip(
+                  context: context,
+                  icon: Icons.edit_rounded,
+                  onPressed: onEdit,
+                  backgroundColor: floatingControlBgColor,
+                  iconColor: floatingControlIconColor,
+                  tooltip: 'Edit',
+                ),
+                const SizedBox(width: 8),
+                _buildActionChip(
+                  context: context,
+                  icon: Icons.delete_rounded,
+                  onPressed: onRemove,
+                  backgroundColor: Colors.red.withOpacity(0.9),
+                  iconColor: Colors.white,
+                  tooltip: 'Remove',
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+
+          // Video Duration Indicator
+          if (mediaType == 'video' && videoController != null)
+            Positioned(
+              bottom: 12,
+              left: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _formatDuration(videoController!.value.duration),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+
+    if (hours > 0) {
+      return '${twoDigits(hours)}:${twoDigits(minutes)}:${twoDigits(seconds)}';
+    } else {
+      return '${twoDigits(minutes)}:${twoDigits(seconds)}';
+    }
   }
 }

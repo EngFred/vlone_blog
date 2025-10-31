@@ -6,48 +6,134 @@ class MediaPickerSheet extends StatelessWidget {
 
   const MediaPickerSheet({super.key, required this.onPick});
 
+  Widget _buildOptionTile({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: color),
+        ),
+        title: Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        onTap: onTap,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        tileColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final tileShape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-      side: BorderSide(color: theme.colorScheme.outline.withOpacity(0.5)),
-    );
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Wrap(
-          runSpacing: 10,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10.0, top: 4.0),
-              child: Text(
-                'Add Media',
-                style: theme.textTheme.titleLarge,
-                textAlign: TextAlign.center,
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.outline.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.image_outlined),
-              title: const Text('Pick Image from Gallery'),
-              shape: tileShape,
-              onTap: () {
-                Navigator.pop(context);
-                onPick(ImageSource.gallery, true);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.video_library_outlined),
-              title: const Text('Pick Video from Gallery'),
-              shape: tileShape,
-              onTap: () {
-                Navigator.pop(context);
-                onPick(ImageSource.gallery, false);
-              },
-            ),
-          ],
+              const SizedBox(height: 16),
+              Text(
+                'Add Media',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Choose from your gallery',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Options
+              _buildOptionTile(
+                context: context,
+                icon: Icons.photo_library_rounded,
+                title: 'Photo from Gallery',
+                subtitle: 'Select an image from your photo library',
+                onTap: () {
+                  Navigator.pop(context);
+                  onPick(ImageSource.gallery, true);
+                },
+                color: Colors.green,
+              ),
+              _buildOptionTile(
+                context: context,
+                icon: Icons.video_library_rounded,
+                title: 'Video from Gallery',
+                subtitle: 'Select a video from your library',
+                onTap: () {
+                  Navigator.pop(context);
+                  onPick(ImageSource.gallery, false);
+                },
+                color: Colors.blue,
+              ),
+
+              const SizedBox(height: 16),
+
+              // Cancel Button
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    side: BorderSide(
+                      color: theme.colorScheme.outline.withOpacity(0.3),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  child: Text(
+                    'Cancel',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -28,6 +28,8 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
   bool _hasMore = true;
   DateTime? _lastCreatedAt;
   String? _lastId;
+  // ADDED: Private variable to store the latest unread count from the stream
+  int _latestUnreadCount = 0;
   // RealtimeService (injected)
   final RealtimeService realtimeService;
 
@@ -88,7 +90,8 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         emit(
           NotificationsLoaded(
             notifications: newNotifications,
-            unreadCount: 0,
+            // CHANGED: Use the stored latest count
+            unreadCount: _latestUnreadCount,
             hasMore: _hasMore,
           ),
         );
@@ -179,7 +182,8 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         emit(
           NotificationsLoaded(
             notifications: newNotifications,
-            unreadCount: 0, // Will be updated by unread stream if subscribed
+            // CHANGED: Use the stored latest count
+            unreadCount: _latestUnreadCount,
             hasMore: _hasMore,
           ),
         );
@@ -230,6 +234,8 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         );
       },
       (count) {
+        // ADDED: Store the latest count
+        _latestUnreadCount = count;
         AppLogger.info('Unread count stream updated: $count');
         final currentState = state;
         if (currentState is NotificationsLoaded) {
@@ -272,6 +278,9 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         unreadCount: newUnreadCount,
       ),
     );
+    // Optimistic update of local stored count
+    _latestUnreadCount = newUnreadCount;
+
     final result = await _markAsReadUseCase(event.notificationId);
     result.fold(
       (failure) {
@@ -280,6 +289,7 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         );
         // Revert optimistic update if needed
         emit(currentState);
+        _latestUnreadCount = currentState.unreadCount;
       },
       (_) => AppLogger.info(
         'Notification ${event.notificationId} marked as read via API.',
@@ -300,11 +310,15 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         .map((n) => n.isRead ? n : n.copyWith(isRead: true))
         .toList();
     emit(currentState.copyWith(notifications: updatedList, unreadCount: 0));
+    // Optimistic update of local stored count
+    _latestUnreadCount = 0;
+
     final result = await _markAllAsReadUseCase(NoParams());
     result.fold((failure) {
       AppLogger.error('Failed to mark all as read: ${failure.message}');
       // Revert
       emit(currentState);
+      _latestUnreadCount = currentState.unreadCount;
     }, (_) => AppLogger.info('All notifications marked as read via API.'));
   }
 
@@ -341,6 +355,9 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         if (!deletedItem.isRead) {
           newUnreadCount = (currentState.unreadCount - 1).clamp(0, 9999);
         }
+        // Update local stored count
+        _latestUnreadCount = newUnreadCount;
+
         emit(
           NotificationsLoaded(
             notifications: updatedList,
@@ -389,6 +406,10 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         }
         final newUnreadCount = (currentState.unreadCount - unreadDeletedCount)
             .clamp(0, 9999);
+
+        // Update local stored count
+        _latestUnreadCount = newUnreadCount;
+
         emit(
           NotificationsLoaded(
             notifications: updatedList,

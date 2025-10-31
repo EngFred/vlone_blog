@@ -11,9 +11,7 @@ import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-
 import 'package:vlone_blog_app/features/posts/presentation/bloc/feed/feed_bloc.dart';
-
 import 'package:vlone_blog_app/features/posts/presentation/widgets/feed_list.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/notification_icon_with_badge.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -53,7 +51,6 @@ class _FeedPageState extends State<FeedPage>
         context.read<NotificationsBloc>().add(
           NotificationsSubscribeUnreadCountStream(),
         );
-        // 💡 Ensure StartFeedRealtime is dispatched here if it's not handled by MainPage
         context.read<FeedBloc>().add(const StartFeedRealtime());
       } else if (mounted) {
         AppLogger.warning('User not authenticated in FeedPage');
@@ -93,11 +90,9 @@ class _FeedPageState extends State<FeedPage>
     }
   }
 
-  /// Smart merging strategy: (Logic remains the same)
   void _updatePosts(List<PostEntity> newPosts) {
     if (!mounted) return;
 
-    // Fast path: nothing to do
     if (_posts.isNotEmpty &&
         newPosts.isNotEmpty &&
         _posts.length == newPosts.length &&
@@ -105,7 +100,6 @@ class _FeedPageState extends State<FeedPage>
           _posts.map((p) => p.id).toList(),
           newPosts.map((p) => p.id).toList(),
         )) {
-      // Same IDs in same order; update items in place to preserve scroll offset
       setState(() {
         for (int i = 0; i < newPosts.length; i++) {
           if (_posts[i] != newPosts[i]) _posts[i] = newPosts[i];
@@ -124,11 +118,9 @@ class _FeedPageState extends State<FeedPage>
     final oldIds = _posts.map((p) => p.id).toList();
     final newIds = newPosts.map((p) => p.id).toList();
 
-    // Case A: server returned [old..., tail...] -> append tail
     if (newIds.length >= oldIds.length &&
         listEquals(newIds.sublist(0, oldIds.length), oldIds)) {
       final tail = newPosts.sublist(oldIds.length);
-      // update any changed existing items, then add tail
       setState(() {
         for (int i = 0; i < oldIds.length; i++) {
           if (_posts[i] != newPosts[i]) _posts[i] = newPosts[i];
@@ -138,13 +130,11 @@ class _FeedPageState extends State<FeedPage>
       return;
     }
 
-    // Case B: server returned [head..., old...] -> prepend head
     if (newIds.length >= oldIds.length &&
         listEquals(newIds.sublist(newIds.length - oldIds.length), oldIds)) {
       final headLength = newIds.length - oldIds.length;
       final head = newPosts.sublist(0, headLength);
       setState(() {
-        // Insert head at front and update existing trailing items
         if (head.isNotEmpty) _posts.insertAll(0, head);
         for (int i = 0; i < oldIds.length; i++) {
           final newIndex = headLength + i;
@@ -155,17 +145,15 @@ class _FeedPageState extends State<FeedPage>
       return;
     }
 
-    // Fallback: conservative replacement
     setState(() {
       _posts
         ..clear()
-        ..addAll(newPosts); // Rely on the full list from the BLoC
+        ..addAll(newPosts);
     });
   }
 
   @override
   void dispose() {
-    // 💡 Ensure StopFeedRealtime is dispatched
     context.read<FeedBloc>().add(const StopFeedRealtime());
     _scrollController.dispose();
     super.dispose();
@@ -175,55 +163,71 @@ class _FeedPageState extends State<FeedPage>
   Widget build(BuildContext context) {
     super.build(context);
     if (_userId == null) {
-      return const Scaffold(body: Center(child: LoadingIndicator()));
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              LoadingIndicator(size: 32),
+              const SizedBox(height: 16),
+              Text(
+                'Loading your feed...',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withOpacity(0.6),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.background,
       appBar: AppBar(
         title: const UserGreetingTitle(),
         centerTitle: false,
-        backgroundColor: Theme.of(context).colorScheme.surface,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 4,
         actions: [const NotificationIconWithBadge()],
       ),
       body: MultiBlocListener(
         listeners: [
           BlocListener<FeedBloc, FeedState>(
             listener: (context, state) {
-              // 1. Core Data Update: Handles list replacement, load more, and all realtime changes
               if (state is FeedLoaded) {
-                // The BLoC handles the merging and internal updates (realtime, optimistic)
                 _updatePosts(state.posts);
                 _hasMore = state.hasMore;
                 _isRealtimeActive = state.isRealtimeActive;
                 _hasLoadedOnce = true;
                 _loadMoreError = null;
-                _isLoadingMore = false; // clear guard for any successful fetch
-              }
-              // 2. Loading State Management
-              else if (state is FeedLoadingMore) {
+                _isLoadingMore = false;
+              } else if (state is FeedLoadingMore) {
                 _isLoadingMore = true;
-              }
-              // 3. Error State Management
-              else if (state is FeedLoadMoreError) {
+              } else if (state is FeedLoadMoreError) {
                 if (mounted) {
                   _loadMoreError = state.message;
                   _isLoadingMore = false;
                 }
               } else if (state is FeedError) {
-                // General error, handled by the Builder below
                 _isLoadingMore = false;
               }
             },
           ),
         ],
         child: RefreshIndicator(
+          backgroundColor: Theme.of(context).colorScheme.background,
+          color: Theme.of(context).colorScheme.primary,
           onRefresh: _onRefresh,
           child: Builder(
             builder: (context) {
               final feedState = context.watch<FeedBloc>().state;
 
               if (feedState is FeedLoading || feedState is FeedInitial) {
-                return const Center(child: LoadingIndicator());
+                return const Center(child: LoadingIndicator(size: 32));
               }
               if (feedState is FeedError) {
                 return CustomErrorWidget(
@@ -232,12 +236,12 @@ class _FeedPageState extends State<FeedPage>
                 );
               }
 
-              // Only rely on local state (_hasLoadedOnce) and posts list
               if (_hasLoadedOnce) {
                 if (_posts.isEmpty) {
-                  return const EmptyStateWidget(
+                  return EmptyStateWidget(
                     message: 'No posts yet. Create one to get started!',
                     icon: Icons.post_add,
+                    actionText: 'Create Post',
                   );
                 }
                 return FeedList(
@@ -261,7 +265,11 @@ class _FeedPageState extends State<FeedPage>
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push(Constants.createPostRoute),
-        child: const Icon(Icons.add),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
+        elevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const Icon(Icons.add, size: 24),
       ),
     );
   }

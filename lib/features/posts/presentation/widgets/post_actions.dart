@@ -21,6 +21,7 @@ class PostActions extends StatelessWidget {
   });
 
   static const Duration _defaultDebounce = Duration(milliseconds: 500);
+  static const double _kActionIconSize = 26.0; // UI/UX: Increased size
 
   // Update _share to use PostActionsBloc
   void _share(BuildContext context) {
@@ -33,6 +34,36 @@ class PostActions extends StatelessWidget {
     } else {
       context.push('${Constants.postDetailsRoute}/${post.id}', extra: post);
     }
+  }
+
+  Widget _buildActionItem({
+    required Widget icon,
+    required String count,
+    required VoidCallback onTap,
+    required String actionKey,
+  }) {
+    // UI/UX: Helper function for consistent action button styling
+    return DebouncedInkWell(
+      actionKey: actionKey,
+      duration: _defaultDebounce,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16.0), // Rounded for modern touch
+      padding: const EdgeInsets.symmetric(
+        horizontal: 8.0, // Increased horizontal padding
+        vertical: 4.0,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          icon,
+          Padding(
+            padding: const EdgeInsets.only(left: 6.0),
+            // UI/UX: Use titleSmall for more distinct and readable count text
+            child: Text(count),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -61,7 +92,6 @@ class PostActions extends StatelessWidget {
                   return false;
                 },
                 builder: (context, state) {
-                  // Icon boolean may come from LikesBloc for snappy toggle, fallback to post.
                   bool isLiked = post.isLiked;
                   if (state is LikeUpdated && state.postId == post.id) {
                     isLiked = state.isLiked;
@@ -71,11 +101,10 @@ class PostActions extends StatelessWidget {
                     isLiked = state.previousState;
                   }
 
-                  return DebouncedInkWell(
+                  return _buildActionItem(
                     actionKey: 'like_${post.id}',
-                    duration: _defaultDebounce,
+                    count: baseLikesCount.toString(),
                     onTap: () {
-                      // Fire the domain action to LikesBloc
                       context.read<LikesBloc>().add(
                         LikePostEvent(
                           postId: post.id,
@@ -84,85 +113,47 @@ class PostActions extends StatelessWidget {
                           previousState: isLiked,
                         ),
                       );
-
-                      // ✅ Dispatch OptimisticPostUpdate to PostActionsBloc
                       final int delta = (!isLiked) ? 1 : -1;
                       context.read<PostActionsBloc>().add(
                         OptimisticPostUpdate(
-                          post: post, // ✅ Pass the full post object
+                          post: post,
                           deltaLikes: delta,
                           deltaFavorites: 0,
                           isLiked: !isLiked,
                         ),
                       );
                     },
-                    borderRadius: BorderRadius.circular(8.0),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4.0,
-                      vertical: 4.0,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          isLiked ? Icons.favorite : Icons.favorite_border,
-                          size: 24,
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(left: 6.0),
-                          child: Text(baseLikesCount.toString()),
-                        ),
-                      ],
+                    icon: Icon(
+                      isLiked ? Icons.favorite : Icons.favorite_border,
+                      size: _kActionIconSize,
+                      color: isLiked
+                          ? Colors.red.shade600
+                          : null, // UI/UX: Color-code
                     ),
                   );
                 },
               ),
-
-              const SizedBox(width: 20),
-
+              const SizedBox(width: 16), // UI/UX: Reduced space
               // ==================== COMMENT BUTTON ====================
-              DebouncedInkWell(
+              _buildActionItem(
                 actionKey: 'comment_nav_${post.id}',
-                duration: _defaultDebounce,
+                count: baseCommentsCount.toString(),
                 onTap: () => _handleComment(context),
-                borderRadius: BorderRadius.circular(8.0),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 4.0,
-                  vertical: 4.0,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.comment_outlined, size: 24),
-                    if (baseCommentsCount > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 6.0),
-                        child: Text(baseCommentsCount.toString()),
-                      ),
-                  ],
-                ),
+                icon: const Icon(
+                  Icons.chat_bubble_outline,
+                  size: _kActionIconSize,
+                ), // UI/UX: Switched to chat bubble
               ),
-
-              const SizedBox(width: 20),
-
+              const SizedBox(width: 16), // UI/UX: Reduced space
               // ==================== SHARE BUTTON ====================
-              DebouncedInkWell(
+              _buildActionItem(
                 actionKey: 'share_${post.id}',
-                duration: _defaultDebounce,
+                count: 'Share', // UI/UX: Label instead of count
                 onTap: () => _share(context),
-                borderRadius: BorderRadius.circular(8.0),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 4.0,
-                  vertical: 4.0,
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [Icon(Icons.share_outlined, size: 24)],
-                ),
+                icon: const Icon(Icons.send_outlined, size: _kActionIconSize),
               ),
             ],
           ),
-
           // ==================== FAVORITE BUTTON (BLOC) ====================
           BlocBuilder<FavoritesBloc, FavoritesState>(
             buildWhen: (prev, curr) {
@@ -177,7 +168,6 @@ class PostActions extends StatelessWidget {
             },
             builder: (context, state) {
               bool isFavorited = post.isFavorited;
-
               if (state is FavoriteUpdated && state.postId == post.id) {
                 isFavorited = state.isFavorited;
               } else if (state is FavoriteError &&
@@ -186,11 +176,10 @@ class PostActions extends StatelessWidget {
                 isFavorited = state.previousState;
               }
 
-              return DebouncedInkWell(
+              return _buildActionItem(
                 actionKey: 'favorite_${post.id}',
-                duration: _defaultDebounce,
+                count: baseFavoritesCount.toString(),
                 onTap: () {
-                  // Fire the domain action
                   context.read<FavoritesBloc>().add(
                     FavoritePostEvent(
                       postId: post.id,
@@ -199,34 +188,21 @@ class PostActions extends StatelessWidget {
                       previousState: isFavorited,
                     ),
                   );
-
-                  // ✅ Dispatch OptimisticPostUpdate to PostActionsBloc
                   final int deltaFav = (!isFavorited) ? 1 : -1;
                   context.read<PostActionsBloc>().add(
                     OptimisticPostUpdate(
-                      post: post, // ✅ Pass the full post object
+                      post: post,
                       deltaFavorites: deltaFav,
                       isFavorited: !isFavorited,
                     ),
                   );
                 },
-                borderRadius: BorderRadius.circular(8.0),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 4.0,
-                  vertical: 4.0,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isFavorited ? Icons.bookmark : Icons.bookmark_border,
-                      size: 24,
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 6.0),
-                      child: Text(baseFavoritesCount.toString()),
-                    ),
-                  ],
+                icon: Icon(
+                  isFavorited ? Icons.bookmark : Icons.bookmark_border,
+                  size: _kActionIconSize,
+                  color: isFavorited
+                      ? Theme.of(context).colorScheme.primary
+                      : null, // UI/UX: Color-code favorite
                 ),
               );
             },

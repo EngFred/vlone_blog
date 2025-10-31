@@ -7,16 +7,13 @@ import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_ti
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 
-//Used both on post details and reels comments in bottom sheet
 class CommentsSection extends StatefulWidget {
   final int? commentsCount;
   final void Function(CommentEntity) onReply;
   final bool scrollable;
   final bool showCountHeader;
   final String currentUserId;
-  // final Map<String, GlobalKey> commentKeys; // REMOVED: Retained prop
-  // final String? highlightedCommentId; // REMOVED: Retained prop
-  final String postId; // Required for dispatching events.
+  final String postId;
 
   const CommentsSection({
     super.key,
@@ -25,10 +22,7 @@ class CommentsSection extends StatefulWidget {
     this.scrollable = false,
     this.showCountHeader = true,
     required this.currentUserId,
-    // this.controller, // REMOVED: ScrollController
-    // required this.commentKeys, // REMOVED
-    // this.highlightedCommentId, // REMOVED
-    required this.postId, // Pass postId from parent (e.g., PostDetailsPage).
+    required this.postId,
   });
 
   @override
@@ -36,12 +30,11 @@ class CommentsSection extends StatefulWidget {
 }
 
 class _CommentsSectionState extends State<CommentsSection> {
-  bool _hasDispatchedInitial = false; // Prevent double-dispatch on init.
+  bool _hasDispatchedInitial = false;
 
   @override
   void initState() {
     super.initState();
-    // Dispatch initial load if scrollable (for bottom sheets/full pages).
     if (widget.scrollable && !_hasDispatchedInitial) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -57,13 +50,48 @@ class _CommentsSectionState extends State<CommentsSection> {
     }
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
   Future<void> _onRefresh() async {
     context.read<CommentsBloc>().add(RefreshCommentsEvent(widget.postId));
+  }
+
+  Widget _buildCommentsHeader(int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Text(
+            'Comments',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              count.toString(),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -100,20 +128,22 @@ class _CommentsSectionState extends State<CommentsSection> {
     if (widget.scrollable) {
       return ListView(
         padding: EdgeInsets.zero,
-        children: const [
-          SizedBox(height: 40),
-          Center(child: LoadingIndicator()),
-          SizedBox(height: 40),
+        children: [
+          if (widget.showCountHeader) _buildCommentsHeader(0),
+          const SizedBox(height: 40),
+          Center(child: LoadingIndicator(size: 24)),
+          const SizedBox(height: 40),
         ],
       );
     }
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Center(
+        if (widget.showCountHeader) _buildCommentsHeader(0),
+        const Center(
           child: Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
-            child: LoadingIndicator(),
+            child: LoadingIndicator(size: 24),
           ),
         ),
       ],
@@ -121,13 +151,23 @@ class _CommentsSectionState extends State<CommentsSection> {
   }
 
   Widget _buildLoadingMore() {
-    if (widget.scrollable) {
-      return Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Center(child: LoadingIndicator(size: 20)),
-      );
-    }
-    return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Center(
+        child: Column(
+          children: [
+            LoadingIndicator(size: 20),
+            const SizedBox(height: 8),
+            Text(
+              'Loading more comments...',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildError(String message) {
@@ -137,31 +177,49 @@ class _CommentsSectionState extends State<CommentsSection> {
     );
 
     if (widget.scrollable) {
-      return ListView(padding: EdgeInsets.zero, children: [errorWidget]);
+      return ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          if (widget.showCountHeader) _buildCommentsHeader(0),
+          errorWidget,
+        ],
+      );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [errorWidget],
+      children: [
+        if (widget.showCountHeader) _buildCommentsHeader(0),
+        errorWidget,
+      ],
     );
   }
 
   Widget _buildEmpty() {
-    final emptyWidget = const EmptyStateWidget(
+    final emptyWidget = EmptyStateWidget(
       icon: Icons.chat_bubble_outline,
-      message: 'Be the first to comment',
+      message: 'No comments yet',
     );
+
     if (widget.scrollable) {
       return RefreshIndicator(
         onRefresh: _onRefresh,
         child: ListView(
           padding: EdgeInsets.zero,
-          children: [const SizedBox(height: 40), emptyWidget],
+          children: [
+            if (widget.showCountHeader) _buildCommentsHeader(0),
+            const SizedBox(height: 40),
+            emptyWidget,
+          ],
         ),
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [const SizedBox(height: 40), emptyWidget],
+      children: [
+        if (widget.showCountHeader) _buildCommentsHeader(0),
+        const SizedBox(height: 40),
+        emptyWidget,
+      ],
     );
   }
 
@@ -171,23 +229,21 @@ class _CommentsSectionState extends State<CommentsSection> {
     CommentsLoaded state,
   ) {
     final commentTiles = comments.map((comment) {
-      // Use ValueKey now that GlobalKeys are not needed for scrolling/highlighting
-      final key = ValueKey(comment.id);
-
       return CommentTile(
-        key: key,
+        key: ValueKey(comment.id),
         comment: comment,
         onReply: widget.onReply,
         depth: 0,
         currentUserId: widget.currentUserId,
-        // REMOVED: commentKeys: widget.commentKeys,
-        // REMOVED: highlightedCommentId: widget.highlightedCommentId,
       );
     }).toList();
 
     Widget list = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: commentTiles,
+      children: [
+        if (widget.showCountHeader) _buildCommentsHeader(comments.length),
+        ...commentTiles,
+      ],
     );
 
     if (widget.scrollable) {
@@ -195,24 +251,58 @@ class _CommentsSectionState extends State<CommentsSection> {
         onRefresh: _onRefresh,
         child: ListView.builder(
           padding: EdgeInsets.zero,
-          itemCount: commentTiles.length + (state.hasMore ? 1 : 0),
+          itemCount:
+              commentTiles.length +
+              (state.hasMore ? 1 : 0) +
+              (widget.showCountHeader ? 0 : 1),
           itemBuilder: (context, index) {
-            if (index == commentTiles.length) {
-              // Load more footer/retry button.
+            if (widget.showCountHeader && index == 0) {
+              return _buildCommentsHeader(comments.length);
+            }
+
+            final contentIndex = widget.showCountHeader ? index - 1 : index;
+
+            if (contentIndex == commentTiles.length) {
               if (state.loadMoreError != null) {
-                return ListTile(
-                  title: Text('Error: ${state.loadMoreError}'),
-                  trailing: TextButton(
-                    onPressed: () => context.read<CommentsBloc>().add(
-                      const LoadMoreCommentsEvent(),
-                    ),
-                    child: const Text('Retry'),
+                return Container(
+                  margin: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Failed to load more comments',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onErrorContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.tonal(
+                        onPressed: () => context.read<CommentsBloc>().add(
+                          const LoadMoreCommentsEvent(),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.errorContainer,
+                          foregroundColor: Theme.of(
+                            context,
+                          ).colorScheme.onErrorContainer,
+                        ),
+                        child: const Text('Try Again'),
+                      ),
+                    ],
                   ),
                 );
               }
               return _buildLoadingMore();
             }
-            return commentTiles[index];
+
+            final commentIndex = widget.showCountHeader ? contentIndex : index;
+            return commentTiles[commentIndex];
           },
         ),
       );

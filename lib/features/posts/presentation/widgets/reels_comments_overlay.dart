@@ -8,7 +8,6 @@ import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_in
 import 'package:vlone_blog_app/features/comments/presentation/widgets/comments_section.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 
-/// Bottom-sheet style comments overlay for reels (TikTok / IG style).
 class ReelsCommentsOverlay extends StatefulWidget {
   final PostEntity post;
   final String userId;
@@ -19,7 +18,6 @@ class ReelsCommentsOverlay extends StatefulWidget {
     required this.userId,
   });
 
-  /// Helper to show the overlay as a modal bottom sheet.
   static Future<void> show(
     BuildContext context,
     PostEntity post,
@@ -31,7 +29,7 @@ class ReelsCommentsOverlay extends StatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black54,
+      barrierColor: Colors.black87,
       builder: (ctx) {
         return SafeArea(
           left: false,
@@ -81,13 +79,12 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
     _focusNode.unfocus();
   }
 
-  /// Helper to count total comments recursively (logic is fine, kept)
   int _countAllComments(List<CommentEntity> comments) {
     int total = 0;
     for (final comment in comments) {
-      total++; // count this comment
+      total++;
       if (comment.replies.isNotEmpty) {
-        total += _countAllComments(comment.replies); // count all replies
+        total += _countAllComments(comment.replies);
       }
     }
     return total;
@@ -106,57 +103,66 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
       selector: (state) =>
           (state is AuthAuthenticated) ? state.user.profileImageUrl : null,
       builder: (context, userAvatarUrl) {
-        // Retaining DraggableScrollableSheet fraction logic:
-        final initialFraction = 0.70; // start ~70% of screen height
-        final minFraction = 0.40; // allow small peek
-        final maxFraction = min(0.92, 0.95); // never truly full-screen
+        final initialFraction = 0.75;
+        final minFraction = 0.45;
+        final maxFraction = min(0.92, 0.95);
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () {}, // prevent dismiss by accidental taps inside sheet area
+          onTap: () {},
           child: DraggableScrollableSheet(
             initialChildSize: initialFraction,
             minChildSize: minFraction,
             maxChildSize: maxFraction,
             expand: false,
             builder: (context, scrollController) {
-              // AnimatedPadding ensures sheet rises above keyboard when it appears
               final viewInsets = MediaQuery.of(context).viewInsets.bottom;
               return AnimatedPadding(
-                duration: const Duration(milliseconds: 160),
+                duration: const Duration(milliseconds: 200),
                 padding: EdgeInsets.only(bottom: viewInsets),
                 curve: Curves.easeOut,
                 child: ClipRRect(
                   borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(16),
+                    top: Radius.circular(20),
                   ),
                   child: Container(
-                    color: Theme.of(context).scaffoldBackgroundColor,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.grey[900]!, Colors.black],
+                      ),
+                    ),
                     child: Column(
                       children: [
-                        // HEADER
-                        SizedBox(
-                          height: 72,
+                        // Enhanced Header
+                        Container(
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[900]!.withOpacity(0.8),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(20),
+                            ),
+                          ),
                           child: Column(
                             children: [
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 12),
                               Container(
-                                width: 40,
+                                width: 36,
                                 height: 4,
                                 decoration: BoxDecoration(
-                                  color: Colors.grey[400],
+                                  color: Colors.grey[500],
                                   borderRadius: BorderRadius.circular(2),
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 12),
                               Padding(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 12.0,
+                                  horizontal: 20.0,
                                 ),
                                 child: Row(
                                   children: [
                                     Expanded(
-                                      // Use BlocSelector to reactively update comment count
                                       child:
                                           BlocSelector<
                                             CommentsBloc,
@@ -169,23 +175,37 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                                                   state.comments,
                                                 );
                                               }
-                                              // Fallback to post's static count if not loaded yet
                                               return widget.post.commentsCount;
                                             },
                                             builder: (context, commentCount) {
                                               return Text(
                                                 '$commentCount Comment${commentCount != 1 ? 's' : ''}',
-                                                style: Theme.of(
-                                                  context,
-                                                ).textTheme.titleMedium,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
                                               );
                                             },
                                           ),
                                     ),
-                                    IconButton(
-                                      icon: const Icon(Icons.close),
-                                      onPressed: () =>
-                                          Navigator.of(context).pop(),
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey[800],
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: IconButton(
+                                        icon: const Icon(
+                                          Icons.close,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
+                                        onPressed: () =>
+                                            Navigator.of(context).pop(),
+                                        padding: EdgeInsets.zero,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -194,9 +214,9 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                           ),
                         ),
 
-                        const Divider(height: 1),
+                        const Divider(height: 1, color: Colors.grey),
 
-                        // Comments list: Expanded so remaining space is used
+                        // Comments List
                         Expanded(
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -218,14 +238,16 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                           ),
                         ),
 
-                        // Input field pinned to bottom, respects SafeArea and divider
+                        // Enhanced Input Field
                         SafeArea(
                           top: false,
                           child: Container(
                             decoration: BoxDecoration(
+                              color: Colors.grey[900],
                               border: Border(
                                 top: BorderSide(
-                                  color: Theme.of(context).dividerColor,
+                                  color: Colors.grey[700]!,
+                                  width: 1,
                                 ),
                               ),
                             ),

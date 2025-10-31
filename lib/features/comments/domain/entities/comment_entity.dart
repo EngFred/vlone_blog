@@ -12,7 +12,7 @@ class CommentEntity extends Equatable {
   final String? avatarUrl;
   final String? parentUsername;
 
-  // NEW: server-provided quick replies count (may be null)
+  //server-provided quick replies count (may be null)
   final int? repliesCount;
 
   final List<CommentEntity> replies;

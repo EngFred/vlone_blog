@@ -1,7 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:video_player/video_player.dart';
+import 'package:vlone_blog_app/core/service/media_download_service.dart';
 import 'package:vlone_blog_app/core/utils/debouncer.dart';
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
@@ -26,6 +29,11 @@ class _FullMediaPageState extends State<FullMediaPage> {
   bool _isScrubbing = false;
   bool _wasPlayingBeforeScrub = false;
 
+  // --- ADDED: State for downloading ---
+  final MediaDownloadService _downloadService = MediaDownloadService();
+  bool _isDownloading = false;
+  double _downloadProgress = 0.0;
+
   @override
   void initState() {
     super.initState();
@@ -35,6 +43,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   Future<void> _initVideo() async {
+    // ... (your existing _initVideo code is perfect, no changes)
     if (_isDisposed || _initialized || _isInitializing) return;
     _isInitializing = true;
     try {
@@ -52,8 +61,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
         _initialized = true;
         _isInitializing = false;
       });
-      // Removed: The addPostFrameCallback that calls VideoPlaybackManager.play
-      // We now let the existing state persist (no auto-play)
     } catch (e) {
       _isInitializing = false;
     }
@@ -81,6 +88,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   String _formatDuration(Duration? d) {
+    // ... (no changes)
     if (d == null) return '--:--';
     final totalSeconds = d.inSeconds;
     final hours = totalSeconds ~/ 3600;
@@ -96,7 +104,107 @@ class _FullMediaPageState extends State<FullMediaPage> {
     }
   }
 
+  // ---Download handler ---
+  Future<void> _handleDownload() async {
+    if (_isDownloading) return;
+
+    // Added null check guard clauses for robustness
+    if (widget.post.mediaUrl == null || widget.post.mediaType == null) {
+      if (mounted) {
+        SnackbarUtils.showError(
+          context,
+          'Error: Media URL or Type is missing.',
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _isDownloading = true;
+      _downloadProgress = 0.0;
+    });
+
+    final result = await _downloadService.downloadAndSaveMedia(
+      widget.post.mediaUrl!,
+      widget.post.mediaType!,
+      onReceiveProgress: (received, total) {
+        if (total != -1) {
+          if (mounted) {
+            setState(() {
+              _downloadProgress = received / total;
+            });
+          }
+        }
+      },
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _isDownloading = false;
+    });
+
+    // 👇 Reworked feedback using the extended SnackbarUtils
+    switch (result.status) {
+      case DownloadResultStatus.success:
+        SnackbarUtils.showSuccess(context, 'Media saved to gallery!');
+        break;
+
+      case DownloadResultStatus.failure:
+        SnackbarUtils.showError(
+          context,
+          result.message ?? 'Download failed. Please try again.',
+        );
+        break;
+
+      case DownloadResultStatus.permissionDenied:
+        SnackbarUtils.showWarning(
+          context,
+          'Storage permission is required to save media.',
+        );
+        break;
+
+      case DownloadResultStatus.permissionPermanentlyDenied:
+        // Now using showWarning with the custom action!
+        SnackbarUtils.showWarning(
+          context,
+          'Permission denied. Please enable storage access in app settings.',
+          action: SnackBarAction(
+            label: 'SETTINGS',
+            textColor: Colors.white,
+            onPressed: openAppSettings, // Function from permission_handler
+          ),
+        );
+        break;
+    }
+  }
+
+  // --- ADDED: Download button widget ---
+  Widget _buildDownloadButton() {
+    if (_isDownloading) {
+      return Padding(
+        padding: const EdgeInsets.all(8.0), // Match IconButton tap area
+        child: SizedBox(
+          width: 24, // Icon size
+          height: 24, // Icon size
+          child: CircularProgressIndicator(
+            value: _downloadProgress > 0 ? _downloadProgress : null,
+            color: Colors.white,
+            strokeWidth: 2.5,
+          ),
+        ),
+      );
+    }
+
+    return IconButton(
+      icon: const Icon(Icons.download_rounded, color: Colors.white),
+      onPressed: _handleDownload,
+    );
+  }
+
+  // --- (All scrubbing methods remain unchanged) ---
   void _onScrubStart(double value) {
+    // ... (no changes)
     if (_videoController == null || !_initialized) return;
     _isScrubbing = true;
     _scrubValue = _videoController!.value.duration * value;
@@ -108,12 +216,14 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   void _onScrubUpdate(double value) {
+    // ... (no changes)
     if (_videoController == null || !_initialized) return;
     _scrubValue = _videoController!.value.duration * value;
     setState(() {});
   }
 
   void _onScrubEnd(double value) {
+    // ... (no changes)
     if (_videoController == null || !_initialized) {
       _isScrubbing = false;
       _scrubValue = null;
@@ -178,6 +288,12 @@ class _FullMediaPageState extends State<FullMediaPage> {
                 ),
               ),
             ),
+            // --- ADDED: Download Button Positioned ---
+            Positioned(
+              top: 12,
+              right: 12,
+              child: SafeArea(child: _buildDownloadButton()),
+            ),
             // Bottom controls (video only)
             if (media.mediaType == 'video')
               Positioned(
@@ -193,6 +309,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   Widget _buildInteractiveImage(PostEntity media) {
+    // ... (no changes)
     return InteractiveViewer(
       panEnabled: true,
       scaleEnabled: true,
@@ -211,6 +328,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   Widget _buildFullVideo(PostEntity media) {
+    // ... (no changes)
     if (!_initialized || _videoController == null) {
       return media.thumbnailUrl != null
           ? CachedNetworkImage(
@@ -256,6 +374,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   Widget _buildVideoControls() {
+    // ... (no changes)
     if (_videoController == null || !_initialized) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

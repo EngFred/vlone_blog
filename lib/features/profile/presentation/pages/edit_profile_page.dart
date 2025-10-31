@@ -1,3 +1,4 @@
+// lib/features/profile/presentation/pages/edit_profile_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -134,14 +135,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final theme = Theme.of(context);
     final isLight = theme.brightness == Brightness.light;
 
-    // Make borders and fill colors visible in both light and dark modes.
+    // Lighter fill so inputs look airy in both light and dark modes.
     final borderColor = isLight
-        ? theme.colorScheme.onSurface.withOpacity(0.12)
-        : theme.colorScheme.outline;
+        ? theme.colorScheme.onSurface.withOpacity(0.08)
+        : theme.colorScheme.outline.withOpacity(0.6);
 
     final fillColor = isLight
-        ? theme.colorScheme.surfaceVariant.withOpacity(0.6)
-        : theme.colorScheme.surfaceVariant;
+        ? theme.colorScheme.surfaceVariant.withOpacity(0.04)
+        : theme.colorScheme.surfaceVariant.withOpacity(0.06);
 
     return InputDecoration(
       labelText: labelText,
@@ -218,84 +219,100 @@ class _EditProfilePageState extends State<EditProfilePage> {
               child: Column(
                 children: [
                   // Avatar preview and pick area
-                  GestureDetector(
-                    onTap: _isSubmitting ? null : _pickImage,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        CircleAvatar(
-                          radius: 60,
-                          backgroundColor: theme.colorScheme.surfaceVariant,
-                          backgroundImage:
-                              _profileImageFile !=
-                                  null // Use new File field
-                              ? FileImage(_profileImageFile!) as ImageProvider
-                              : (_initialProfile?.profileImageUrl != null
-                                    ? CachedNetworkImageProvider(
-                                        _initialProfile!.profileImageUrl!,
-                                      )
-                                    : null),
-                          child:
-                              _profileImageFile == null && // Use new File field
-                                  (_initialProfile?.profileImageUrl == null)
-                              ? Icon(
-                                  Icons.person,
-                                  size: 54,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                )
-                              : null,
-                        ),
+                  Tooltip(
+                    message: 'Tap to change profile photo',
+                    child: Semantics(
+                      label: 'Profile photo, tap to change',
+                      button: true,
+                      child: GestureDetector(
+                        onTap: _isSubmitting ? null : _pickImage,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CircleAvatar(
+                              radius: 60,
+                              backgroundColor: theme.colorScheme.surfaceVariant,
+                              backgroundImage: _profileImageFile != null
+                                  ? FileImage(_profileImageFile!)
+                                        as ImageProvider
+                                  : (_initialProfile?.profileImageUrl != null
+                                        ? CachedNetworkImageProvider(
+                                            _initialProfile!.profileImageUrl!,
+                                          )
+                                        : null),
+                              child:
+                                  _profileImageFile == null &&
+                                      (_initialProfile?.profileImageUrl == null)
+                                  ? Icon(
+                                      Icons.person,
+                                      size: 54,
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    )
+                                  : null,
+                            ),
 
-                        // Small edit badge at bottom-right instead of full overlay.
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: Material(
-                            shape: const CircleBorder(),
-                            elevation: 4,
-                            color: theme.colorScheme.surface,
-                            child: InkWell(
-                              onTap: _isSubmitting ? null : _pickImage,
-                              customBorder: const CircleBorder(),
-                              child: Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: Icon(
-                                  Icons.camera_alt_outlined,
-                                  size: 18,
-                                  color: theme.colorScheme.primary,
+                            // Small edit badge at bottom-right instead of full overlay.
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: Semantics(
+                                label: 'Change profile photo',
+                                button: true,
+                                child: Tooltip(
+                                  message: 'Change profile photo',
+                                  child: Material(
+                                    shape: const CircleBorder(),
+                                    elevation: 4,
+                                    color: theme.colorScheme.surface,
+                                    child: InkWell(
+                                      onTap: _isSubmitting ? null : _pickImage,
+                                      customBorder: const CircleBorder(),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(8.0),
+                                        child: Icon(
+                                          Icons.camera_alt_outlined,
+                                          size: 18,
+                                          color: theme.colorScheme.primary,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ),
 
-                        // Semi-transparent overlay shown only when submitting so user sees the disabled state
-                        if (_isSubmitting)
-                          Positioned.fill(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: theme.brightness == Brightness.light
-                                    ? Colors.white.withOpacity(0.6)
-                                    : Colors.black.withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(999),
+                            // Semi-transparent overlay shown only when submitting so user sees the disabled state
+                            if (_isSubmitting)
+                              Positioned.fill(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: theme.brightness == Brightness.light
+                                        ? Colors.white.withOpacity(0.6)
+                                        : Colors.black.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                ),
                               ),
-                              child: const Center(
-                                child: CircularProgressIndicator(),
-                              ),
-                            ),
-                          ),
-                      ],
+                          ],
+                        ),
+                      ),
                     ),
                   ),
+
                   const SizedBox(height: 12),
                   TextButton.icon(
                     onPressed: _isSubmitting ? null : _pickImage,
                     icon: const Icon(Icons.photo_library),
                     label: Text(
-                      _profileImageFile !=
-                              null // Use new File field
+                      _profileImageFile != null
                           ? 'Image Selected (Tap to Change/Crop)'
                           : 'Change Profile Photo',
+                    ),
+                    style: TextButton.styleFrom(
+                      foregroundColor: theme.colorScheme.primary,
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -309,6 +326,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           controller: _usernameController,
                           decoration: _getInputDecoration('Username'),
                           maxLength: 30,
+                          keyboardType: TextInputType.text,
+                          textInputAction: TextInputAction.next,
                           validator: (v) {
                             if (v == null || v.trim().isEmpty)
                               return 'Username cannot be empty';
@@ -326,6 +345,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           ),
                           maxLines: 4,
                           maxLength: 160,
+                          keyboardType: TextInputType.multiline,
                         ),
                         const SizedBox(height: 32),
                         SizedBox(
@@ -338,14 +358,23 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               elevation: 4,
+                              // explicit disabled look to improve clarity
+                              disabledBackgroundColor: theme
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.12),
+                              disabledForegroundColor: theme
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.38),
                             ),
                             child: _isSubmitting
-                                ? const SizedBox(
+                                ? SizedBox(
                                     height: 24,
                                     width: 24,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 3,
-                                      color: Colors.white,
+                                      color: theme.colorScheme.onPrimary,
                                     ),
                                   )
                                 : const Text(

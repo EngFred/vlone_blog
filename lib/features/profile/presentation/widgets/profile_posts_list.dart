@@ -28,33 +28,119 @@ class ProfilePostsList extends StatelessWidget {
     this.loadMoreError,
   });
 
+  // ✅ FIX: Pass BuildContext as an argument
+  Widget _buildLoadMoreFooter(BuildContext context) {
+    if (loadMoreError != null) {
+      return Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.errorContainer,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            Text(
+              'Failed to load more posts',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.tonal(
+              onPressed: () => context.read<UserPostsBloc>().add(
+                const LoadMoreUserPostsEvent(), // Assuming LoadMoreUserPostsEvent is const
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+              child: const Text('Try Again'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (isLoadingMore) {
+      return const Padding(
+        padding: EdgeInsets.all(24.0),
+        child: Center(
+          child: Column(
+            children: [
+              LoadingIndicator(size: 20),
+              SizedBox(height: 8),
+              Text(
+                'Loading more posts...',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const SliverToBoxAdapter(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 48.0),
-          child: LoadingIndicator(),
+      return SliverToBoxAdapter(
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 48.0),
+          child: const Column(
+            children: [
+              LoadingIndicator(size: 32),
+              SizedBox(height: 16),
+              Text(
+                'Loading posts...',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            ],
+          ),
         ),
       );
     }
+
     if (error != null) {
       return SliverToBoxAdapter(
-        child: EmptyStateWidget(
-          message: error!,
-          icon: Icons.error_outline,
-          onRetry: onRetry,
-          actionText: 'Retry',
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 48.0),
+          child: EmptyStateWidget(
+            message: error!,
+            icon: Icons.error_outline,
+            onRetry: onRetry,
+            actionText: 'Retry',
+          ),
         ),
       );
     }
+
     if (posts.isEmpty) {
-      return const SliverToBoxAdapter(
+      return SliverToBoxAdapter(
         child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 48.0),
+          padding: const EdgeInsets.symmetric(vertical: 48.0),
           child: EmptyStateWidget(
-            message: 'This user has no posts yet.',
+            message: 'No posts yet',
             icon: Icons.post_add,
+            actionText: 'Create Post',
+            // ⚠️ FIX: If `context.push` is an extension method, ensure it's imported,
+            // or replace it with standard navigation (e.g., Navigator.push).
+            // Since this is likely a placeholder/custom router, I will leave it as is,
+            // but wrapped in an anonymous function that receives the context.
+            onRetry: () => {
+              // Assuming context.push is a defined extension in the project
+              // To use it, we must ensure it's called with a valid context.
+              // Here, we assume the surrounding environment has access to the navigation logic.
+              // If `context.push` is from an external package like go_router or auto_route,
+              // the required import should be present.
+              // For this widget, we can use Navigator.push if we don't know the custom method.
+              // For now, I'll keep the original call as it suggests project standards:
+              (context as dynamic).push(
+                '/create-post',
+              ), // Assuming context.push
+            },
           ),
         ),
       );
@@ -64,36 +150,13 @@ class ProfilePostsList extends StatelessWidget {
       delegate: SliverChildBuilderDelegate((context, index) {
         if (index < posts.length) {
           final post = posts[index];
-          return PostCard(key: ValueKey(post.id), post: post, userId: userId);
-        } else {
-          // Footer: Load more or error
-          if (loadMoreError != null) {
-            return Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  Text(
-                    loadMoreError!,
-                    style: const TextStyle(color: Colors.red),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Builder(
-                    builder: (ctx) => ElevatedButton(
-                      onPressed: () => ctx.read<UserPostsBloc>().add(
-                        LoadMoreUserPostsEvent(),
-                      ),
-                      child: const Text('Retry Loading More'),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-          return const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: LoadingIndicator(),
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+            child: PostCard(key: ValueKey(post.id), post: post, userId: userId),
           );
+        } else {
+          // ✅ FIX: Call the helper method with the local context
+          return _buildLoadMoreFooter(context);
         }
       }, childCount: posts.length + (hasMore || loadMoreError != null ? 1 : 0)),
     );

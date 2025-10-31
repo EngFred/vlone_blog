@@ -32,7 +32,6 @@ class _UsersPageState extends State<UsersPage> {
       if (authState is AuthAuthenticated && mounted) {
         setState(() => _currentUserId = authState.user.id);
         AppLogger.info('UsersPage: Set currentUserId=$_currentUserId');
-        // Removed: context.read<UsersBloc>().add(GetPaginatedUsersEvent(_currentUserId!)); - handled by MainPage
       }
     });
   }
@@ -50,7 +49,6 @@ class _UsersPageState extends State<UsersPage> {
 
   void _handleFollowUpdate(String followedUserId, bool nowFollowing) {
     if (!mounted) return;
-    // Dispatch event for optimistic update via Bloc
     context.read<UsersBloc>().add(
       UpdateUserFollowStatusEvent(followedUserId, nowFollowing),
     );
@@ -90,20 +88,75 @@ class _UsersPageState extends State<UsersPage> {
     super.dispose();
   }
 
+  Widget _buildLoadingMoreFooter(bool hasMore, String? loadMoreError) {
+    if (!hasMore) return const SizedBox.shrink();
+
+    if (loadMoreError != null) {
+      return Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.errorContainer,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            Text(
+              'Failed to load more users',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.tonal(
+              onPressed: () =>
+                  context.read<UsersBloc>().add(const LoadMoreUsersEvent()),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+              child: const Text('Try Again'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return const Padding(
+      padding: EdgeInsets.all(24.0),
+      child: Center(
+        child: Column(
+          children: [
+            LoadingIndicator(size: 20),
+            SizedBox(height: 8),
+            Text(
+              'Loading more users...',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.background,
       appBar: AppBar(
-        title: const Text('Users'),
+        title: const Text(
+          'Discover People',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+        ),
         centerTitle: false,
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        // The 'actions' array containing the IconButton has been removed
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 4,
       ),
       body: RefreshIndicator(
         onRefresh: () async => _onRefresh(),
         child: MultiBlocListener(
           listeners: [
-            // Listen to Auth state so if the user signs in after this page was created we fetch users.
             BlocListener<AuthBloc, AuthState>(
               listener: (context, state) {
                 if (state is AuthAuthenticated) {
@@ -111,15 +164,12 @@ class _UsersPageState extends State<UsersPage> {
                     'AuthBloc -> Authenticated in UsersPage, userId=${state.user.id}',
                   );
                   _currentUserId = state.user.id;
-                  // Auto-load if auth changes while on this page.
                   context.read<UsersBloc>().add(
                     GetPaginatedUsersEvent(_currentUserId!),
                   );
                 }
               },
             ),
-
-            // Listen to follower changes and update local list.
             BlocListener<FollowersBloc, FollowersState>(
               listener: (context, state) {
                 if (state is UserFollowed) {
@@ -129,7 +179,6 @@ class _UsersPageState extends State<UsersPage> {
                   _handleFollowUpdate(state.followedUserId, state.isFollowing);
                 } else if (state is FollowersError &&
                     _loadingUserIds.isNotEmpty) {
-                  // Follow action failed
                   AppLogger.error('FollowersBloc error: ${state.message}');
                   _loadingUserIds.clear();
                   SnackbarUtils.showError(
@@ -142,12 +191,22 @@ class _UsersPageState extends State<UsersPage> {
           ],
           child: BlocBuilder<UsersBloc, UsersState>(
             builder: (context, state) {
-              // 1. Initial/Loading
               if (state is UsersLoading || state is UsersInitial) {
-                return const Center(child: LoadingIndicator());
+                return const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      LoadingIndicator(size: 32),
+                      SizedBox(height: 16),
+                      Text(
+                        'Loading users...',
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                );
               }
 
-              // 2. Initial Error
               if (state is UsersError) {
                 return CustomErrorWidget(
                   message: 'Failed to load users:\n${state.message}',
@@ -155,30 +214,26 @@ class _UsersPageState extends State<UsersPage> {
                 );
               }
 
-              // 3. Load More Error (Show partial list with error footer)
               if (state is UsersLoadMoreError) {
-                // `hasMore` is implied true here because we were trying to load more
                 return _buildListView(state.currentUsers, true, state.message);
               }
 
-              // 4. Loading More (Show partial list with loading footer)
               if (state is UsersLoadingMore) {
-                // `hasMore` is true while loading more
                 return _buildListView(state.currentUsers, true, null);
               }
 
-              // 5. Loaded (Final state, show full list)
               if (state is UsersLoaded) {
                 if (state.users.isEmpty) {
-                  return const EmptyStateWidget(
-                    message: 'No users found yet.',
+                  return EmptyStateWidget(
+                    message: 'No users found',
                     icon: Icons.people_outline,
+                    actionText: 'Refresh',
+                    onRetry: _retryFetch,
                   );
                 }
                 return _buildListView(state.users, state.hasMore, null);
               }
 
-              // Fallback for unhandled states
               return const SizedBox.shrink();
             },
           ),
@@ -192,59 +247,42 @@ class _UsersPageState extends State<UsersPage> {
     bool hasMore,
     String? loadMoreError,
   ) {
-    return ListView.separated(
+    return CustomScrollView(
       controller: _scrollController,
-      // itemCount calculation now correctly relies on `hasMore` argument
-      itemCount: users.length + (hasMore ? 1 : 0),
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        // Load more footer (index == users.length only when hasMore is true)
-        if (index == users.length) {
-          if (loadMoreError != null) {
-            return ListTile(
-              leading: const Icon(Icons.error_outline, color: Colors.red),
-              title: Text('Load more failed: $loadMoreError'),
-              trailing: TextButton(
-                onPressed: () =>
-                    context.read<UsersBloc>().add(const LoadMoreUsersEvent()),
-                child: const Text('Retry'),
-              ),
+      slivers: [
+        SliverList(
+          delegate: SliverChildBuilderDelegate((context, index) {
+            final user = users[index];
+            return UserListItem(
+              key: ValueKey(user.id),
+              user: user,
+              currentUserId: _currentUserId ?? '',
+              isLoading: _loadingUserIds.contains(user.id),
+              onFollowToggle: (followedId, isFollowing) {
+                if (_currentUserId == null) {
+                  SnackbarUtils.showError(
+                    context,
+                    'You must be signed in to follow users.',
+                  );
+                  return;
+                }
+                _loadingUserIds.add(followedId);
+                context.read<FollowersBloc>().add(
+                  FollowUserEvent(
+                    followerId: _currentUserId!,
+                    followingId: followedId,
+                    isFollowing: isFollowing,
+                  ),
+                );
+                _handleFollowUpdate(followedId, isFollowing);
+              },
             );
-          }
-          // Display loading indicator if no error and hasMore is true
-          return const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Center(child: LoadingIndicator()),
-          );
-        }
-
-        final user = users[index];
-        return UserListItem(
-          key: ValueKey(user.id), // For performant list rebuilds
-          user: user,
-          currentUserId: _currentUserId ?? '',
-          isLoading: _loadingUserIds.contains(user.id),
-          onFollowToggle: (followedId, isFollowing) {
-            if (_currentUserId == null) {
-              SnackbarUtils.showError(
-                context,
-                'You must be signed in to follow users.',
-              );
-              return;
-            }
-            _loadingUserIds.add(followedId);
-            context.read<FollowersBloc>().add(
-              FollowUserEvent(
-                followerId: _currentUserId!,
-                followingId: followedId,
-                isFollowing: isFollowing,
-              ),
-            );
-            // Optimistic update via event
-            _handleFollowUpdate(followedId, isFollowing);
-          },
-        );
-      },
+          }, childCount: users.length),
+        ),
+        SliverToBoxAdapter(
+          child: _buildLoadingMoreFooter(hasMore, loadMoreError),
+        ),
+      ],
     );
   }
 }

@@ -44,7 +44,6 @@ class _ReelItemState extends State<ReelItem>
   @override
   void didUpdateWidget(covariant ReelItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Accept external updates (e.g., server real-time)
     if (widget.post != oldWidget.post) {
       _currentPost = widget.post;
     }
@@ -52,7 +51,7 @@ class _ReelItemState extends State<ReelItem>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    super.build(context);
 
     return Stack(
       fit: StackFit.expand,
@@ -63,18 +62,36 @@ class _ReelItemState extends State<ReelItem>
           shouldPreload: widget.isPrevious || widget.isNext,
         ),
 
+        // Enhanced gradient overlay
         Align(
           alignment: Alignment.bottomCenter,
           child: Container(
-            height: 200,
+            height: 300,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black.withOpacity(0.0),
-                  Colors.black.withOpacity(0.6),
+                  Colors.transparent,
+                  Colors.black.withOpacity(0.3),
+                  Colors.black.withOpacity(0.7),
                 ],
+                stops: const [0.0, 0.5, 1.0],
+              ),
+            ),
+          ),
+        ),
+
+        // Top gradient
+        Align(
+          alignment: Alignment.topCenter,
+          child: Container(
+            height: 120,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.black.withOpacity(0.4), Colors.transparent],
               ),
             ),
           ),
@@ -83,7 +100,6 @@ class _ReelItemState extends State<ReelItem>
         SafeArea(
           child: MultiBlocListener(
             listeners: [
-              // IMPORTANT: do NOT apply counts here. PostsBloc is authoritative for counts.
               BlocListener<LikesBloc, LikesState>(
                 listenWhen: (prev, curr) {
                   if (curr is LikeUpdated && curr.postId == _currentPost.id)
@@ -99,7 +115,6 @@ class _ReelItemState extends State<ReelItem>
                     AppLogger.info(
                       'ReelItem received LikeUpdated for ${_currentPost.id}',
                     );
-                    // Only update boolean (icon), counts come from PostsBloc parent
                     setState(() {
                       _currentPost = _currentPost.copyWith(
                         isLiked: state.isLiked,
@@ -173,47 +188,78 @@ class _ReelItemState extends State<ReelItem>
                 ),
 
                 Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(20.0),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Expanded(
-                        child: Align(
-                          alignment: Alignment.bottomLeft,
-                          child:
-                              _currentPost.content != null &&
-                                  _currentPost.content!.isNotEmpty
-                              ? Text(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_currentPost.content != null &&
+                                _currentPost.content!.isNotEmpty)
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                child: Text(
                                   _currentPost.content!,
-                                  textAlign: TextAlign.left,
                                   style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 15,
-                                    height: 1.3,
+                                    fontSize: 16,
+                                    height: 1.4,
+                                    fontWeight: FontWeight.w500,
                                     shadows: [
                                       BoxShadow(
-                                        color: Colors.black87,
-                                        blurRadius: 8,
-                                        offset: Offset(0, 3),
+                                        color: Colors.black54,
+                                        blurRadius: 12,
+                                        offset: Offset(0, 2),
                                       ),
                                     ],
                                   ),
                                   overflow: TextOverflow.ellipsis,
-                                  maxLines: 3,
-                                )
-                              : const SizedBox.shrink(),
+                                  maxLines: 4,
+                                ),
+                              ),
+                            // Audio/song info (optional - you can add this if your posts have audio)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.2),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.music_note,
+                                    color: Colors.white.withOpacity(0.8),
+                                    size: 14,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Original Sound',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.9),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
 
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 16),
 
-                      SizedBox(
-                        width: 50,
-                        child: ReelActions(
-                          post: _currentPost,
-                          userId: widget.userId,
-                        ),
-                      ),
+                      ReelActions(post: _currentPost, userId: widget.userId),
                     ],
                   ),
                 ),
