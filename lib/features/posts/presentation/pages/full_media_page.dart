@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_player/video_player.dart';
+import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/service/media_download_service.dart';
 import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
@@ -29,8 +30,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
   bool _isScrubbing = false;
   bool _wasPlayingBeforeScrub = false;
 
-  // --- ADDED: State for downloading ---
-  final MediaDownloadService _downloadService = MediaDownloadService();
+  final MediaDownloadService _downloadService = sl<MediaDownloadService>();
   bool _isDownloading = false;
   double _downloadProgress = 0.0;
 
@@ -43,7 +43,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   Future<void> _initVideo() async {
-    // ... (your existing _initVideo code is perfect, no changes)
     if (_isDisposed || _initialized || _isInitializing) return;
     _isInitializing = true;
     try {
@@ -88,7 +87,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   String _formatDuration(Duration? d) {
-    // ... (no changes)
     if (d == null) return '--:--';
     final totalSeconds = d.inSeconds;
     final hours = totalSeconds ~/ 3600;
@@ -204,7 +202,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
 
   // --- (All scrubbing methods remain unchanged) ---
   void _onScrubStart(double value) {
-    // ... (no changes)
     if (_videoController == null || !_initialized) return;
     _isScrubbing = true;
     _scrubValue = _videoController!.value.duration * value;
@@ -223,7 +220,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   void _onScrubEnd(double value) {
-    // ... (no changes)
     if (_videoController == null || !_initialized) {
       _isScrubbing = false;
       _scrubValue = null;
@@ -309,7 +305,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   Widget _buildInteractiveImage(PostEntity media) {
-    // ... (no changes)
     return InteractiveViewer(
       panEnabled: true,
       scaleEnabled: true,
@@ -328,7 +323,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   Widget _buildFullVideo(PostEntity media) {
-    // ... (no changes)
     if (!_initialized || _videoController == null) {
       return media.thumbnailUrl != null
           ? CachedNetworkImage(
@@ -374,7 +368,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   Widget _buildVideoControls() {
-    // ... (no changes)
     if (_videoController == null || !_initialized) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

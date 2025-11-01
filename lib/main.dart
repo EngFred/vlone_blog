@@ -1,15 +1,10 @@
-// lib/main.dart (Updated)
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
-// REMOVED: import 'package:vlone_blog_app/core/theme/app_theme.dart'; // We'll redefine/update this.
-// Use the new theme class instead of the old function
-import 'core/theme/app_theme.dart'; // Assuming the new file path is core/theme/app_theme.dart
-// ... all other imports remain the same
+import 'core/theme/app_theme.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
@@ -49,9 +44,12 @@ void main() async {
     authOptions: FlutterAuthClientOptions(localStorage: SecureStorage()),
   );
 
-  // Call initAuth early, right after Supabase
+  di.initCoreServices();
+
+  // Call initAuth early, right after Supabase (auth-related feature registration)
   await di.initAuth(supabaseClient: Supabase.instance.client);
 
+  // Realtime depends on several stream usecases — init it after those are registered.
   await di.initRealtime();
 
   // Parallelize Workmanager and other feature inits
@@ -109,8 +107,17 @@ class SecureStorage implements LocalStorage {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  /// Set to true once we've performed the initial navigation after confirming
+  /// the auth session at app start. This prevents later AuthAuthenticated
+  /// emissions (e.g. coming from profile updates) from forcing a nav to feed.
+  bool _didInitialAuthNavigate = false;
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +128,6 @@ class MyApp extends StatelessWidget {
         ),
         BlocProvider<FeedBloc>(create: (_) => di.sl<FeedBloc>()),
         BlocProvider<ReelsBloc>(create: (_) => di.sl<ReelsBloc>()),
-        // UserPostsBloc is often scoped, but keeping it global for now as it replaces part of old PostsBloc
         BlocProvider<UserPostsBloc>(create: (_) => di.sl<UserPostsBloc>()),
         BlocProvider<PostActionsBloc>(create: (_) => di.sl<PostActionsBloc>()),
         BlocProvider<ProfileBloc>(create: (_) => di.sl<ProfileBloc>()),
@@ -136,10 +142,8 @@ class MyApp extends StatelessWidget {
       ],
       child: MaterialApp.router(
         title: Constants.appName,
-        // *** THEME FIX: Use the explicit themes from the new AppTheme class ***
         theme: AppTheme.lightTheme(),
         darkTheme: AppTheme.darkTheme(),
-        // ********************************************************************
         themeMode: ThemeMode.system,
         routerConfig: appRouter,
         debugShowCheckedModeBanner: false,
@@ -156,11 +160,22 @@ class MyApp extends StatelessWidget {
 
               if (state is AuthAuthenticated) {
                 AppLogger.info(
-                  'AuthBloc: User authenticated, navigating to main page',
+                  'AuthBloc: User authenticated, received AuthAuthenticated in MyApp listener',
                 );
+
                 // Remove splash once we confirm auth and user is available
                 FlutterNativeSplash.remove();
-                appRouter.go(Constants.feedRoute);
+
+                // ---- navigate to feed only once on initial auth ----
+                if (!_didInitialAuthNavigate) {
+                  _didInitialAuthNavigate = true;
+                  appRouter.go(Constants.feedRoute);
+                } else {
+                  AppLogger.info(
+                    'Skipping navigation to feed because initial auth navigation already occurred.',
+                  );
+                }
+                // -------------------------------------------------------------
 
                 // START RealtimeService ONCE at app-level for the authenticated user.
                 try {
@@ -185,6 +200,10 @@ class MyApp extends StatelessWidget {
                   'AuthBloc: User unauthenticated, navigating to login',
                 );
                 FlutterNativeSplash.remove();
+
+                // Reset the initial auth navigation flag so next login will navigate.
+                _didInitialAuthNavigate = false;
+
                 appRouter.go(Constants.loginRoute);
 
                 // Stop realtime service when user logs out

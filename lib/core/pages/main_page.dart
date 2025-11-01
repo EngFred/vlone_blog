@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +8,7 @@ import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/feed/feed_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/reels/reels_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/user_posts/user_posts_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -33,22 +35,63 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
   }
 
-  // Handle app lifecycle events for Realtime
+  // Handle app lifecycle events for Realtime (now tab-specific)
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_userId == null) return;
     if (state == AppLifecycleState.resumed) {
-      AppLogger.info('App resumed. Starting Feed/Reels realtime listeners.');
-      // Restart realtime subscriptions when app resumes
-      context.read<FeedBloc>().add(const StartFeedRealtime());
-      context.read<ReelsBloc>().add(const StartReelsRealtime());
-      context.read<ProfileBloc>().add(StartProfileRealtimeEvent(_userId!));
+      AppLogger.info(
+        'App resumed. Starting realtime for current tab: ${_tabNames[_selectedIndex]}.',
+      );
+      _startListenersForTab(_selectedIndex);
     } else if (state == AppLifecycleState.paused) {
-      AppLogger.info('App paused. Stopping Feed/Reels realtime listeners.');
-      // Stop realtime subscriptions when app pauses
-      context.read<FeedBloc>().add(const StopFeedRealtime());
-      context.read<ReelsBloc>().add(const StopReelsRealtime());
-      context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
+      AppLogger.info(
+        'App paused. Stopping realtime for current tab: ${_tabNames[_selectedIndex]}.',
+      );
+      _stopListenersForTab(_selectedIndex);
+    }
+  }
+
+  void _startListenersForTab(int index) {
+    if (_userId == null) return;
+    switch (index) {
+      case 0: // Feed
+        context.read<FeedBloc>().add(const StartFeedRealtime());
+        AppLogger.info('Started Feed realtime');
+        break;
+      case 1: // Reels
+        context.read<ReelsBloc>().add(const StartReelsRealtime());
+        AppLogger.info('Started Reels realtime');
+        break;
+      case 3: // Profile (own profile)
+        context.read<ProfileBloc>().add(StartProfileRealtimeEvent(_userId!));
+        context.read<UserPostsBloc>().add(
+          StartUserPostsRealtime(profileUserId: _userId!),
+        );
+        AppLogger.info('Started Profile/UserPosts realtime for $_userId');
+        break;
+      default:
+        break; // Users tab: no realtime
+    }
+  }
+
+  void _stopListenersForTab(int index) {
+    switch (index) {
+      case 0: // Feed
+        context.read<FeedBloc>().add(const StopFeedRealtime());
+        AppLogger.info('Stopped Feed realtime');
+        break;
+      case 1: // Reels
+        context.read<ReelsBloc>().add(const StopReelsRealtime());
+        AppLogger.info('Stopped Reels realtime');
+        break;
+      case 3: // Profile
+        context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
+        context.read<UserPostsBloc>().add(const StopUserPostsRealtime());
+        AppLogger.info('Stopped Profile/UserPosts realtime');
+        break;
+      default:
+        break;
     }
   }
 
@@ -68,6 +111,8 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
       if (userIdChanged) {
         // If the user ID changes (e.g., re-login), clear loaded tabs
         _loadedTabs.clear();
+        // Stop any lingering listeners from previous user
+        _stopListenersForTab(_selectedIndex);
       }
 
       // Sync the selected index with the shell
@@ -77,12 +122,12 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         'MainPage: Auth updated. Loading initial tab: ${_tabNames[_selectedIndex]}',
       );
 
-      // START Realtime Listeners (moved from MyApp to here, specific to BLoCs)
-      context.read<FeedBloc>().add(const StartFeedRealtime());
-      context.read<ReelsBloc>().add(const StartReelsRealtime());
-      context.read<ProfileBloc>().add(StartProfileRealtimeEvent(_userId!));
-
+      // FIX #2: Dispatch load FIRST, then start realtime (order matters for async safety)
       _dispatchLoadForIndex(_selectedIndex);
+      // Use microtask to sequence: Ensures load event is queued before realtime
+      // (Blocs will guard realtime start until loaded—see notes below)
+      scheduleMicrotask(() => _startListenersForTab(_selectedIndex));
+
       FlutterNativeSplash.remove(); // in case it wasn't removed yet
     });
   }
@@ -108,10 +153,33 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         break;
       case 3:
         context.read<ProfileBloc>().add(GetProfileDataEvent(_userId!));
+        // Also load the signed-in user's posts for the Profile tab
+        context.read<UserPostsBloc>().add(
+          GetUserPostsEvent(profileUserId: _userId!, currentUserId: _userId!),
+        );
         break;
       default:
         break;
     }
+  }
+
+  // FIX #1: Async-ify for race safety—await stop completion via microtasks
+  Future<void> _swapListenersAndLoad(int newIndex) async {
+    if (newIndex == _selectedIndex) return;
+
+    // Sequence: Stop old (sync queue), then load new, then start new
+    // Microtasks ensure event order without blocking UI thread
+    _stopListenersForTab(_selectedIndex);
+    await Future.microtask(
+      () {},
+    ); // Yield to let stop process (negligible delay)
+
+    // Load first (FIX #2)
+    _dispatchLoadForIndex(newIndex);
+    await Future.microtask(() {}); // Yield for load to queue
+
+    // Then start
+    _startListenersForTab(newIndex);
   }
 
   void _onItemTapped(int index) {
@@ -134,6 +202,18 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
       while (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
+
+      // FIX #1 & #2: Use sequenced swap (async, but non-blocking)
+      _swapListenersAndLoad(index).then((_) {
+        if (mounted) {
+          setState(() => _selectedIndex = index);
+        }
+      });
+
+      // Note: goBranch is sync and fast—doesn't block the async swap
+    } else {
+      AppLogger.info('Re-tap on current tab: ${_tabNames[index]}');
+      // Optional: Add refresh logic for re-taps here if desired
     }
 
     // Use shell to navigate to the branch
@@ -141,15 +221,6 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
       index,
       initialLocation: index == widget.navigationShell.currentIndex,
     );
-
-    // Update the selected index and dispatch load event if needed
-    if (index != _selectedIndex) {
-      setState(() => _selectedIndex = index);
-      _dispatchLoadForIndex(index);
-    } else {
-      AppLogger.info('Re-tap on current tab: ${_tabNames[index]}');
-      // Optional: Add refresh logic for re-taps here if desired
-    }
   }
 
   @override
@@ -164,12 +235,12 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // Stop Realtime when the MainPage is disposed (e.g., user logs out)
+    // Stop realtime for the current tab on dispose
     if (_userId != null) {
-      context.read<FeedBloc>().add(const StopFeedRealtime());
-      context.read<ReelsBloc>().add(const StopReelsRealtime());
-      context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
-      AppLogger.info('MainPage disposed. Realtime listeners stopped.');
+      _stopListenersForTab(_selectedIndex);
+      AppLogger.info(
+        'MainPage disposed. Realtime listeners for current tab stopped.',
+      );
     }
     super.dispose();
   }
@@ -195,7 +266,13 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
 
     // Sync selected index with shell (in case of external navigation)
     if (_selectedIndex != widget.navigationShell.currentIndex) {
-      setState(() => _selectedIndex = widget.navigationShell.currentIndex);
+      // FIX #1: Sequence the swap here too (for desync edges)
+      final oldIndex = _selectedIndex;
+      final newIndex = widget.navigationShell.currentIndex;
+      setState(() => _selectedIndex = newIndex);
+      if (oldIndex != newIndex) {
+        _swapListenersAndLoad(newIndex); // Reuse the sequenced method
+      }
     }
 
     final bool isReelsPage = _selectedIndex == 1;

@@ -109,6 +109,13 @@ class _UserProfilePageState extends State<UserProfilePage> {
           ),
         );
 
+        // NEW: Start UserPosts real-time if not own profile
+        if (!_isOwnProfile) {
+          context.read<UserPostsBloc>().add(
+            StartUserPostsRealtime(profileUserId: widget.userId),
+          );
+        }
+
         if (!_isOwnProfile) {
           context.read<FollowersBloc>().add(
             GetFollowStatusEvent(
@@ -145,6 +152,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
     // Stop realtime listener on the local ProfileBloc instance (cancels sub in bloc.close())
     if (!_isOwnProfile) {
       context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
+      // NEW: Stop UserPosts real-time
+      context.read<UserPostsBloc>().add(const StopUserPostsRealtime());
     }
     _scrollController.dispose();
     super.dispose();
@@ -356,9 +365,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
                             _isUserPostsLoading = true;
                             _hasLoadedOnce = false;
                           });
-                          // ✅ CHANGE: Get posts on the local UserPostsBloc
+                          // FIXED: Use Refresh for reset (vs. Get)
                           context.read<UserPostsBloc>().add(
-                            GetUserPostsEvent(
+                            RefreshUserPostsEvent(
                               profileUserId: widget.userId,
                               currentUserId: _currentUserId!,
                             ),

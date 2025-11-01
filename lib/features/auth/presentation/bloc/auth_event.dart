@@ -28,3 +28,12 @@ class LoginEvent extends AuthEvent {
 class LogoutEvent extends AuthEvent {}
 
 class CheckAuthStatusEvent extends AuthEvent {}
+
+class UpdateUserEvent extends AuthEvent {
+  final UserEntity user;
+
+  UpdateUserEvent(this.user);
+
+  @override
+  List<Object> get props => [user];
+}

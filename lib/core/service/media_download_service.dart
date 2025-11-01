@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
-// --- MODIFIED: Using the new 'plus' package ---
 import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -24,6 +23,9 @@ class DownloadResult {
 
 /// A robust service for handling media downloads and saving to the gallery.
 class MediaDownloadService {
+  MediaDownloadService();
+
+  // Dio() and DeviceInfoPlugin() are NOT compile-time constants.
   final Dio _dio = Dio();
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
 
@@ -91,7 +93,7 @@ class MediaDownloadService {
     }
   }
 
-  /// --- MODIFIED: Greatly improved permission handling for modern Android ---
+  /// Greatly improved permission handling for modern Android ---
   /// Handles platform-specific permission requests.
   Future<PermissionStatus> _requestPermission(String mediaType) async {
     if (Platform.isIOS) {

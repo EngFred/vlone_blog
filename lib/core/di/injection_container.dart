@@ -1,5 +1,6 @@
 import 'package:get_it/get_it.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:vlone_blog_app/core/service/media_download_service.dart';
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
 
 // Auth
@@ -96,17 +97,13 @@ import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart'
 
 final sl = GetIt.instance;
 
-///Accept pre-initialized SupabaseClient to avoid duplicate initialization
-/// This function is now called from main() AFTER Supabase.initialize()
-Future<void> init({SupabaseClient? supabaseClient}) async {
-  await initAuth(supabaseClient: supabaseClient);
-  await initPosts();
-  await initLikes();
-  await initFavorites();
-  await initComments();
-  await initProfile();
-  await initFollowers();
-  await initUsers();
+// -------------------
+// Core Services Registration
+// -------------------
+void initCoreServices() {
+  // Register MediaDownloadService as a LazySingleton
+  // GetIt will manage the single instance lifecycle for you.
+  sl.registerLazySingleton<MediaDownloadService>(() => MediaDownloadService());
 }
 
 /// Init only auth-related dependencies first for faster startup
@@ -199,10 +196,6 @@ Future<void> initPosts() async {
     () => StreamPostDeletionsUseCase(sl<PostsRepository>()),
   );
 
-  // -------------------
-  // ✅ NEW: Register Specialized Posts BLoCs
-  // -------------------
-
   // 1. FeedsBloc
   sl.registerFactory<FeedBloc>(
     () => FeedBloc(
@@ -233,7 +226,10 @@ Future<void> initPosts() async {
   // 4. UserPostsBloc
   // Handles a specific user's paginated posts
   sl.registerFactory<UserPostsBloc>(
-    () => UserPostsBloc(getUserPostsUseCase: sl<GetUserPostsUseCase>()),
+    () => UserPostsBloc(
+      getUserPostsUseCase: sl<GetUserPostsUseCase>(),
+      realtimeService: sl<RealtimeService>(),
+    ),
   );
 }
 

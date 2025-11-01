@@ -51,7 +51,7 @@ class _FeedPageState extends State<FeedPage>
         context.read<NotificationsBloc>().add(
           NotificationsSubscribeUnreadCountStream(),
         );
-        context.read<FeedBloc>().add(const StartFeedRealtime());
+        // Removed: StartFeedRealtime() — now managed by MainPage
       } else if (mounted) {
         AppLogger.warning('User not authenticated in FeedPage');
       }
@@ -154,7 +154,7 @@ class _FeedPageState extends State<FeedPage>
 
   @override
   void dispose() {
-    context.read<FeedBloc>().add(const StopFeedRealtime());
+    // Removed: StopFeedRealtime() — now managed by MainPage
     _scrollController.dispose();
     super.dispose();
   }
@@ -263,13 +263,19 @@ class _FeedPageState extends State<FeedPage>
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
+        // <--- CORRECTED HERE
         onPressed: () => context.push(Constants.createPostRoute),
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Theme.of(context).colorScheme.onPrimary,
         elevation: 8,
+        // The 'label' property is used for the text
+        label: const Text(
+          'Create',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        // Keep the custom shape
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Icon(Icons.add, size: 24),
       ),
     );
   }

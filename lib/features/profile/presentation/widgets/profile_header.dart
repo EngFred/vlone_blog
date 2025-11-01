@@ -1,7 +1,12 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:vlone_blog_app/core/di/injection_container.dart';
+import 'package:vlone_blog_app/core/service/media_download_service.dart';
+import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/debouncer.dart';
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 
 class ProfileHeader extends StatelessWidget {
@@ -22,8 +27,7 @@ class ProfileHeader extends StatelessWidget {
 
   static const Duration _followDebounce = Duration(milliseconds: 400);
 
-  // UPDATED: Helper function to show the full-screen image overlay.
-  // Overlay now only exits via the Close button.
+  // Overlay now only exits via the Close button. Includes download action.
   void _showProfileImageOverlay(BuildContext context, String? imageUrl) {
     if (imageUrl == null) {
       return;
@@ -32,68 +36,241 @@ class ProfileHeader extends StatelessWidget {
     showDialog(
       context: context,
       useSafeArea: false,
-      // ⚠️ IMPORTANT: Prevents closing when tapping outside the dialog
-      // (the black area) or pressing the device's back button.
+      // Prevent closing when tapping outside the dialog or pressing back button.
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
-        return Scaffold(
-          // Use Scaffold to properly handle the overlay and AppBar style actions
-          backgroundColor: Colors.black.withOpacity(0.9),
-          body: Stack(
-            children: [
-              // 1. Image Content (Center)
-              GestureDetector(
-                // REMOVED: onTap handler is removed here to prevent closing on image tap
-                onTap: () {},
-                child: Center(
-                  child: Hero(
-                    tag: 'profileImage-${profile.id}',
-                    child: CachedNetworkImage(
-                      imageUrl: imageUrl,
-                      placeholder: (context, url) => Center(
-                        child: CircularProgressIndicator(
-                          color: Theme.of(context).colorScheme.primary,
+        // Local state for download progress inside the dialog
+        bool _isDownloading = false;
+        double _downloadProgress = 0.0;
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Future<void> _startDownload() async {
+              if (_isDownloading) return;
+
+              // Defensive - ensure service registered
+              if (!sl.isRegistered<MediaDownloadService>()) {
+                AppLogger.error('MediaDownloadService not registered in GetIt');
+                SnackbarUtils.showError(
+                  dialogContext,
+                  'Download service unavailable. Restart the app.',
+                );
+                return;
+              }
+
+              final MediaDownloadService downloadService =
+                  sl<MediaDownloadService>();
+
+              setState(() {
+                _isDownloading = true;
+                _downloadProgress = 0.0;
+              });
+
+              SnackbarUtils.showInfo(dialogContext, 'Starting download...');
+
+              try {
+                final result = await downloadService.downloadAndSaveMedia(
+                  imageUrl,
+                  'image',
+                  onReceiveProgress: (received, total) {
+                    // Use dialogContext.mounted to verify the dialog is still in the tree
+                    if (!dialogContext.mounted) return;
+                    if (total > 0) {
+                      setState(() {
+                        _downloadProgress = received / total;
+                      });
+                    }
+                  },
+                );
+
+                // Check dialog still mounted before touching state or showing snackbars
+                if (!dialogContext.mounted) return;
+
+                setState(() {
+                  _isDownloading = false;
+                });
+
+                switch (result.status) {
+                  case DownloadResultStatus.success:
+                    SnackbarUtils.showSuccess(
+                      dialogContext,
+                      'Image saved to gallery!',
+                    );
+                    break;
+                  case DownloadResultStatus.failure:
+                    AppLogger.error(
+                      'Profile image download failed: ${result.message}',
+                    );
+                    SnackbarUtils.showError(
+                      dialogContext,
+                      result.message ?? 'Download failed.',
+                    );
+                    break;
+                  case DownloadResultStatus.permissionDenied:
+                    SnackbarUtils.showWarning(
+                      dialogContext,
+                      'Storage permission is required to save images.',
+                    );
+                    break;
+                  case DownloadResultStatus.permissionPermanentlyDenied:
+                    SnackbarUtils.showWarning(
+                      dialogContext,
+                      'Permission denied. Please enable storage access in app settings.',
+                      action: SnackBarAction(
+                        label: 'SETTINGS',
+                        textColor: Colors.white,
+                        onPressed: openAppSettings,
+                      ),
+                    );
+                    break;
+                }
+              } catch (e, st) {
+                AppLogger.error(
+                  'Unhandled download error',
+                  error: e,
+                  stackTrace: st,
+                );
+                if (!dialogContext.mounted) return;
+                setState(() {
+                  _isDownloading = false;
+                });
+                SnackbarUtils.showError(
+                  dialogContext,
+                  'Download failed unexpectedly. Please try again.',
+                );
+              }
+            }
+
+            final theme = Theme.of(context);
+
+            return Scaffold(
+              backgroundColor: Colors.black.withOpacity(0.9),
+              body: Stack(
+                children: [
+                  // Image content center
+                  GestureDetector(
+                    // disable tap-to-close (overlay only closes via Close)
+                    onTap: () {},
+                    child: Center(
+                      child: Hero(
+                        tag: 'profileImage-${profile.id}',
+                        child: CachedNetworkImage(
+                          imageUrl: imageUrl,
+                          placeholder: (c, u) => Center(
+                            child: CircularProgressIndicator(
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                          errorWidget: (c, u, e) => const Icon(
+                            Icons.error,
+                            color: Colors.white,
+                            size: 80,
+                          ),
+                          fit: BoxFit.contain,
+                          width: MediaQuery.of(context).size.width,
+                          height: MediaQuery.of(context).size.height,
                         ),
                       ),
-                      errorWidget: (context, url, error) => const Icon(
-                        Icons.error,
-                        color: Colors.white,
-                        size: 80,
-                      ),
-                      fit: BoxFit.contain,
-                      width: MediaQuery.of(context).size.width,
-                      height: MediaQuery.of(context).size.height,
                     ),
                   ),
-                ),
-              ),
 
-              // 2. Close Button (Top Right) - This is now the ONLY way to exit.
-              Positioned(
-                top:
-                    36.0, // Space from the status bar (adjust as needed for aesthetics)
-                right: 16.0,
-                child: SafeArea(
-                  // Ensure button is below the notch/status bar
-                  child: IconButton(
-                    icon: const Icon(
-                      Icons.close,
-                      color: Colors.white,
-                      size: 30,
+                  // Close Button (Top Right) - ONLY way to exit
+                  Positioned(
+                    top: 36.0,
+                    right: 16.0,
+                    child: SafeArea(
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                        tooltip: 'Close image view',
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                      ),
                     ),
-                    tooltip: 'Close image view',
-                    onPressed: () => Navigator.of(dialogContext).pop(),
                   ),
-                ),
+
+                  // Download Button (Top Left)
+                  Positioned(
+                    top: 36.0,
+                    left: 16.0,
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 4.0),
+                        child: _isDownloading
+                            ? Container(
+                                width: 40,
+                                height: 40,
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.black38,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white24,
+                                    width: 1,
+                                  ),
+                                ),
+                                child:
+                                    _downloadProgress > 0 &&
+                                        _downloadProgress <= 1.0
+                                    ? Stack(
+                                        alignment: Alignment.center,
+                                        children: [
+                                          SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child: CircularProgressIndicator(
+                                              value: _downloadProgress,
+                                              strokeWidth: 2.5,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                              )
+                            : InkWell(
+                                onTap: _startDownload,
+                                borderRadius: BorderRadius.circular(24),
+                                child: Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black38,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white24,
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.download_rounded,
+                                    color: Colors.white,
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
-  // NEW: Follow icon overlay widget
+  //Follow icon overlay widget
   Widget _buildFollowIconOverlay(BuildContext context) {
     final theme = Theme.of(context);
     // Determine the icon and background color based on following status
@@ -112,7 +289,6 @@ class ProfileHeader extends StatelessWidget {
       onTap: isProcessingFollow || onFollowToggle == null
           ? null
           : () {
-              // Apply the same debouncing logic as the old button
               final key = 'follow_${profile.id}';
               Debouncer.instance.debounce(key, _followDebounce, () {
                 onFollowToggle!(!isFollowing!);
@@ -160,17 +336,16 @@ class ProfileHeader extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // ⚠️ CHANGED: Avatar is now inside a Stack for the overlay
+          // Avatar + overlays
           Stack(
-            clipBehavior:
-                Clip.none, // Allows the icon to sit outside the circle
+            clipBehavior: Clip.none,
             children: [
-              // 1. Avatar (Wrapped in GestureDetector and Hero)
+              // Avatar (Wrapped in GestureDetector and Hero)
               GestureDetector(
                 onTap: () =>
                     _showProfileImageOverlay(context, profile.profileImageUrl),
                 child: Hero(
-                  tag: 'profileImage-${profile.id}', // Hero source tag
+                  tag: 'profileImage-${profile.id}',
                   child: CircleAvatar(
                     radius: 54,
                     backgroundColor: Theme.of(
@@ -192,7 +367,7 @@ class ProfileHeader extends StatelessWidget {
                 ),
               ),
 
-              // 2. Follow Overlay (if not own profile)
+              // Follow Overlay (if applicable)
               if (showFollowOverlay && !isProcessingFollow)
                 Positioned(
                   right: 0,
@@ -200,13 +375,13 @@ class ProfileHeader extends StatelessWidget {
                   child: _buildFollowIconOverlay(context),
                 ),
 
-              // 3. Loading Spinner Overlay (while processing follow request)
+              // Loading Spinner Overlay (follow)
               if (showFollowOverlay && isProcessingFollow)
                 Positioned(
                   right: 0,
                   bottom: 0,
                   child: Container(
-                    width: 32, // Match size of icon overlay
+                    width: 32,
                     height: 32,
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
@@ -293,7 +468,6 @@ class ProfileHeader extends StatelessWidget {
               ],
             ),
           ),
-          // ❌ REMOVED: The large follow/unfollow button is no longer needed
           const SizedBox(height: 16),
         ],
       ),

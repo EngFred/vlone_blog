@@ -1,4 +1,3 @@
-// lib/features/profile/presentation/pages/edit_profile_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -10,6 +9,15 @@ import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+
+// ------------------------------------------------------------------
+// ⭐ REQUIRED PLACEHOLDER IMPORTS/DEFINITIONS FOR SYNCING
+// ------------------------------------------------------------------
+// NOTE: You must ensure these classes/imports are correctly set up in your actual project.
+// Replace with your actual imports for AuthBloc and UserEntity if they are separate.
+import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:vlone_blog_app/features/auth/domain/entities/user_entity.dart';
+// ------------------------------------------------------------------
 
 class EditProfilePage extends StatefulWidget {
   final String userId;
@@ -187,15 +195,27 @@ class _EditProfilePageState extends State<EditProfilePage> {
             setState(() => _isSubmitting = false);
             SnackbarUtils.showError(context, state.message);
           } else if (state is ProfileDataLoaded) {
-            // Success handler - just pop and show success
-            // NO manual refetch needed - real-time stream will update the profile!
             if (_isSubmitting) {
               setState(() => _isSubmitting = false);
               SnackbarUtils.showSuccess(
                 context,
                 'Profile updated successfully!',
               );
-              // Just pop - the ProfilePage's real-time stream will receive the update
+              // Use the freshly updated ProfileEntity data to create the UserEntity
+              // This synchronizes the username/image across the app instantly.
+              if (_initialProfile != null) {
+                final updatedUser = UserEntity(
+                  id: state.profile.id,
+                  // Re-use email from the cached initial user data
+                  email: _initialProfile!.email,
+                  username: state.profile.username,
+                  profileImageUrl: state.profile.profileImageUrl,
+                );
+                // Dispatch the update to the AuthBloc
+                context.read<AuthBloc>().add(UpdateUserEvent(updatedUser));
+              }
+              // -------------------------------------------------------------
+
               context.pop();
               return;
             }

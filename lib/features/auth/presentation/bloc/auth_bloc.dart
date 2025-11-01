@@ -162,6 +162,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         },
       );
     });
+
+    on<UpdateUserEvent>((event, emit) {
+      AppLogger.info(
+        'UpdateUserEvent triggered: updating user cache and state.',
+      );
+      // 1. Update the cached user
+      _cachedUser = event.user;
+
+      // 2. Emit a new AuthAuthenticated state with the fresh UserEntity
+      emit(AuthAuthenticated(event.user));
+    });
   }
 
   // Provide access to cached user

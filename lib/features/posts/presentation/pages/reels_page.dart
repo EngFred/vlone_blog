@@ -43,16 +43,7 @@ class _ReelsPageState extends State<ReelsPage>
     // Initial status bar setting is now handled by VisibilityDetector in build.
     // AppTheme.setStatusBarForReels();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final userId = context.read<AuthBloc>().cachedUser?.id;
-      if (userId != null) {
-        context.read<ReelsBloc>().add(const StartReelsRealtime());
-      } else {
-        AppLogger.warning(
-          'ReelsPage: userId null at init; waiting for AuthBloc',
-        );
-      }
-    });
+    // Removed: StartReelsRealtime() — now managed by MainPage
   }
 
   @override
@@ -376,7 +367,7 @@ class _ReelsPageState extends State<ReelsPage>
     WidgetsBinding.instance.removeObserver(this);
     VideoPlaybackManager.pause();
     _pageController.dispose();
-    context.read<ReelsBloc>().add(const StopReelsRealtime());
+    // Removed: StopReelsRealtime() — now managed by MainPage
 
     // Status bar restoration is handled by VisibilityDetector when the page becomes invisible.
     // Explicitly calling restore here is often too late or unnecessary.
