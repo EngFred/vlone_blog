@@ -1,6 +1,4 @@
-import 'dart:io';
 import 'dart:async';
-
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:video_player/video_player.dart';
 
@@ -8,7 +6,7 @@ import 'package:video_player/video_player.dart';
 /// Adds a simple LRU eviction to bound memory usage on low-end devices.
 /// Also dedupes concurrent initializations for the same post id.
 ///
-///supports short-lived "hold for navigation" to prevent immediate release
+/// Supports short-lived "hold for navigation" to prevent immediate release
 /// when a source widget is disposed during a hero / route transition.
 class VideoControllerManager {
   VideoControllerManager._({this.maxControllers = 6});
@@ -17,19 +15,15 @@ class VideoControllerManager {
     _instance ??= VideoControllerManager._(maxControllers: maxControllers);
     return _instance!;
   }
-
   final int maxControllers;
-
   // Controllers keyed by postId
   final Map<String, VideoPlayerController> _controllers = {};
   // Reference counts per postId
   final Map<String, int> _refCounts = {};
   // LRU ordering: front = least recently used, back = most recently used
   final List<String> _lru = [];
-
   // Ongoing initialization futures to dedupe concurrent getController calls
   final Map<String, Future<VideoPlayerController>> _ongoingInits = {};
-
   // Hold-timers keyed by postId to keep controller alive across short navigations
   final Map<String, Timer> _holdTimers = {};
 
@@ -42,7 +36,6 @@ class VideoControllerManager {
       _touchLru(postId);
       return _controllers[postId]!;
     }
-
     // If an initialization is already in progress for this post, return the same Future
     if (_ongoingInits.containsKey(postId)) {
       try {
@@ -56,14 +49,11 @@ class VideoControllerManager {
         _ongoingInits.remove(postId);
       }
     }
-
     // Evict least recently used controllers with refCount == 0 until we have space.
     await _evictIfNeeded();
-
     // Start initialization and store the future to dedupe
     final initFuture = _initializeController(postId, url);
     _ongoingInits[postId] = initFuture;
-
     try {
       final controller = await initFuture;
       // Register controller and set ref count
@@ -80,13 +70,35 @@ class VideoControllerManager {
     String postId,
     String url,
   ) async {
-    // Download or reuse cached file (may throw - caller should handle)
-    final File file = await DefaultCacheManager().getSingleFile(url);
-
-    final controller = VideoPlayerController.file(file);
-    await controller.initialize();
-    controller.setLooping(true);
-    return controller;
+    VideoPlayerController controller;
+    final cacheManager = DefaultCacheManager();
+    // Check if the file is already cached
+    final fileInfo = await cacheManager.getFileFromCache(url);
+    if (fileInfo != null && fileInfo.file.existsSync()) {
+      // Use local file if cached for instant playback
+      controller = VideoPlayerController.file(fileInfo.file);
+    } else {
+      // Use network for progressive streaming if not cached
+      controller = VideoPlayerController.networkUrl(Uri.parse(url));
+      // Trigger background caching for future use (fire-and-forget)
+      cacheManager
+          .downloadFile(url)
+          .then<void>(
+            (_) {},
+            onError: (_) {
+              // Silently handle caching errors to not affect playback
+            },
+          );
+    }
+    try {
+      await controller.initialize();
+      controller.setLooping(true);
+      return controller;
+    } catch (e) {
+      // Clean up on failure
+      controller.dispose();
+      rethrow;
+    }
   }
 
   /// Decrement refcount and dispose controller when count reaches zero.
@@ -95,7 +107,6 @@ class VideoControllerManager {
       // nothing to do
       return;
     }
-
     _refCounts[postId] = (_refCounts[postId] ?? 1) - 1;
     if ((_refCounts[postId] ?? 0) <= 0) {
       // Dispose and remove immediately to free memory, and remove from LRU.
@@ -117,11 +128,9 @@ class VideoControllerManager {
   void holdForNavigation(String postId, Duration ttl) {
     // Cancel any existing hold timer so we restart TTL
     _holdTimers[postId]?.cancel();
-
     // Bump a synthetic refcount so releaseController won't dispose while held.
     _refCounts[postId] = (_refCounts[postId] ?? 0) + 1;
     _touchLru(postId);
-
     // Schedule a timer to decrement when TTL elapses.
     _holdTimers[postId] = Timer(ttl, () {
       _holdTimers.remove(postId);
@@ -150,7 +159,6 @@ class VideoControllerManager {
   }
 
   // --- LRU helpers ---
-
   void _touchLru(String key) {
     _removeFromLru(key);
     _lru.add(key);
@@ -168,7 +176,6 @@ class VideoControllerManager {
         (k) => (_refCounts[k] ?? 0) <= 0,
         orElse: () => '',
       );
-
       if (candidate.isEmpty) {
         // No zero-ref candidates — as a last resort, evict the absolute least used controller
         final fallback = _lru.isNotEmpty ? _lru.first : null;
@@ -188,7 +195,6 @@ class VideoControllerManager {
         _refCounts.remove(candidate);
         _removeFromLru(candidate);
       }
-
       // Yield a microtask to avoid blocking synchronous callers if eviction is heavy
       await Future<void>.delayed(Duration.zero);
     }
