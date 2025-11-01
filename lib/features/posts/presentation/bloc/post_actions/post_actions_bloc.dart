@@ -155,15 +155,9 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
     // The PostCard on the feed is listening for this.
     emit(PostOptimisticallyUpdated(updatedPost));
 
-    // 4. ALSO, if we are on a detail screen (PostLoaded), update the BLoC's own state.
-    // This makes the fix work for both the feed AND the detail screen.
     if (state is PostLoaded &&
         (state as PostLoaded).post.id == updatedPost.id) {
       emit(PostLoaded(updatedPost));
     }
-
-    // Note: We no longer emit PostActionsInitial here. We let PostOptimisticallyUpdated
-    // be a transient state that the UI listents to. The BLoC's "resting" state
-    // remains either PostActionsInitial or PostLoaded.
   }
 }

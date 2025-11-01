@@ -115,9 +115,10 @@ class _CommentsSectionState extends State<CommentsSection> {
           return _buildCommentList(context, commentList, state);
         }
 
-        if (state is CommentsLoadingMore) {
-          return const SizedBox.shrink();
-        }
+        // Note: CommentsLoadingMore is handled *inside* _buildCommentList
+        // as an item, so we don't need a top-level check for it.
+        // We just need to make sure we don't return shrink() if
+        // the state is CommentsLoaded.
 
         return const SizedBox.shrink();
       },
@@ -254,7 +255,7 @@ class _CommentsSectionState extends State<CommentsSection> {
           itemCount:
               commentTiles.length +
               (state.hasMore ? 1 : 0) +
-              (widget.showCountHeader ? 0 : 1),
+              (widget.showCountHeader ? 1 : 0), // <--- FIX 1: Corrected logic
           itemBuilder: (context, index) {
             if (widget.showCountHeader && index == 0) {
               return _buildCommentsHeader(comments.length);
@@ -263,6 +264,8 @@ class _CommentsSectionState extends State<CommentsSection> {
             final contentIndex = widget.showCountHeader ? index - 1 : index;
 
             if (contentIndex == commentTiles.length) {
+              // This item is the "load more" or error slot.
+              // It is only built if state.hasMore is true.
               if (state.loadMoreError != null) {
                 return Container(
                   margin: const EdgeInsets.all(16),
@@ -282,7 +285,7 @@ class _CommentsSectionState extends State<CommentsSection> {
                       const SizedBox(height: 12),
                       FilledButton.tonal(
                         onPressed: () => context.read<CommentsBloc>().add(
-                          const LoadMoreCommentsEvent(),
+                          LoadMoreCommentsEvent(widget.postId),
                         ),
                         style: FilledButton.styleFrom(
                           backgroundColor: Theme.of(
@@ -298,11 +301,14 @@ class _CommentsSectionState extends State<CommentsSection> {
                   ),
                 );
               }
+              // This is safe because itemCount is zero if hasMore is false
               return _buildLoadingMore();
             }
 
-            final commentIndex = widget.showCountHeader ? contentIndex : index;
-            return commentTiles[commentIndex];
+            // This is a regular comment tile
+            // The RangeError was here because 'contentIndex' could be out of bounds
+            // but the itemCount fix resolves this.
+            return commentTiles[contentIndex];
           },
         ),
       );

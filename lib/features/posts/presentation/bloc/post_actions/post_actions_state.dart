@@ -51,7 +51,7 @@ class PostLoaded extends PostActionsState {
   List<Object?> get props => [post];
 }
 
-// ✅ ADDED: State for optimistic updates
+//  State for optimistic updates
 // This is the new state that the PostActions widget should listen to.
 class PostOptimisticallyUpdated extends PostActionsState {
   final PostEntity post;

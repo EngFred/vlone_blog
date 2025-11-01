@@ -36,8 +36,15 @@ class _UserListItemState extends State<UserListItem> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme; // Access color scheme here
     final isFollowing = widget.user.isFollowing;
     final isSelf = widget.user.id == widget.currentUserId;
+
+    // Determine the border color based on the current theme brightness
+    // This is safer than using theme.dividerColor which might be less defined in M3
+    final borderColor = theme.brightness == Brightness.light
+        ? Colors.grey[300]
+        : theme.dividerColor;
 
     return InkWell(
       onTap: () => context.push('${Constants.profileRoute}/${widget.user.id}'),
@@ -46,7 +53,8 @@ class _UserListItemState extends State<UserListItem> {
         padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 8.0),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          color: theme.colorScheme.surface.withOpacity(0.02),
+          // Use a subtle background color derived from the surface for distinction
+          color: colorScheme.surfaceContainer,
         ),
         child: Row(
           children: [
@@ -56,7 +64,12 @@ class _UserListItemState extends State<UserListItem> {
                   ? NetworkImage(widget.user.profileImageUrl!)
                   : null,
               child: widget.user.profileImageUrl == null
-                  ? const Icon(Icons.person, size: 28)
+                  ? Icon(
+                      Icons.person,
+                      size: 28,
+                      // FIX 1: Set explicit color for the fallback icon
+                      color: colorScheme.onSurfaceVariant.withOpacity(0.8),
+                    )
                   : null,
             ),
             const SizedBox(width: 12),
@@ -67,6 +80,8 @@ class _UserListItemState extends State<UserListItem> {
                   Text(
                     widget.user.username,
                     style: theme.textTheme.titleMedium?.copyWith(
+                      // FIX 2: Set explicit color for the username text
+                      color: colorScheme.onSurface,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -74,7 +89,8 @@ class _UserListItemState extends State<UserListItem> {
                   Text(
                     widget.user.bio ?? 'No bio available',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      // The bio text color is already theme-aware, which is good.
+                      color: colorScheme.onSurface.withOpacity(0.6),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -100,9 +116,10 @@ class _UserListItemState extends State<UserListItem> {
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.4,
                                 valueColor: AlwaysStoppedAnimation<Color>(
+                                  // This is fine, using primary and onPrimary correctly
                                   isFollowing
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.onPrimary,
+                                      ? colorScheme.primary
+                                      : colorScheme.onPrimary,
                                 ),
                               ),
                             ),
@@ -122,13 +139,19 @@ class _UserListItemState extends State<UserListItem> {
                                 borderRadius: BorderRadius.circular(18.0),
                               ),
                               backgroundColor: isFollowing
-                                  ? theme.colorScheme.surface
-                                  : theme.colorScheme.primary,
+                                  ? colorScheme
+                                        .surface // Unfollow button background is surface
+                                  : colorScheme
+                                        .primary, // Follow button background is primary
                               foregroundColor: isFollowing
-                                  ? theme.colorScheme.onSurface
-                                  : theme.colorScheme.onPrimary,
+                                  ? colorScheme
+                                        .onSurface // Unfollow button text/icon is onSurface
+                                  : colorScheme
+                                        .onPrimary, // Follow button text/icon is onPrimary
                               side: isFollowing
-                                  ? BorderSide(color: theme.dividerColor)
+                                  ? BorderSide(
+                                      color: borderColor!,
+                                    ) // Use the calculated border color
                                   : BorderSide.none,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 10.0,

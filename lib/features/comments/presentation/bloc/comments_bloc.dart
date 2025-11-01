@@ -26,7 +26,6 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
   StreamSubscription? _rtCommentsSub;
   String? _currentPostId;
 
-  // CHANGE: Added pagination state (mirrors posts/notifications).
   static const int _pageSize = 20;
   bool _hasMore = true;
   DateTime? _lastCreatedAt;
@@ -54,7 +53,12 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     });
 
     on<NewCommentsEvent>((event, emit) {
-      emit(CommentsLoaded(comments: event.newComments));
+      if (state is CommentsLoaded) {
+        final current = state as CommentsLoaded;
+        emit(current.copyWith(comments: event.newComments));
+      } else {
+        emit(CommentsLoaded(comments: event.newComments, hasMore: _hasMore));
+      }
     });
   }
 
@@ -93,14 +97,22 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     LoadMoreCommentsEvent event,
     Emitter<CommentsState> emit,
   ) async {
-    if (!_hasMore || state is CommentsLoadingMore) return;
+    // FIX 2a: Add null checks for cursors to prevent crash
+    if (!_hasMore ||
+        state is CommentsLoadingMore ||
+        _lastCreatedAt == null ||
+        _lastId == null)
+      return;
+
+    // Ensure we are in a loaded state to load more
+    if (state is! CommentsLoaded) return;
 
     final currentState = state as CommentsLoaded;
     emit(currentState.copyWith(isLoadingMore: true, loadMoreError: null));
 
     final result = await loadMoreCommentsUseCase(
       LoadMoreCommentsParams(
-        postId: _currentPostId!,
+        postId: event.postId,
         lastCreatedAt: _lastCreatedAt!,
         lastId: _lastId!,
         pageSize: _pageSize,
@@ -143,7 +155,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     RefreshCommentsEvent event,
     Emitter<CommentsState> emit,
   ) async {
-    // CHANGE: Reset pagination and reload initial.
+    //Reset pagination and reload initial.
     _hasMore = true;
     _lastCreatedAt = null;
     _lastId = null;
@@ -179,6 +191,11 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     StartCommentsStreamEvent event,
     Emitter<CommentsState> emit,
   ) async {
+    // Prevent re-subscribing to the same post
+    if (_currentPostId == event.postId && _commentsStreamSubscription != null) {
+      return;
+    }
+
     AppLogger.info(
       'Starting comments real-time stream for post: ${event.postId}',
     );
@@ -232,8 +249,6 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
         error: err,
       ),
     );
-
-    //No initial emit—let GetInitialCommentsEvent drive pagination load.
   }
 
   Future<void> _onStopCommentsStream(
@@ -258,12 +273,14 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     Emitter<CommentsState> emit,
   ) {
     AppLogger.info('Realtime comments received for post: ${event.postId}');
-    // CHANGE: Preserve hasMore etc. from current state.
+
     if (state is CommentsLoaded) {
       final current = state as CommentsLoaded;
       emit(current.copyWith(comments: event.comments));
     } else {
-      emit(CommentsLoaded(comments: event.comments));
+      // FIX 2b: Preserve the BLoC's _hasMore state, not the
+      // constructor default (which is true), to prevent infinite loader.
+      emit(CommentsLoaded(comments: event.comments, hasMore: _hasMore));
     }
   }
 

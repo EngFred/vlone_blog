@@ -1,10 +1,15 @@
+// lib/main.dart (Updated)
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
-import 'package:vlone_blog_app/core/theme/app_theme.dart';
+// REMOVED: import 'package:vlone_blog_app/core/theme/app_theme.dart'; // We'll redefine/update this.
+// Use the new theme class instead of the old function
+import 'core/theme/app_theme.dart'; // Assuming the new file path is core/theme/app_theme.dart
+// ... all other imports remain the same
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
@@ -131,48 +136,10 @@ class MyApp extends StatelessWidget {
       ],
       child: MaterialApp.router(
         title: Constants.appName,
-        theme: appTheme(),
-        darkTheme: ThemeData.dark().copyWith(
-          primaryColor: Constants.primaryColor,
-          colorScheme: ColorScheme.fromSwatch(
-            primarySwatch: Colors.blue,
-            accentColor: Constants.accentColor,
-            brightness: Brightness.dark,
-          ),
-          scaffoldBackgroundColor: Colors.grey[900],
-          textTheme: const TextTheme(
-            headlineMedium: TextStyle(
-              color: Colors.white70,
-              fontWeight: FontWeight.w600,
-            ),
-            bodyLarge: TextStyle(color: Colors.white70),
-            bodyMedium: TextStyle(color: Colors.white60),
-          ),
-          inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Constants.primaryColor, width: 2),
-            ),
-            fillColor: Colors.grey[800],
-            filled: true,
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Constants.primaryColor,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          bottomNavigationBarTheme: BottomNavigationBarThemeData(
-            backgroundColor: Colors.grey[900],
-            selectedItemColor: Constants.primaryColor,
-            unselectedItemColor: Colors.white60,
-            showUnselectedLabels: true,
-          ),
-        ),
+        // *** THEME FIX: Use the explicit themes from the new AppTheme class ***
+        theme: AppTheme.lightTheme(),
+        darkTheme: AppTheme.darkTheme(),
+        // ********************************************************************
         themeMode: ThemeMode.system,
         routerConfig: appRouter,
         debugShowCheckedModeBanner: false,

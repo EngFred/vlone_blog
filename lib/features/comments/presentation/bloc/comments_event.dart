@@ -17,12 +17,13 @@ class GetInitialCommentsEvent extends CommentsEvent {
   List<Object?> get props => [postId];
 }
 
-// New: For loading older comments.
+// For loading older comments.
 class LoadMoreCommentsEvent extends CommentsEvent {
-  const LoadMoreCommentsEvent();
+  final String postId;
+  const LoadMoreCommentsEvent(this.postId);
 }
 
-// New: For pull-to-refresh.
+// For pull-to-refresh.
 class RefreshCommentsEvent extends CommentsEvent {
   final String postId;
 

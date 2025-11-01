@@ -29,6 +29,9 @@ class UserGreetingTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Get the theme's ColorScheme for theme-aware color selection
+    final colorScheme = Theme.of(context).colorScheme;
+
     return BlocSelector<AuthBloc, AuthState, String?>(
       selector: (state) {
         if (state is AuthAuthenticated) {
@@ -56,12 +59,8 @@ class UserGreetingTitle extends StatelessWidget {
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
                         colors: [
-                          Theme.of(
-                            context,
-                          ).colorScheme.primary.withOpacity(0.3),
-                          Theme.of(
-                            context,
-                          ).colorScheme.secondary.withOpacity(0.3),
+                          colorScheme.primary.withOpacity(0.3),
+                          colorScheme.secondary.withOpacity(0.3),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -69,7 +68,7 @@ class UserGreetingTitle extends StatelessWidget {
                     ),
                     child: CircleAvatar(
                       radius: 20,
-                      backgroundColor: Theme.of(context).colorScheme.surface,
+                      backgroundColor: colorScheme.surface,
                       child: CircleAvatar(
                         radius: 18,
                         backgroundImage: profileImageUrl != null
@@ -79,9 +78,7 @@ class UserGreetingTitle extends StatelessWidget {
                             ? Icon(
                                 Icons.person,
                                 size: 20,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurface.withOpacity(0.6),
+                                color: colorScheme.onSurface.withOpacity(0.6),
                               )
                             : null,
                       ),
@@ -95,13 +92,11 @@ class UserGreetingTitle extends StatelessWidget {
                         children: [
                           Text(
                             _getGreeting(),
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              // This is correctly using onSurfaceVariant for less emphasis
+                              color: colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -113,11 +108,13 @@ class UserGreetingTitle extends StatelessWidget {
                       if (username != null)
                         Text(
                           username,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
-                              ),
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            // FIX: Explicitly set text color to onSurface
+                            // to ensure it's dark in light mode and light in dark mode.
+                            color: colorScheme.onSurface,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
                         ),
                     ],
                   ),

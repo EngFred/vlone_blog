@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
-import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/widgets/debounced_inkwell.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/comments_overlay.dart';
 
 class PostActions extends StatelessWidget {
   final PostEntity post;
@@ -21,18 +20,21 @@ class PostActions extends StatelessWidget {
   });
 
   static const Duration _defaultDebounce = Duration(milliseconds: 500);
-  static const double _kActionIconSize = 26.0; // UI/UX: Increased size
+  static const double _kActionIconSize = 26.0;
 
   // Update _share to use PostActionsBloc
   void _share(BuildContext context) {
     context.read<PostActionsBloc>().add(SharePostEvent(post.id));
   }
 
+  // UPDATED: Replaced navigation with bottom sheet overlay
   void _handleComment(BuildContext context) {
     if (onCommentTap != null) {
       onCommentTap!();
     } else {
-      context.push('${Constants.postDetailsRoute}/${post.id}', extra: post);
+      // OLD: context.push('${Constants.postDetailsRoute}/${post.id}', extra: post);
+      // NEW: Show the bottom sheet overlay
+      CommentsOverlay.show(context, post, userId);
     }
   }
 
@@ -113,6 +115,7 @@ class PostActions extends StatelessWidget {
                           previousState: isLiked,
                         ),
                       );
+
                       final int delta = (!isLiked) ? 1 : -1;
                       context.read<PostActionsBloc>().add(
                         OptimisticPostUpdate(
@@ -138,7 +141,8 @@ class PostActions extends StatelessWidget {
               _buildActionItem(
                 actionKey: 'comment_nav_${post.id}',
                 count: baseCommentsCount.toString(),
-                onTap: () => _handleComment(context),
+                onTap: () =>
+                    _handleComment(context), // Calls the new overlay logic
                 icon: const Icon(
                   Icons.chat_bubble_outline,
                   size: _kActionIconSize,
@@ -154,6 +158,7 @@ class PostActions extends StatelessWidget {
               ),
             ],
           ),
+
           // ==================== FAVORITE BUTTON (BLOC) ====================
           BlocBuilder<FavoritesBloc, FavoritesState>(
             buildWhen: (prev, curr) {
@@ -188,6 +193,7 @@ class PostActions extends StatelessWidget {
                       previousState: isFavorited,
                     ),
                   );
+
                   final int deltaFav = (!isFavorited) ? 1 : -1;
                   context.read<PostActionsBloc>().add(
                     OptimisticPostUpdate(

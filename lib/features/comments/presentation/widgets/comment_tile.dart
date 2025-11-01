@@ -92,7 +92,6 @@ class CommentTileState extends State<CommentTile> {
 
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
         border: widget.depth == 0
             ? Border(
                 bottom: BorderSide(
@@ -129,7 +128,8 @@ class CommentTileState extends State<CommentTile> {
                     ),
                     child: CircleAvatar(
                       radius: avatarRadius - 1,
-                      backgroundColor: theme.colorScheme.surface,
+                      // FIX: Ensure the background color respects the current theme
+                      backgroundColor: theme.colorScheme.background,
                       child: CircleAvatar(
                         radius: avatarRadius - 2,
                         backgroundImage: comment.avatarUrl != null

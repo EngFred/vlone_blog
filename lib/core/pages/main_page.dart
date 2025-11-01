@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Added for Haptic Feedback
+import 'package:flutter/services.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -128,6 +128,13 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     AppLogger.info('Bottom nav tapped: ${_tabNames[index]} (index $index)');
 
     if (!mounted) return;
+
+    if (index != _selectedIndex) {
+      // Close any open modals (e.g., comment overlays) when switching tabs
+      while (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    }
 
     // Use shell to navigate to the branch
     widget.navigationShell.goBranch(

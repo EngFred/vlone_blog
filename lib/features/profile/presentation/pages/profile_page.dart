@@ -5,6 +5,7 @@ import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
+import 'package:vlone_blog_app/core/widgets/cutsom_alert_dialog.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/core/widgets/loading_overlay.dart';
@@ -114,84 +115,43 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _showLogoutConfirmationDialog() {
-    showDialog(
+    // REPLACING MANUAL DIALOG WITH showCustomDialog
+    showCustomDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        final theme = Theme.of(dialogContext);
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.orange,
-                  size: 48,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Logout Confirmation',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Are you sure you want to log out? You will need to sign in again to access your account.',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        child: Text('Cancel'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop();
-                          context.read<AuthBloc>().add(LogoutEvent());
-                        },
-                        style: FilledButton.styleFrom(
-                          backgroundColor: theme.colorScheme.error,
-                          foregroundColor: theme.colorScheme.onError,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        child: const Text('Logout'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+      title: 'Logout Confirmation',
+      // Since the original dialog used an icon, we can replicate a rich content
+      // by using a Column for the content section.
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Are you sure you want to log out? You will need to sign in again to access your account.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
             ),
           ),
-        );
-      },
+        ],
+      ),
+      // Preserve the original behavior: must choose an option, cannot tap outside
+      isDismissible: false,
+      actions: [
+        // 1. Cancel Button (Standard TextButton from DialogActions)
+        DialogActions.createCancelButton(context, label: 'Cancel'),
+
+        // 2. Logout Button (Custom TextButton for destructive action)
+        TextButton(
+          onPressed: () {
+            // Use rootNavigator: true to reliably pop the dialog route
+            Navigator.of(context, rootNavigator: true).pop(true);
+            context.read<AuthBloc>().add(LogoutEvent());
+          },
+          style: TextButton.styleFrom(
+            // Use the theme's error color for a destructive action
+            foregroundColor: Theme.of(context).colorScheme.error,
+          ),
+          child: const Text('Logout'),
+        ),
+      ],
     );
   }
 

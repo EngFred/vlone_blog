@@ -8,23 +8,17 @@ import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_in
 import 'package:vlone_blog_app/features/comments/presentation/widgets/comments_section.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 
-class ReelsCommentsOverlay extends StatefulWidget {
+class CommentsOverlay extends StatefulWidget {
   final PostEntity post;
   final String userId;
 
-  const ReelsCommentsOverlay({
-    super.key,
-    required this.post,
-    required this.userId,
-  });
+  const CommentsOverlay({super.key, required this.post, required this.userId});
 
   static Future<void> show(
     BuildContext context,
     PostEntity post,
-    String userId, {
-    String? highlightCommentId,
-    String? parentCommentId,
-  }) {
+    String userId,
+  ) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -36,36 +30,25 @@ class ReelsCommentsOverlay extends StatefulWidget {
           right: false,
           top: false,
           bottom: false,
-          child: ReelsCommentsOverlay(post: post, userId: userId),
+          child: CommentsOverlay(post: post, userId: userId),
         );
       },
     );
   }
 
   @override
-  State<ReelsCommentsOverlay> createState() => _ReelsCommentsOverlayState();
+  State<CommentsOverlay> createState() => _CommentsOverlayState();
 }
 
-class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
+class _CommentsOverlayState extends State<CommentsOverlay> {
   final TextEditingController _commentController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   CommentEntity? _replyingTo;
 
-  @override
-  void initState() {
-    super.initState();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      context.read<CommentsBloc>().add(
-        SubscribeToCommentsEvent(widget.post.id),
-      );
-    });
-  }
-
   void _addComment() {
     final text = _commentController.text.trim();
     if (text.isEmpty) return;
+
     context.read<CommentsBloc>().add(
       AddCommentEvent(
         postId: widget.post.id,
@@ -74,6 +57,7 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
         parentCommentId: _replyingTo?.id,
       ),
     );
+
     _commentController.clear();
     setState(() => _replyingTo = null);
     _focusNode.unfocus();
@@ -99,6 +83,8 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context); // Get the theme here
+
     return BlocSelector<AuthBloc, AuthState, String?>(
       selector: (state) =>
           (state is AuthAuthenticated) ? state.user.profileImageUrl : null,
@@ -126,20 +112,16 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                     top: Radius.circular(20),
                   ),
                   child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.grey[900]!, Colors.black],
-                      ),
-                    ),
+                    // FIX: Replaced hardcoded dark gradient with theme-aware color
+                    color: theme.colorScheme.background,
                     child: Column(
                       children: [
                         // Enhanced Header
                         Container(
                           height: 80,
                           decoration: BoxDecoration(
-                            color: Colors.grey[900]!.withOpacity(0.8),
+                            // FIX: Replaced Colors.grey[900]! with theme.colorScheme.surface
+                            color: theme.colorScheme.surface,
                             borderRadius: const BorderRadius.vertical(
                               top: Radius.circular(20),
                             ),
@@ -151,7 +133,9 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                                 width: 36,
                                 height: 4,
                                 decoration: BoxDecoration(
-                                  color: Colors.grey[500],
+                                  // FIX: Replaced Colors.grey[500] with theme-aware color
+                                  color: theme.colorScheme.onSurface
+                                      .withOpacity(0.4),
                                   borderRadius: BorderRadius.circular(2),
                                 ),
                               ),
@@ -180,11 +164,17 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                                             builder: (context, commentCount) {
                                               return Text(
                                                 '$commentCount Comment${commentCount != 1 ? 's' : ''}',
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 18,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
+                                                style: theme
+                                                    .textTheme
+                                                    .titleMedium
+                                                    ?.copyWith(
+                                                      // FIX: Ensure text color is theme-aware
+                                                      color: theme
+                                                          .colorScheme
+                                                          .onSurface,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
                                               );
                                             },
                                           ),
@@ -193,13 +183,15 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                                       width: 40,
                                       height: 40,
                                       decoration: BoxDecoration(
-                                        color: Colors.grey[800],
+                                        // FIX: Replaced Colors.grey[800] with theme-aware color
+                                        color: theme.colorScheme.surfaceVariant,
                                         shape: BoxShape.circle,
                                       ),
                                       child: IconButton(
-                                        icon: const Icon(
+                                        icon: Icon(
                                           Icons.close,
-                                          color: Colors.white,
+                                          // FIX: Ensure icon color is theme-aware
+                                          color: theme.colorScheme.onSurface,
                                           size: 20,
                                         ),
                                         onPressed: () =>
@@ -213,9 +205,11 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                             ],
                           ),
                         ),
-
-                        const Divider(height: 1, color: Colors.grey),
-
+                        // FIX: Replaced Colors.grey with theme.colorScheme.outline
+                        Divider(
+                          height: 1,
+                          color: theme.colorScheme.outline.withOpacity(0.2),
+                        ),
                         // Comments List
                         Expanded(
                           child: Padding(
@@ -237,16 +231,19 @@ class _ReelsCommentsOverlayState extends State<ReelsCommentsOverlay> {
                             ),
                           ),
                         ),
-
                         // Enhanced Input Field
                         SafeArea(
                           top: false,
                           child: Container(
                             decoration: BoxDecoration(
-                              color: Colors.grey[900],
+                              // FIX: Replaced Colors.grey[900] with theme.colorScheme.surface
+                              color: theme.colorScheme.surface,
                               border: Border(
                                 top: BorderSide(
-                                  color: Colors.grey[700]!,
+                                  // FIX: Replaced Colors.grey[700]! with theme.colorScheme.outline
+                                  color: theme.colorScheme.outline.withOpacity(
+                                    0.5,
+                                  ),
                                   width: 1,
                                 ),
                               ),

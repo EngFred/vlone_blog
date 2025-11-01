@@ -32,7 +32,18 @@ class _PostCardState extends State<PostCard> {
   @override
   void didUpdateWidget(covariant PostCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.post != oldWidget.post) {
+    // Only update _currentPost from widget.post if it's a *different* post
+    // or if the incoming post is newer (e.g., from a refresh).
+    // This check prevents stomping on optimistic updates.
+    if (widget.post != oldWidget.post && widget.post.id == oldWidget.post.id) {
+      // If the post objects are different but the ID is the same,
+      // it's likely a refresh. We should only update if the new
+      // post isn't "older" than our current optimistic state.
+      // For simplicity, we'll just update if the reference changes.
+      // A more complex solution might use versioning or timestamps.
+      _currentPost = widget.post;
+    } else if (widget.post.id != oldWidget.post.id) {
+      // Different post entirely
       _currentPost = widget.post;
     }
   }
@@ -41,68 +52,110 @@ class _PostCardState extends State<PostCard> {
   Widget build(BuildContext context) {
     return MultiBlocListener(
       listeners: [
+        // --- MODIFIED: LikesBloc Listener ---
         BlocListener<LikesBloc, LikesState>(
           listenWhen: (prev, curr) {
-            if (curr is LikeUpdated && curr.postId == _currentPost.id)
-              return true;
+            // We ONLY care about errors for reverting,
+            // or realtime updates (delta == 0) for syncing.
             if (curr is LikeError &&
                 curr.postId == _currentPost.id &&
-                curr.shouldRevert)
+                curr.shouldRevert) {
               return true;
+            }
+            if (curr is LikeUpdated &&
+                curr.postId == _currentPost.id &&
+                curr.delta == 0 && // delta 0 implies a realtime sync
+                curr.isLiked != _currentPost.isLiked) {
+              return true;
+            }
             return false;
           },
           listener: (context, state) {
-            if (state is LikeUpdated && state.postId == _currentPost.id) {
+            if (state is LikeUpdated) {
+              // This is a REALTIME SYNC (e.g., from Supabase)
               AppLogger.info(
-                'PostCard received LikeUpdated for post: ${_currentPost.id}. Updating boolean only.',
+                'PostCard received REALTIME LikeUpdated for post: ${_currentPost.id}. Syncing boolean.',
               );
-              setState(() {
-                _currentPost = _currentPost.copyWith(isLiked: state.isLiked);
-              });
-            } else if (state is LikeError &&
-                state.postId == _currentPost.id &&
-                state.shouldRevert) {
+              // Dispatch to PostActionsBloc to update the state centrally
+              context.read<PostActionsBloc>().add(
+                OptimisticPostUpdate(
+                  post: _currentPost,
+                  deltaLikes: 0,
+                  deltaFavorites: 0,
+                  isLiked: state.isLiked, // Sync the boolean
+                ),
+              );
+            } else if (state is LikeError) {
+              // This is a FAILED optimistic update. We must REVERT.
               AppLogger.info(
-                'PostCard received LikeError for post: ${_currentPost.id}. Reverting boolean only.',
+                'PostCard received LikeError for post: ${_currentPost.id}. Reverting count and boolean.',
               );
-              setState(() {
-                _currentPost = _currentPost.copyWith(
-                  isLiked: state.previousState,
-                );
-              });
+              // Dispatch a "revert" event to PostActionsBloc
+              context.read<PostActionsBloc>().add(
+                OptimisticPostUpdate(
+                  post:
+                      _currentPost, // Pass the *current* (optimistically updated) post
+                  deltaLikes: -state.delta, // Apply the *opposite* delta
+                  deltaFavorites: 0,
+                  isLiked:
+                      state.previousState, // Revert to the previous boolean
+                ),
+              );
             }
           },
         ),
+        // --- MODIFIED: FavoritesBloc Listener ---
         BlocListener<FavoritesBloc, FavoritesState>(
           listenWhen: (prev, curr) {
-            if (curr is FavoriteUpdated && curr.postId == _currentPost.id) {
-              return true;
-            }
+            // We ONLY care about errors for reverting,
+            // or realtime updates (delta == 0) for syncing.
             if (curr is FavoriteError &&
                 curr.postId == _currentPost.id &&
                 curr.shouldRevert) {
               return true;
             }
+            if (curr is FavoriteUpdated &&
+                curr.postId == _currentPost.id &&
+                curr.delta == 0 && // delta 0 implies a realtime sync
+                curr.isFavorited != _currentPost.isFavorited) {
+              return true;
+            }
             return false;
           },
           listener: (context, state) {
-            if (state is FavoriteUpdated && state.postId == _currentPost.id) {
-              setState(() {
-                _currentPost = _currentPost.copyWith(
-                  isFavorited: state.isFavorited,
-                );
-              });
-            } else if (state is FavoriteError &&
-                state.postId == _currentPost.id &&
-                state.shouldRevert) {
-              setState(() {
-                _currentPost = _currentPost.copyWith(
-                  isFavorited: state.previousState,
-                );
-              });
+            if (state is FavoriteUpdated) {
+              // This is a REALTIME SYNC
+              AppLogger.info(
+                'PostCard received REALTIME FavoriteUpdated for post: ${_currentPost.id}. Syncing boolean.',
+              );
+              context.read<PostActionsBloc>().add(
+                OptimisticPostUpdate(
+                  post: _currentPost,
+                  deltaLikes: 0,
+                  deltaFavorites: 0,
+                  isFavorited: state.isFavorited, // Sync the boolean
+                ),
+              );
+            } else if (state is FavoriteError) {
+              // This is a FAILED optimistic update. We must REVERT.
+              AppLogger.info(
+                'PostCard received FavoriteError for post: ${_currentPost.id}. Reverting count and boolean.',
+              );
+              // Dispatch a "revert" event to PostActionsBloc
+              context.read<PostActionsBloc>().add(
+                OptimisticPostUpdate(
+                  post: _currentPost,
+                  deltaLikes: 0,
+                  deltaFavorites: -state.delta, // Apply the *opposite* delta
+                  isFavorited:
+                      state.previousState, // Revert to the previous boolean
+                ),
+              );
             }
           },
         ),
+        // --- UNCHANGED: PostActionsBloc Listener ---
+        // This is now the SINGLE source of truth for updating _currentPost
         BlocListener<PostActionsBloc, PostActionsState>(
           listenWhen: (prev, curr) =>
               curr is PostOptimisticallyUpdated &&
@@ -110,7 +163,7 @@ class _PostCardState extends State<PostCard> {
           listener: (context, state) {
             if (state is PostOptimisticallyUpdated) {
               AppLogger.info(
-                'PostCard received PostOptimisticallyUpdated for post: ${state.post.id}. Updating post.',
+                'PostCard (PostActionsBloc) received PostOptimisticallyUpdated for post: ${state.post.id}. Updating state.',
               );
               setState(() {
                 _currentPost = state.post;

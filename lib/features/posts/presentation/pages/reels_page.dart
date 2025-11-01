@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:vlone_blog_app/core/theme/app_theme.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
 import 'package:vlone_blog_app/core/widgets/error_widget.dart';
@@ -38,6 +39,10 @@ class _ReelsPageState extends State<ReelsPage>
     super.initState();
     _pageController = PageController(initialPage: 0, viewportFraction: 1.0);
     WidgetsBinding.instance.addObserver(this);
+
+    // Initial status bar setting is now handled by VisibilityDetector in build.
+    // AppTheme.setStatusBarForReels();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userId = context.read<AuthBloc>().cachedUser?.id;
       if (userId != null) {
@@ -163,7 +168,7 @@ class _ReelsPageState extends State<ReelsPage>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              LoadingIndicator(size: 32),
+              const LoadingIndicator(size: 32),
               const SizedBox(height: 16),
               Text(
                 'Loading reels...',
@@ -183,13 +188,22 @@ class _ReelsPageState extends State<ReelsPage>
         key: const Key('reels_page_visibility'),
         onVisibilityChanged: (VisibilityInfo info) {
           final visibleFraction = info.visibleFraction;
+
           if (visibleFraction == 0 && _isPageVisible) {
-            AppLogger.info('ReelsPage hidden - pausing video');
+            AppLogger.info(
+              'ReelsPage hidden - pausing video and restoring status bar',
+            );
             VideoPlaybackManager.pause();
             setState(() => _isPageVisible = false);
+            // Restore default status bar when leaving the page (e.g., changing tabs)
+            AppTheme.restoreDefaultStatusBar(context);
           } else if (visibleFraction > 0 && !_isPageVisible) {
-            AppLogger.info('ReelsPage visible - resuming video');
+            AppLogger.info(
+              'ReelsPage visible - resuming video and setting status bar',
+            );
             setState(() => _isPageVisible = true);
+            // Re-apply Reels status bar style when returning to the page
+            AppTheme.setStatusBarForReels();
           }
         },
         child: MultiBlocListener(
@@ -363,6 +377,10 @@ class _ReelsPageState extends State<ReelsPage>
     VideoPlaybackManager.pause();
     _pageController.dispose();
     context.read<ReelsBloc>().add(const StopReelsRealtime());
+
+    // Status bar restoration is handled by VisibilityDetector when the page becomes invisible.
+    // Explicitly calling restore here is often too late or unnecessary.
+
     super.dispose();
   }
 }

@@ -7,7 +7,7 @@ import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart'
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 
-import 'package:vlone_blog_app/features/posts/presentation/widgets/reels_comments_overlay.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/comments_overlay.dart';
 
 class ReelActions extends StatelessWidget {
   final PostEntity post;
@@ -24,7 +24,7 @@ class ReelActions extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (modalContext) {
-        return ReelsCommentsOverlay(post: post, userId: userId);
+        return CommentsOverlay(post: post, userId: userId);
       },
     );
   }
