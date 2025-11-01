@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
-import 'package:vlone_blog_app/core/widgets/error_widget.dart';
-import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/empty_state_widget.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/error_widget.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/widgets/notification_list_item.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';

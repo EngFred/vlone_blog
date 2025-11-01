@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
-import 'package:vlone_blog_app/core/widgets/loading_overlay.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/loading_overlay.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/media_upload_widget.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:vlone_blog_app/core/widgets/error_widget.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/error_widget.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
 import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_tile.dart';
-import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
-import 'package:vlone_blog_app/core/widgets/empty_state_widget.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/empty_state_widget.dart';
 
 class CommentsSection extends StatefulWidget {
   final int? commentsCount;

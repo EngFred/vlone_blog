@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 import 'package:vlone_blog_app/features/comments/domain/repositories/comments_repository.dart';
 import 'package:vlone_blog_app/features/comments/domain/usecases/add_comment_usecase.dart';
@@ -74,8 +75,9 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     final result = await getInitialCommentsUseCase(event.postId);
     result.fold(
       (failure) {
+        final friendly = ErrorMessageMapper.mapToUserMessage(failure.message);
         AppLogger.error('Get initial comments failed: ${failure.message}');
-        emit(CommentsError(failure.message));
+        emit(CommentsError(friendly));
       },
       (rootComments) {
         // CHANGE: Reset pagination cursors on initial load.
@@ -120,12 +122,10 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     );
     result.fold(
       (failure) {
+        final friendly = ErrorMessageMapper.mapToUserMessage(failure.message);
         AppLogger.error('Load more comments failed: ${failure.message}');
         emit(
-          currentState.copyWith(
-            isLoadingMore: false,
-            loadMoreError: failure.message,
-          ),
+          currentState.copyWith(isLoadingMore: false, loadMoreError: friendly),
         );
       },
       (newRootComments) {
@@ -178,8 +178,9 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
 
     result.fold(
       (failure) {
-        AppLogger.error('Add comment failed: ${failure.message}');
-        // Unchanged: Log only—no full error state to avoid nuking list.
+        final friendly = ErrorMessageMapper.mapToUserMessage(failure.message);
+        // Intentionally do not emit a full error state to avoid nuking the comments list.
+        AppLogger.error('Add comment failed: ${failure.message} -> $friendly');
       },
       (_) {
         AppLogger.info('Comment added successfully. Stream will update UI.');
@@ -214,11 +215,12 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
             add(_RealtimeCommentReceivedEvent(event.postId, rootComments));
           },
           onError: (error) {
+            final friendly = ErrorMessageMapper.getErrorMessage(error);
             AppLogger.error(
-              'Comments stream error (repo): $error',
+              'Comments stream error (repo): $error -> $friendly',
               error: error,
             );
-            emit(CommentsError(error.toString()));
+            emit(CommentsError(friendly));
           },
         );
 

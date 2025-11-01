@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
-import 'package:vlone_blog_app/core/widgets/loading_indicator.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
 
 class MediaPreview extends StatelessWidget {
   final File file;

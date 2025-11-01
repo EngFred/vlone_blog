@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_trimmer/video_trimmer.dart';
-import 'package:vlone_blog_app/core/widgets/loading_overlay.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/loading_overlay.dart';
 
 class TrimmerView extends StatefulWidget {
   final File videoFile;

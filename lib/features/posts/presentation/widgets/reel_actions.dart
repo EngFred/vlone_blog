@@ -5,7 +5,7 @@ import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/service/media_download_service.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
-import 'package:vlone_blog_app/core/widgets/debounced_inkwell.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/debounced_inkwell.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';

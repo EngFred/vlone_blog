@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
-import 'package:vlone_blog_app/core/widgets/cutsom_alert_dialog.dart';
-import 'package:vlone_blog_app/core/widgets/debounced_inkwell.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/cutsom_alert_dialog.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/debounced_inkwell.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 

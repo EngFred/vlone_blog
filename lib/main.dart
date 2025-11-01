@@ -6,7 +6,7 @@ import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/service/secure_storage.dart';
 import 'package:vlone_blog_app/features/settings/presentation/bloc/settings_bloc.dart';
-import 'core/theme/app_theme.dart';
+import 'core/presentation/theme/app_theme.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:workmanager/workmanager.dart';
