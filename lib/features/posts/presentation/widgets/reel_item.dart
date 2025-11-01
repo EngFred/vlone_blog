@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/debouncer.dart';
+import 'package:flutter/services.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
@@ -33,6 +35,9 @@ class _ReelItemState extends State<ReelItem>
     with AutomaticKeepAliveClientMixin {
   late PostEntity _currentPost;
 
+  // Debounce key for double-tap -> like
+  static const String _doubleTapLikeKeyPrefix = 'reel_double_like_';
+
   @override
   bool get wantKeepAlive => true;
 
@@ -46,37 +51,68 @@ class _ReelItemState extends State<ReelItem>
   void didUpdateWidget(covariant ReelItem oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Same robustness check as PostCard:
-    // Prevents stomping on optimistic updates if a refresh happens.
     if (widget.post != oldWidget.post && widget.post.id == oldWidget.post.id) {
       _currentPost = widget.post;
     } else if (widget.post.id != oldWidget.post.id) {
-      // Different post entirely
       _currentPost = widget.post;
     }
+  }
+
+  // Called when the video widget detects a double-tap.
+  // We now ensure double-tap only likes (never unlikes).
+  void _handleDoubleTapLike() {
+    final key = '$_doubleTapLikeKeyPrefix${_currentPost.id}';
+
+    Debouncer.instance.throttle(key, const Duration(milliseconds: 700), () {
+      final isLiked = _currentPost.isLiked;
+
+      // NEW: If already liked, do NOT send an unlike. Just provide subtle feedback.
+      if (isLiked) {
+        // Provide subtle haptic feedback to acknowledge the action.
+        HapticFeedback.lightImpact();
+        AppLogger.info(
+          'Double-tap detected but post already liked: ${_currentPost.id}',
+        );
+        return;
+      }
+
+      // Otherwise, proceed to like the post (optimistic update + bloc event)
+      context.read<LikesBloc>().add(
+        LikePostEvent(
+          postId: _currentPost.id,
+          userId: widget.userId,
+          isLiked: true, // explicitly like
+          previousState: isLiked,
+        ),
+      );
+
+      // Optimistically update post counts locally via PostActionsBloc
+      const int delta = 1;
+      context.read<PostActionsBloc>().add(
+        OptimisticPostUpdate(
+          post: _currentPost,
+          deltaLikes: delta,
+          deltaFavorites: 0,
+          isLiked: true,
+          isFavorited: null,
+        ),
+      );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
-    // Define a custom theme data for the header and text overlay
-    // that uses white text/icons for maximum contrast over video.
     final lightContrastTheme = Theme.of(context).copyWith(
-      // Force all icons to be white
       iconTheme: const IconThemeData(color: Colors.white),
-      // Force all text to be white
       textTheme: Theme.of(
         context,
       ).textTheme.apply(bodyColor: Colors.white, displayColor: Colors.white),
-      // *** FIX: Explicitly set ListTile colors to white ***
       listTileTheme: const ListTileThemeData(
         iconColor: Colors.white,
         textColor: Colors.white,
       ),
-      // Crucially, force the DialogTheme to be light. This ensures the
-      // dialog spawned from PostHeader will use light colors for its
-      // text content, preventing the "white-on-white" issue you observed
-      // if the app was in dark theme but the dialog used a white content color.
       dialogTheme: Theme.of(context).dialogTheme.copyWith(
         backgroundColor: Colors.white,
         titleTextStyle: const TextStyle(color: Colors.black),
@@ -84,10 +120,9 @@ class _ReelItemState extends State<ReelItem>
           color: Theme.of(context).colorScheme.onSurface,
         ),
       ),
-      // Force the overall color scheme to be "light" for widget behaviors
       colorScheme: Theme.of(context).colorScheme.copyWith(
         brightness: Brightness.light,
-        onSurface: Colors.black, // Ensure dialog text is dark
+        onSurface: Colors.black,
         onSurfaceVariant: Colors.black54,
       ),
     );
@@ -99,9 +134,10 @@ class _ReelItemState extends State<ReelItem>
           post: _currentPost,
           isActive: widget.isActive,
           shouldPreload: widget.isPrevious || widget.isNext,
+          onDoubleTap: _handleDoubleTapLike, // <<-- Hook double-tap to like
         ),
 
-        // Enhanced gradient overlay
+        // Gradients and overlays...
         Align(
           alignment: Alignment.bottomCenter,
           child: Container(
@@ -121,7 +157,6 @@ class _ReelItemState extends State<ReelItem>
           ),
         ),
 
-        // Top gradient
         Align(
           alignment: Alignment.topCenter,
           child: Container(
@@ -139,16 +174,14 @@ class _ReelItemState extends State<ReelItem>
         SafeArea(
           child: MultiBlocListener(
             listeners: [
-              // --- MODIFIED: LikesBloc Listener ---
+              // LikesBloc listener (unchanged logic)
               BlocListener<LikesBloc, LikesState>(
                 listenWhen: (prev, curr) {
-                  // ONLY care about errors for reverting...
                   if (curr is LikeError &&
                       curr.postId == _currentPost.id &&
                       curr.shouldRevert) {
                     return true;
                   }
-                  // ...or realtime updates (delta == 0) for syncing
                   if (curr is LikeUpdated &&
                       curr.postId == _currentPost.id &&
                       curr.delta == 0 &&
@@ -159,7 +192,6 @@ class _ReelItemState extends State<ReelItem>
                 },
                 listener: (context, state) {
                   if (state is LikeUpdated) {
-                    // This is a REALTIME SYNC
                     AppLogger.info(
                       'ReelItem received REALTIME LikeUpdated for ${_currentPost.id}. Syncing boolean.',
                     );
@@ -168,36 +200,33 @@ class _ReelItemState extends State<ReelItem>
                         post: _currentPost,
                         deltaLikes: 0,
                         deltaFavorites: 0,
-                        isLiked: state.isLiked, // Sync the boolean
+                        isLiked: state.isLiked,
                       ),
                     );
                   } else if (state is LikeError) {
-                    // This is a FAILED optimistic update. We must REVERT.
                     AppLogger.info(
                       'ReelItem received LikeError for ${_currentPost.id} — reverting count & boolean.',
                     );
-                    // Dispatch a "revert" event to PostActionsBloc
                     context.read<PostActionsBloc>().add(
                       OptimisticPostUpdate(
-                        post: _currentPost, // Pass the *current* post
-                        deltaLikes: -state.delta, // Apply the *opposite* delta
+                        post: _currentPost,
+                        deltaLikes: -state.delta,
                         deltaFavorites: 0,
-                        isLiked: state.previousState, // Revert boolean
+                        isLiked: state.previousState,
                       ),
                     );
                   }
                 },
               ),
-              // --- MODIFIED: FavoritesBloc Listener ---
+
+              // FavoritesBloc listener (unchanged logic)
               BlocListener<FavoritesBloc, FavoritesState>(
                 listenWhen: (prev, curr) {
-                  // ONLY care about errors for reverting...
                   if (curr is FavoriteError &&
                       curr.postId == _currentPost.id &&
                       curr.shouldRevert) {
                     return true;
                   }
-                  // ...or realtime updates (delta == 0) for syncing
                   if (curr is FavoriteUpdated &&
                       curr.postId == _currentPost.id &&
                       curr.delta == 0 &&
@@ -208,7 +237,6 @@ class _ReelItemState extends State<ReelItem>
                 },
                 listener: (context, state) {
                   if (state is FavoriteUpdated) {
-                    // This is a REALTIME SYNC
                     AppLogger.info(
                       'ReelItem received REALTIME FavoriteUpdated for ${_currentPost.id}. Syncing boolean.',
                     );
@@ -217,28 +245,26 @@ class _ReelItemState extends State<ReelItem>
                         post: _currentPost,
                         deltaLikes: 0,
                         deltaFavorites: 0,
-                        isFavorited: state.isFavorited, // Sync boolean
+                        isFavorited: state.isFavorited,
                       ),
                     );
                   } else if (state is FavoriteError) {
-                    // This is a FAILED optimistic update. We must REVERT.
                     AppLogger.info(
                       'ReelItem received FavoriteError for ${_currentPost.id} — reverting count & boolean.',
                     );
-                    // Dispatch a "revert" event to PostActionsBloc
                     context.read<PostActionsBloc>().add(
                       OptimisticPostUpdate(
-                        post: _currentPost, // Pass the *current* post
+                        post: _currentPost,
                         deltaLikes: 0,
-                        deltaFavorites: -state.delta, // Apply *opposite* delta
-                        isFavorited: state.previousState, // Revert boolean
+                        deltaFavorites: -state.delta,
+                        isFavorited: state.previousState,
                       ),
                     );
                   }
                 },
               ),
-              // --- ADDED: PostActionsBloc Listener ---
-              // This is now the SINGLE source of truth for updating _currentPost
+
+              // PostActionsBloc sync (single source of truth)
               BlocListener<PostActionsBloc, PostActionsState>(
                 listenWhen: (prev, curr) =>
                     curr is PostOptimisticallyUpdated &&
@@ -258,7 +284,6 @@ class _ReelItemState extends State<ReelItem>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Apply the lightContrastTheme to PostHeader and its descendants
                 Theme(
                   data: lightContrastTheme,
                   child: PostHeader(
@@ -283,8 +308,7 @@ class _ReelItemState extends State<ReelItem>
                                 child: Text(
                                   _currentPost.content!,
                                   style: const TextStyle(
-                                    color: Colors
-                                        .white, // Already white, but ensure
+                                    color: Colors.white,
                                     fontSize: 16,
                                     height: 1.4,
                                     fontWeight: FontWeight.w500,
@@ -300,7 +324,6 @@ class _ReelItemState extends State<ReelItem>
                                   maxLines: 4,
                                 ),
                               ),
-                            // Audio/song info (optional - you can add this if your posts have audio)
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
