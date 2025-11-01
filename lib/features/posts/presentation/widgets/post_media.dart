@@ -34,7 +34,7 @@ class _PostMediaState extends State<PostMedia>
   final VideoControllerManager _videoManager = VideoControllerManager();
   bool _isDisposed = false;
   bool _isOpeningFull =
-      false; // New: Flag to ignore visibility pause during nav to full
+      false; // Flag to ignore visibility pause during nav to full
 
   @override
   bool get wantKeepAlive => true;
@@ -110,7 +110,6 @@ class _PostMediaState extends State<PostMedia>
 
   void _openFullMedia(String heroTag) async {
     if (_isOpeningFull) return; // Prevent multiple pushes during navigation
-
     // Hold the controller to prevent disposal during hero/navigation
     if (widget.post.mediaType == 'video') {
       _videoManager.holdForNavigation(
@@ -119,16 +118,13 @@ class _PostMediaState extends State<PostMedia>
       );
       VideoPlaybackManager.suppressPauseFor(const Duration(seconds: 5));
     }
-
     setState(() {
       _isOpeningFull = true;
     });
-
     await context.push(
       '/media',
       extra: {'post': widget.post, 'heroTag': heroTag},
     );
-
     if (mounted) {
       setState(() {
         _isOpeningFull = false;
@@ -155,49 +151,31 @@ class _PostMediaState extends State<PostMedia>
     return SizedBox(
       height: height,
       width: double.infinity,
-      child: Stack(
-        children: [
-          Center(
-            child: Hero(
-              tag: heroTag,
-              child: SizedBox(
-                width: double.infinity,
-                height: height,
-                child: CachedNetworkImage(
-                  imageUrl: widget.post.mediaUrl!,
-                  fit: boxFit,
-                  placeholder: (context, url) => SizedBox(
-                    height: height,
-                    child: const Center(child: CircularProgressIndicator()),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    height: height,
-                    color: Theme.of(context).colorScheme.surfaceVariant,
-                    child: const Center(child: Icon(Icons.broken_image)),
-                  ),
+      child: GestureDetector(
+        onTap: () =>
+            _openFullMedia(heroTag), // Single-tap to open full for images
+        child: Center(
+          child: Hero(
+            tag: heroTag,
+            child: SizedBox(
+              width: double.infinity,
+              height: height,
+              child: CachedNetworkImage(
+                imageUrl: widget.post.mediaUrl!,
+                fit: boxFit,
+                placeholder: (context, url) => SizedBox(
+                  height: height,
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  height: height,
+                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  child: const Center(child: Icon(Icons.broken_image)),
                 ),
               ),
             ),
           ),
-          Positioned(
-            top: 8,
-            right: 8,
-            child: SafeArea(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => _openFullMedia(heroTag),
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Colors.black45,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.open_in_full, color: Colors.white),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -212,6 +190,8 @@ class _PostMediaState extends State<PostMedia>
         toggleDuration,
         _togglePlayPause,
       ),
+      onDoubleTap: () =>
+          _openFullMedia(heroTag), // Double-tap to open full for videos
       child: ClipRRect(
         borderRadius: BorderRadius.zero,
         child: Stack(
@@ -248,11 +228,13 @@ class _PostMediaState extends State<PostMedia>
             if (!_initialized ||
                 (_videoController != null &&
                     !VideoPlaybackManager.isPlaying(_videoController!)))
-              const Center(
+              Center(
                 child: Icon(
                   Icons.play_circle_fill,
                   size: 64.0,
-                  color: Colors.white,
+                  color: Colors.white.withOpacity(
+                    0.8,
+                  ), // Subtle opacity for modern feel
                 ),
               ),
             if (_isInitializing)
@@ -263,24 +245,6 @@ class _PostMediaState extends State<PostMedia>
                   child: CircularProgressIndicator(color: Colors.white),
                 ),
               ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: SafeArea(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () => _openFullMedia(heroTag),
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.open_in_full, color: Colors.white),
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -304,9 +268,7 @@ class _PostMediaState extends State<PostMedia>
                 visiblePct < 0.2 &&
                 VideoPlaybackManager.isPlaying(controller) &&
                 controller.value.isInitialized) {
-              // Added initialized check
               if (!_isOpeningFull && !VideoPlaybackManager.pauseSuppressed) {
-                // New: Ignore pause if opening full media or suppressed
                 VideoPlaybackManager.pause();
                 if (mounted) setState(() {});
               }
