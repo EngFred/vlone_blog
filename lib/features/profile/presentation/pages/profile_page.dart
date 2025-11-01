@@ -17,7 +17,7 @@ import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.d
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_posts_list.dart';
 
-enum ProfileMenuOption { edit, logout }
+enum ProfileMenuOption { edit, settings, logout }
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -222,6 +222,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     case ProfileMenuOption.edit:
                       context.push('${Constants.profileRoute}/me/edit');
                       break;
+                    case ProfileMenuOption.settings:
+                      context.push('${Constants.profileRoute}/me/settings');
+                      break;
                     case ProfileMenuOption.logout:
                       _showLogoutConfirmationDialog();
                       break;
@@ -238,6 +241,16 @@ class _ProfilePageState extends State<ProfilePage> {
                           Icon(Icons.edit, color: iconColor, size: 20),
                           const SizedBox(width: 12),
                           Text('Edit Profile', style: textStyle),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem<ProfileMenuOption>(
+                      value: ProfileMenuOption.settings,
+                      child: Row(
+                        children: [
+                          Icon(Icons.settings, color: iconColor, size: 20),
+                          const SizedBox(width: 12),
+                          Text('Settings', style: textStyle),
                         ],
                       ),
                     ),

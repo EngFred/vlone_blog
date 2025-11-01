@@ -1,7 +1,7 @@
 import 'package:dartz/dartz.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:vlone_blog_app/core/error/exceptions.dart';
-import 'package:vlone_blog_app/core/error/failures.dart';
+import 'package:vlone_blog_app/core/domain/errors/exceptions.dart';
+import 'package:vlone_blog_app/core/domain/errors/failure.dart';
 import 'package:vlone_blog_app/features/profile/data/datasources/profile_remote_datasource.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 import 'package:vlone_blog_app/features/profile/domain/repositories/profile_repository.dart';

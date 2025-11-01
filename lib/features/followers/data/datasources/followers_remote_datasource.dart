@@ -1,5 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:vlone_blog_app/core/error/exceptions.dart';
+import 'package:vlone_blog_app/core/domain/errors/exceptions.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/followers/data/models/follower_model.dart';
 import 'package:vlone_blog_app/features/users/data/models/user_list_model.dart';

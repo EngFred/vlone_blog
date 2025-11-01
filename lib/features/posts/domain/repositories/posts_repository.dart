@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:dartz/dartz.dart';
-import 'package:vlone_blog_app/core/error/failures.dart';
+import 'package:vlone_blog_app/core/domain/errors/failure.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 
 abstract class PostsRepository {

@@ -1,6 +1,6 @@
 import 'package:dartz/dartz.dart';
-import 'package:vlone_blog_app/core/error/exceptions.dart';
-import 'package:vlone_blog_app/core/error/failures.dart';
+import 'package:vlone_blog_app/core/domain/errors/exceptions.dart';
+import 'package:vlone_blog_app/core/domain/errors/failure.dart';
 import 'package:vlone_blog_app/features/followers/data/datasources/followers_remote_datasource.dart';
 import 'package:vlone_blog_app/features/followers/domain/entities/follower_entity.dart';
 import 'package:vlone_blog_app/features/followers/domain/repositories/followers_repository.dart';

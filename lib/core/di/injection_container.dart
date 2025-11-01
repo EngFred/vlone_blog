@@ -95,6 +95,15 @@ import 'package:vlone_blog_app/features/users/domain/usecases/get_paginated_user
 import 'package:vlone_blog_app/features/users/domain/usecases/stream_new_users_usecase.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 
+// Settings
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:vlone_blog_app/features/settings/data/datasources/settings_local_data_source.dart';
+import 'package:vlone_blog_app/features/settings/data/repositories/settings_repository_impl.dart';
+import 'package:vlone_blog_app/features/settings/domain/repositories/settings_repository.dart';
+import 'package:vlone_blog_app/features/settings/domain/usecases/get_theme_mode.dart';
+import 'package:vlone_blog_app/features/settings/domain/usecases/save_theme_mode.dart';
+import 'package:vlone_blog_app/features/settings/presentation/bloc/settings_bloc.dart';
+
 final sl = GetIt.instance;
 
 // -------------------
@@ -118,7 +127,6 @@ Future<void> initAuth({SupabaseClient? supabaseClient}) async {
     // Fallback if not provided (shouldn't happen in normal flow)
     return Supabase.instance.client;
   });
-
   // -------------------
   // Auth Feature
   // -------------------
@@ -182,7 +190,6 @@ Future<void> initPosts() async {
   sl.registerLazySingleton<DeletePostUseCase>(
     () => DeletePostUseCase(sl<PostsRepository>()),
   );
-
   // -------------------
   // Real-time post streams used in new BLoCs (No change here)
   // -------------------
@@ -195,7 +202,6 @@ Future<void> initPosts() async {
   sl.registerLazySingleton<StreamPostDeletionsUseCase>(
     () => StreamPostDeletionsUseCase(sl<PostsRepository>()),
   );
-
   // 1. FeedsBloc
   sl.registerFactory<FeedBloc>(
     () => FeedBloc(
@@ -203,7 +209,6 @@ Future<void> initPosts() async {
       realtimeService: sl<RealtimeService>(),
     ),
   );
-
   // 2. ReelsBloc
   sl.registerFactory<ReelsBloc>(
     () => ReelsBloc(
@@ -211,7 +216,6 @@ Future<void> initPosts() async {
       realtimeService: sl<RealtimeService>(),
     ),
   );
-
   // 3. PostActionsBloc
   // Handles single post creation, sharing, deletion, and is used for optimistic UI updates
   sl.registerFactory<PostActionsBloc>(
@@ -222,7 +226,6 @@ Future<void> initPosts() async {
       getPostUseCase: sl<GetPostUseCase>(),
     ),
   );
-
   // 4. UserPostsBloc
   // Handles a specific user's paginated posts
   sl.registerFactory<UserPostsBloc>(
@@ -434,6 +437,24 @@ Future<void> initNotifications() async {
       getPaginatedNotificationsUseCase: sl<GetPaginatedNotificationsUseCase>(),
     ),
   );
+}
+
+// -------------------
+// Settings Feature
+// -------------------
+Future<void> initSettings() async {
+  sl.registerLazySingleton<FlutterSecureStorage>(
+    () => const FlutterSecureStorage(),
+  );
+  sl.registerLazySingleton<SettingsLocalDataSource>(
+    () => SettingsLocalDataSource(sl()),
+  );
+  sl.registerLazySingleton<SettingsRepository>(
+    () => SettingsRepositoryImpl(sl()),
+  );
+  sl.registerLazySingleton<GetThemeMode>(() => GetThemeMode(sl()));
+  sl.registerLazySingleton<SaveThemeMode>(() => SaveThemeMode(sl()));
+  sl.registerFactory<SettingsBloc>(() => SettingsBloc(sl(), sl()));
 }
 
 Future<void> initRealtime() async {

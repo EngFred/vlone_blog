@@ -1,5 +1,5 @@
 import 'package:dartz/dartz.dart';
-import 'package:vlone_blog_app/core/error/failures.dart';
+import 'package:vlone_blog_app/core/domain/errors/failure.dart';
 import 'package:vlone_blog_app/features/notifications/domain/entities/notification_entity.dart';
 
 /// Abstract repository for handling notifications.

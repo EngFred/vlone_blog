@@ -1,5 +1,5 @@
 import 'package:dartz/dartz.dart';
-import 'package:vlone_blog_app/core/error/failures.dart';
+import 'package:vlone_blog_app/core/domain/errors/failure.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 import 'package:image_picker/image_picker.dart';
 

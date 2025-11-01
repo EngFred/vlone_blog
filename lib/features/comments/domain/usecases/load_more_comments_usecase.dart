@@ -1,7 +1,7 @@
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
-import 'package:vlone_blog_app/core/error/failures.dart';
-import 'package:vlone_blog_app/core/usecases/usecase.dart';
+import 'package:vlone_blog_app/core/domain/errors/failure.dart';
+import 'package:vlone_blog_app/core/domain/usecases/usecase.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 import 'package:vlone_blog_app/features/comments/domain/repositories/comments_repository.dart';
 

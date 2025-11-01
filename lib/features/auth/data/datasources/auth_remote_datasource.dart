@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:vlone_blog_app/core/error/exceptions.dart';
+import 'package:vlone_blog_app/core/domain/errors/exceptions.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/data/models/user_model.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';

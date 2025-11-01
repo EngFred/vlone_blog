@@ -5,6 +5,7 @@ import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/service/secure_storage.dart';
+import 'package:vlone_blog_app/features/settings/presentation/bloc/settings_bloc.dart';
 import 'core/theme/app_theme.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -27,22 +28,16 @@ void backgroundCallbackDispatcher() {
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
-
   AppLogger.info('Initializing app dependencies');
-
   // Initialize Supabase first
   await Supabase.initialize(
     url: Constants.supabaseUrl,
     anonKey: Constants.supabaseAnonKey,
     authOptions: FlutterAuthClientOptions(localStorage: SecureStorage()),
   );
-
   di.initCoreServices();
-
   await di.initAuth(supabaseClient: Supabase.instance.client);
-
   await di.initRealtime();
-
   // Parallelize Workmanager and other feature inits
   await Future.wait([
     Workmanager().initialize(backgroundCallbackDispatcher),
@@ -54,8 +49,8 @@ void main() async {
     di.initFollowers(),
     di.initUsers(),
     di.initNotifications(),
+    di.initSettings(), // Added
   ]);
-
   AppLogger.info('Starting app');
   runApp(const MyApp());
 }
@@ -68,103 +63,102 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   bool _didInitialAuthNavigate = false;
-
   @override
   Widget build(BuildContext context) {
     // 1. AuthBloc remains at the root
     return BlocProvider<AuthBloc>(
       create: (_) => di.sl<AuthBloc>()..add(CheckAuthStatusEvent()),
       // 2. Wrap the entire app (MaterialApp.router) in MultiBlocProvider
-      //    for global access to interaction BLoCs.
+      // for global access to interaction BLoCs.
       child: MultiBlocProvider(
         providers: [
-          // 🚀 ALL GLOBAL BLoCS
+          // ALL GLOBAL BLoCS
           BlocProvider<CommentsBloc>(create: (_) => di.sl<CommentsBloc>()),
           BlocProvider<LikesBloc>(create: (_) => di.sl<LikesBloc>()),
           BlocProvider<FavoritesBloc>(create: (_) => di.sl<FavoritesBloc>()),
           BlocProvider<PostActionsBloc>(
             create: (_) => di.sl<PostActionsBloc>(),
-          ), // 💡 NEW GLOBAL PROVIDER
+          ),
+          BlocProvider<SettingsBloc>(create: (_) => di.sl<SettingsBloc>()),
         ],
-        child: MaterialApp.router(
-          title: Constants.appName,
-          theme: AppTheme.lightTheme(),
-          darkTheme: AppTheme.darkTheme(),
-          themeMode: ThemeMode.system,
-          routerConfig: appRouter,
-          debugShowCheckedModeBanner: false,
-          builder: (context, child) {
-            return BlocListener<AuthBloc, AuthState>(
-              listener: (context, state) async {
-                try {
-                  ScaffoldMessenger.of(context).clearSnackBars();
-                } catch (e) {
-                  AppLogger.warning(
-                    'Failed to clear snackbars before auth navigation: $e',
-                  );
-                }
-
-                if (state is AuthAuthenticated) {
-                  AppLogger.info(
-                    'AuthBloc: User authenticated, received AuthAuthenticated in MyApp listener',
-                  );
-
-                  FlutterNativeSplash.remove();
-
-                  // ---- navigate to feed only once on initial auth ----
-                  if (!_didInitialAuthNavigate) {
-                    _didInitialAuthNavigate = true;
-                    appRouter.go(Constants.feedRoute);
-                  } else {
-                    AppLogger.info(
-                      'Skipping navigation to feed because initial auth navigation already occurred.',
-                    );
-                  }
-                  // -------------------------------------------------------------
-
-                  // START RealtimeService ONCE at app-level for the authenticated user.
-                  try {
-                    final realtime = di.sl<RealtimeService>();
-                    if (!realtime.isStarted) {
-                      await realtime.start(state.user.id);
-                      AppLogger.info(
-                        'RealtimeService started from MyApp for user ${state.user.id}',
+        child: BlocBuilder<SettingsBloc, SettingsState>(
+          builder: (context, state) {
+            return MaterialApp.router(
+              title: Constants.appName,
+              theme: AppTheme.lightTheme(),
+              darkTheme: AppTheme.darkTheme(),
+              themeMode: state.themeMode,
+              routerConfig: appRouter,
+              debugShowCheckedModeBanner: false,
+              builder: (context, child) {
+                return BlocListener<AuthBloc, AuthState>(
+                  listener: (context, state) async {
+                    try {
+                      ScaffoldMessenger.of(context).clearSnackBars();
+                    } catch (e) {
+                      AppLogger.warning(
+                        'Failed to clear snackbars before auth navigation: $e',
                       );
-                    } else {
-                      AppLogger.info('RealtimeService already started');
                     }
-                  } catch (e, st) {
-                    AppLogger.error(
-                      'Failed to start RealtimeService from MyApp: $e',
-                      error: e,
-                      stackTrace: st,
-                    );
-                  }
-                } else if (state is AuthUnauthenticated) {
-                  AppLogger.info(
-                    'AuthBloc: User unauthenticated, navigating to login',
-                  );
-                  FlutterNativeSplash.remove();
-
-                  _didInitialAuthNavigate = false;
-
-                  appRouter.go(Constants.loginRoute);
-
-                  // Stop realtime service when user logs out
-                  try {
-                    final realtime = di.sl<RealtimeService>();
-                    if (realtime.isStarted) {
-                      await realtime.stop();
-                      AppLogger.info('RealtimeService stopped after logout');
+                    if (state is AuthAuthenticated) {
+                      AppLogger.info(
+                        'AuthBloc: User authenticated, received AuthAuthenticated in MyApp listener',
+                      );
+                      FlutterNativeSplash.remove();
+                      // ---- navigate to feed only once on initial auth ----
+                      if (!_didInitialAuthNavigate) {
+                        _didInitialAuthNavigate = true;
+                        appRouter.go(Constants.feedRoute);
+                      } else {
+                        AppLogger.info(
+                          'Skipping navigation to feed because initial auth navigation already occurred.',
+                        );
+                      }
+                      // -------------------------------------------------------------
+                      // START RealtimeService ONCE at app-level for the authenticated user.
+                      try {
+                        final realtime = di.sl<RealtimeService>();
+                        if (!realtime.isStarted) {
+                          await realtime.start(state.user.id);
+                          AppLogger.info(
+                            'RealtimeService started from MyApp for user ${state.user.id}',
+                          );
+                        } else {
+                          AppLogger.info('RealtimeService already started');
+                        }
+                      } catch (e, st) {
+                        AppLogger.error(
+                          'Failed to start RealtimeService from MyApp: $e',
+                          error: e,
+                          stackTrace: st,
+                        );
+                      }
+                    } else if (state is AuthUnauthenticated) {
+                      AppLogger.info(
+                        'AuthBloc: User unauthenticated, navigating to login',
+                      );
+                      FlutterNativeSplash.remove();
+                      _didInitialAuthNavigate = false;
+                      appRouter.go(Constants.loginRoute);
+                      // Stop realtime service when user logs out
+                      try {
+                        final realtime = di.sl<RealtimeService>();
+                        if (realtime.isStarted) {
+                          await realtime.stop();
+                          AppLogger.info(
+                            'RealtimeService stopped after logout',
+                          );
+                        }
+                      } catch (e) {
+                        AppLogger.warning(
+                          'Failed to stop RealtimeService on logout: $e',
+                        );
+                      }
                     }
-                  } catch (e) {
-                    AppLogger.warning(
-                      'Failed to stop RealtimeService on logout: $e',
-                    );
-                  }
-                }
+                  },
+                  child: child ?? const SizedBox.shrink(),
+                );
               },
-              child: child ?? const SizedBox.shrink(),
             );
           },
         ),

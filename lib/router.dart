@@ -28,6 +28,7 @@ import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart'
 import 'package:vlone_blog_app/features/users/presentation/pages/users_page.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/pages/notifications_page.dart';
+import 'package:vlone_blog_app/features/settings/presentation/pages/settings_page.dart';
 
 // Global keys for branches
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -229,6 +230,14 @@ final GoRouter appRouter = GoRouter(
                   pageBuilder: (context, state) => SlideTransitionPage(
                     key: state.pageKey,
                     child: EditProfilePage(userId: 'me'),
+                  ),
+                ),
+                // Nested Settings Route (Added)
+                GoRoute(
+                  path: 'settings',
+                  pageBuilder: (context, state) => SlideTransitionPage(
+                    key: state.pageKey,
+                    child: const SettingsPage(),
                   ),
                 ),
               ],

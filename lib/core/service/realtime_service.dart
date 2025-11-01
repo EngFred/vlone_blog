@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
-import 'package:vlone_blog_app/core/usecases/usecase.dart';
+import 'package:vlone_blog_app/core/domain/usecases/usecase.dart';
 import 'package:vlone_blog_app/features/comments/domain/usecases/stream_comments_usecase.dart';
 import 'package:vlone_blog_app/features/favorites/domain/usecases/stream_favorites_usecase.dart';
 import 'package:vlone_blog_app/features/likes/domain/usecases/stream_likes_usecase.dart';

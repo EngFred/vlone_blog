@@ -1,9 +1,9 @@
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
-import 'package:vlone_blog_app/core/error/failures.dart';
+import 'package:vlone_blog_app/core/domain/errors/failure.dart';
 import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
-import 'package:vlone_blog_app/core/usecases/usecase.dart';
+import 'package:vlone_blog_app/core/domain/usecases/usecase.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/domain/entities/user_entity.dart';
 import 'package:vlone_blog_app/features/auth/domain/usecases/get_current_user_usecase.dart';

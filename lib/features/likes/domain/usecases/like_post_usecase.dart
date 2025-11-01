@@ -1,6 +1,6 @@
 import 'package:dartz/dartz.dart';
-import 'package:vlone_blog_app/core/error/failures.dart';
-import 'package:vlone_blog_app/core/usecases/usecase.dart';
+import 'package:vlone_blog_app/core/domain/errors/failure.dart';
+import 'package:vlone_blog_app/core/domain/usecases/usecase.dart';
 import 'package:vlone_blog_app/features/likes/domain/repository/likes_repository.dart';
 
 class LikePostUseCase implements UseCase<Unit, LikePostParams> {

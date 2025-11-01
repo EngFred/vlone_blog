@@ -5,7 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
-import 'package:vlone_blog_app/core/error/exceptions.dart';
+import 'package:vlone_blog_app/core/domain/errors/exceptions.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/helpers.dart';
 import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
