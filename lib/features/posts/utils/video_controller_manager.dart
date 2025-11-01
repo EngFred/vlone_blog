@@ -9,9 +9,11 @@ import 'package:video_player/video_player.dart';
 /// Supports short-lived "hold for navigation" to prevent immediate release
 /// when a source widget is disposed during a hero / route transition.
 class VideoControllerManager {
-  VideoControllerManager._({this.maxControllers = 6});
+  VideoControllerManager._({
+    this.maxControllers = 20,
+  }); // Increased to 20 to reduce eviction pressure
   static VideoControllerManager? _instance;
-  factory VideoControllerManager({int maxControllers = 6}) {
+  factory VideoControllerManager({int maxControllers = 20}) {
     _instance ??= VideoControllerManager._(maxControllers: maxControllers);
     return _instance!;
   }
@@ -177,15 +179,8 @@ class VideoControllerManager {
         orElse: () => '',
       );
       if (candidate.isEmpty) {
-        // No zero-ref candidates — as a last resort, evict the absolute least used controller
-        final fallback = _lru.isNotEmpty ? _lru.first : null;
-        if (fallback == null) break; // nothing to evict
-        try {
-          _controllers[fallback]?.dispose();
-        } catch (_) {}
-        _controllers.remove(fallback);
-        _refCounts.remove(fallback);
-        _removeFromLru(fallback);
+        // No zero-ref candidates — do NOT force evict referenced ones; treat max as soft limit to avoid disposal races
+        break;
       } else {
         // Dispose candidate and remove
         try {

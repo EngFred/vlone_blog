@@ -72,9 +72,14 @@ class _PostMediaState extends State<PostMedia>
   void _togglePlayPause() {
     if (_isDisposed || !mounted) return;
     if (_isInitializing) return;
-    if (_videoController == null || !_initialized) {
+    if (_videoController == null ||
+        !_initialized ||
+        !_videoController!.value.isInitialized) {
       _ensureControllerInitialized().then((_) {
-        if (_videoController != null && mounted && !_isDisposed) {
+        if (_videoController != null &&
+            mounted &&
+            !_isDisposed &&
+            _videoController!.value.isInitialized) {
           VideoPlaybackManager.play(_videoController!, () {
             if (mounted && !_isDisposed) setState(() {});
           });
@@ -85,12 +90,16 @@ class _PostMediaState extends State<PostMedia>
     }
     final isPlaying = VideoPlaybackManager.isPlaying(_videoController!);
     if (isPlaying) {
-      VideoPlaybackManager.pause();
+      if (_videoController!.value.isInitialized) {
+        VideoPlaybackManager.pause();
+      }
       if (mounted) setState(() {});
     } else {
-      VideoPlaybackManager.play(_videoController!, () {
-        if (mounted && !_isDisposed) setState(() {});
-      });
+      if (_videoController!.value.isInitialized) {
+        VideoPlaybackManager.play(_videoController!, () {
+          if (mounted && !_isDisposed) setState(() {});
+        });
+      }
       if (mounted) setState(() {});
     }
   }
@@ -101,6 +110,15 @@ class _PostMediaState extends State<PostMedia>
 
   void _openFullMedia(String heroTag) async {
     if (_isOpeningFull) return; // Prevent multiple pushes during navigation
+
+    // Hold the controller to prevent disposal during hero/navigation
+    if (widget.post.mediaType == 'video') {
+      _videoManager.holdForNavigation(
+        widget.post.id,
+        const Duration(seconds: 5),
+      );
+      VideoPlaybackManager.suppressPauseFor(const Duration(seconds: 5));
+    }
 
     setState(() {
       _isOpeningFull = true;
@@ -201,7 +219,10 @@ class _PostMediaState extends State<PostMedia>
           children: [
             Hero(
               tag: heroTag,
-              child: _initialized && _videoController != null
+              child:
+                  _initialized &&
+                      _videoController != null &&
+                      _videoController!.value.isInitialized
                   ? FittedBox(
                       fit: boxFit,
                       child: SizedBox(
@@ -281,9 +302,11 @@ class _PostMediaState extends State<PostMedia>
                 !_isDisposed &&
                 mounted &&
                 visiblePct < 0.2 &&
-                VideoPlaybackManager.isPlaying(controller)) {
-              if (!_isOpeningFull) {
-                // New: Ignore pause if opening full media
+                VideoPlaybackManager.isPlaying(controller) &&
+                controller.value.isInitialized) {
+              // Added initialized check
+              if (!_isOpeningFull && !VideoPlaybackManager.pauseSuppressed) {
+                // New: Ignore pause if opening full media or suppressed
                 VideoPlaybackManager.pause();
                 if (mounted) setState(() {});
               }
@@ -302,7 +325,8 @@ class _PostMediaState extends State<PostMedia>
     final controller = _videoController;
     _videoController = null;
     if (controller != null) {
-      if (VideoPlaybackManager.isPlaying(controller)) {
+      if (VideoPlaybackManager.isPlaying(controller) &&
+          (controller.value.isInitialized)) {
         VideoPlaybackManager.pause(invokeCallback: false);
       }
       _videoManager.releaseController(widget.post.id);
