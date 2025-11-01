@@ -89,22 +89,22 @@ class _ProfilePageState extends State<ProfilePage> {
 
   void _setupScrollListener() {
     _scrollController.addListener(() {
-      if (_scrollController.hasClients) {
-        Debouncer.instance.debounce(
-          'load_more_user_posts',
-          _loadMoreDebounce,
-          () {
-            if (!_hasLoadedOnce) return;
-            if (_scrollController.position.pixels >=
-                    _scrollController.position.maxScrollExtent - 200 &&
-                _hasMoreUserPosts &&
-                !_isLoadingMoreUserPosts) {
-              setState(() => _isLoadingMoreUserPosts = true);
-              context.read<UserPostsBloc>().add(LoadMoreUserPostsEvent());
-            }
-          },
-        );
-      }
+      if (!_scrollController.hasClients) return;
+      Debouncer.instance.debounce(
+        'load_more_user_posts',
+        _loadMoreDebounce,
+        () {
+          if (!_hasLoadedOnce) return;
+          if (_scrollController.position.pixels >=
+                  _scrollController.position.maxScrollExtent - 200 &&
+              _hasMoreUserPosts &&
+              !_isLoadingMoreUserPosts) {
+            if (!mounted) return;
+            setState(() => _isLoadingMoreUserPosts = true);
+            context.read<UserPostsBloc>().add(LoadMoreUserPostsEvent());
+          }
+        },
+      );
     });
   }
 
@@ -115,12 +115,9 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _showLogoutConfirmationDialog() {
-    // REPLACING MANUAL DIALOG WITH showCustomDialog
     showCustomDialog(
       context: context,
       title: 'Logout Confirmation',
-      // Since the original dialog used an icon, we can replicate a rich content
-      // by using a Column for the content section.
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -132,21 +129,15 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ],
       ),
-      // Preserve the original behavior: must choose an option, cannot tap outside
       isDismissible: false,
       actions: [
-        // 1. Cancel Button (Standard TextButton from DialogActions)
         DialogActions.createCancelButton(context, label: 'Cancel'),
-
-        // 2. Logout Button (Custom TextButton for destructive action)
         TextButton(
           onPressed: () {
-            // Use rootNavigator: true to reliably pop the dialog route
             Navigator.of(context, rootNavigator: true).pop(true);
             context.read<AuthBloc>().add(LogoutEvent());
           },
           style: TextButton.styleFrom(
-            // Use the theme's error color for a destructive action
             foregroundColor: Theme.of(context).colorScheme.error,
           ),
           child: const Text('Logout'),
@@ -187,6 +178,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       );
     }
+
     return BlocConsumer<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state is AuthError) {
@@ -210,9 +202,9 @@ class _ProfilePageState extends State<ProfilePage> {
               Container(
                 margin: const EdgeInsets.only(right: 8),
                 child: IconButton(
-                  onPressed: () => context.push(
-                    '${Constants.profileRoute}/$_currentUserId/edit',
-                  ),
+                  onPressed: () {
+                    context.push('${Constants.profileRoute}/me/edit');
+                  },
                   icon: Icon(
                     Icons.edit_outlined,
                     color: Theme.of(context).colorScheme.onBackground,
@@ -228,9 +220,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 onSelected: (value) {
                   switch (value) {
                     case ProfileMenuOption.edit:
-                      context.push(
-                        '${Constants.profileRoute}/$_currentUserId/edit',
-                      );
+                      context.push('${Constants.profileRoute}/me/edit');
                       break;
                     case ProfileMenuOption.logout:
                       _showLogoutConfirmationDialog();
@@ -302,51 +292,47 @@ class _ProfilePageState extends State<ProfilePage> {
                           );
                           return;
                         }
-                        if (mounted) {
-                          setState(() {
-                            _userPosts.clear();
-                            _userPostsError = null;
-                            _userPosts.addAll(state.posts);
-                            _hasMoreUserPosts = state.hasMore;
-                            _isUserPostsLoading = false;
-                            _isLoadingMoreUserPosts = false;
-                            _loadMoreError = null;
-                            _hasLoadedOnce = true;
-                          });
-                          AppLogger.info(
-                            'ProfilePage: Loaded ${_userPosts.length} posts for $_currentUserId',
-                          );
-                        }
+                        if (!mounted) return;
+                        setState(() {
+                          _userPosts.clear();
+                          _userPostsError = null;
+                          _userPosts.addAll(state.posts);
+                          _hasMoreUserPosts = state.hasMore;
+                          _isUserPostsLoading = false;
+                          _isLoadingMoreUserPosts = false;
+                          _loadMoreError = null;
+                          _hasLoadedOnce = true;
+                        });
+                        AppLogger.info(
+                          'ProfilePage: Loaded ${_userPosts.length} posts for $_currentUserId',
+                        );
                       } else if (state is UserPostsError) {
                         if (state.profileUserId != null &&
                             state.profileUserId != _currentUserId) {
                           return;
                         }
-                        if (mounted) {
-                          setState(() {
-                            _userPostsError = state.message;
-                            _isUserPostsLoading = false;
-                            _isLoadingMoreUserPosts = false;
-                          });
-                        }
+                        if (!mounted) return;
+                        setState(() {
+                          _userPostsError = state.message;
+                          _isUserPostsLoading = false;
+                          _isLoadingMoreUserPosts = false;
+                        });
                       } else if (state is UserPostsLoading) {
                         if (state.profileUserId != null &&
                             state.profileUserId != _currentUserId) {
                           return;
                         }
-                        if (mounted) {
-                          setState(() => _isUserPostsLoading = true);
-                        }
+                        if (!mounted) return;
+                        setState(() => _isUserPostsLoading = true);
                       } else if (state is UserPostsLoadMoreError) {
                         if (state.profileUserId != null &&
                             state.profileUserId != _currentUserId)
                           return;
-                        if (mounted) {
-                          setState(() {
-                            _loadMoreError = state.message;
-                            _isLoadingMoreUserPosts = false;
-                          });
-                        }
+                        if (!mounted) return;
+                        setState(() {
+                          _loadMoreError = state.message;
+                          _isLoadingMoreUserPosts = false;
+                        });
                       }
                     },
                   ),
@@ -409,15 +395,14 @@ class _ProfilePageState extends State<ProfilePage> {
                               currentUserId: _currentUserId!,
                             ),
                           );
-                          if (mounted) {
-                            setState(() {
-                              _userPosts.clear();
-                              _userPostsError = null;
-                              _hasMoreUserPosts = true;
-                              _isUserPostsLoading = true;
-                              _hasLoadedOnce = false;
-                            });
-                          }
+                          if (!mounted) return;
+                          setState(() {
+                            _userPosts.clear();
+                            _userPostsError = null;
+                            _hasMoreUserPosts = true;
+                            _isUserPostsLoading = true;
+                            _hasLoadedOnce = false;
+                          });
                         },
                         child: CustomScrollView(
                           controller: _scrollController,
@@ -438,19 +423,18 @@ class _ProfilePageState extends State<ProfilePage> {
                               isLoadingMore: _isLoadingMoreUserPosts,
                               loadMoreError: _loadMoreError,
                               onRetry: () {
-                                if (mounted && _currentUserId != null) {
-                                  setState(() {
-                                    _userPostsError = null;
-                                    _isUserPostsLoading = true;
-                                    _hasLoadedOnce = false;
-                                  });
-                                  context.read<UserPostsBloc>().add(
-                                    RefreshUserPostsEvent(
-                                      profileUserId: _currentUserId!,
-                                      currentUserId: _currentUserId!,
-                                    ),
-                                  );
-                                }
+                                if (!mounted || _currentUserId == null) return;
+                                setState(() {
+                                  _userPostsError = null;
+                                  _isUserPostsLoading = true;
+                                  _hasLoadedOnce = false;
+                                });
+                                context.read<UserPostsBloc>().add(
+                                  RefreshUserPostsEvent(
+                                    profileUserId: _currentUserId!,
+                                    currentUserId: _currentUserId!,
+                                  ),
+                                );
                               },
                             ),
                           ],

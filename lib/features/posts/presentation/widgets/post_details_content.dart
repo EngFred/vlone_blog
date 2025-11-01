@@ -71,10 +71,13 @@ class PostDetailsContent extends StatelessWidget {
                     height: detailsMediaHeight,
                     useVisibilityDetector: false,
                   ),
+
+                const SizedBox(height: 12),
                 PostActions(
                   post: post,
                   userId: userId,
                   onCommentTap: onCommentTap,
+                  showCommentsCount: false,
                 ),
                 const SizedBox(height: 12),
               ],

@@ -228,11 +228,10 @@ class _FollowingPageState extends State<FollowingPage> {
             }
 
             // --- Updated ListView ---
-            return ListView.separated(
+            return ListView.builder(
               controller: _scrollController,
               // Add 1 to item count for the loading indicator if we are loading more
               itemCount: _users.length + (_isLoadingMore ? 1 : 0),
-              separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 // --- Show loading indicator at the bottom ---
                 if (index == _users.length) {

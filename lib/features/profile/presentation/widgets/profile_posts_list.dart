@@ -28,7 +28,7 @@ class ProfilePostsList extends StatelessWidget {
     this.loadMoreError,
   });
 
-  // ✅ FIX: Pass BuildContext as an argument
+  // Pass BuildContext as an argument
   Widget _buildLoadMoreFooter(BuildContext context) {
     if (loadMoreError != null) {
       return Container(
@@ -125,22 +125,6 @@ class ProfilePostsList extends StatelessWidget {
             message: 'No posts yet',
             icon: Icons.post_add,
             actionText: 'Create Post',
-            // ⚠️ FIX: If `context.push` is an extension method, ensure it's imported,
-            // or replace it with standard navigation (e.g., Navigator.push).
-            // Since this is likely a placeholder/custom router, I will leave it as is,
-            // but wrapped in an anonymous function that receives the context.
-            onRetry: () => {
-              // Assuming context.push is a defined extension in the project
-              // To use it, we must ensure it's called with a valid context.
-              // Here, we assume the surrounding environment has access to the navigation logic.
-              // If `context.push` is from an external package like go_router or auto_route,
-              // the required import should be present.
-              // For this widget, we can use Navigator.push if we don't know the custom method.
-              // For now, I'll keep the original call as it suggests project standards:
-              (context as dynamic).push(
-                '/create-post',
-              ), // Assuming context.push
-            },
           ),
         ),
       );

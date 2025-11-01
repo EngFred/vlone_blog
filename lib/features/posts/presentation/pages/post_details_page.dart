@@ -79,8 +79,9 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     if (_userId == null ||
         _post == null ||
         _commentController.text.trim().isEmpty ||
-        _isDeleting)
+        _isDeleting) {
       return;
+    }
     context.read<CommentsBloc>().add(
       AddCommentEvent(
         postId: widget.postId,
@@ -255,16 +256,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                     color: Theme.of(context).colorScheme.onBackground,
                   ),
                   actions: [
-                    if (_post != null)
-                      IconButton(
-                        icon: Icon(
-                          Icons.bookmark_border,
-                          color: Theme.of(context).colorScheme.onBackground,
-                        ),
-                        onPressed: () {
-                          // Add to favorites functionality
-                        },
-                      ),
+                    // REMOVED BOOKMARK ICON BUTTON
                   ],
                 ),
                 body: MultiBlocListener(

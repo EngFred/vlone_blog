@@ -4,7 +4,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/routes/slide_transition_page.dart';
-import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/create_post_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart';
@@ -49,19 +48,13 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) =>
           SlideTransitionPage(key: state.pageKey, child: const SignupPage()),
     ),
+
     // --- Secondary Routes (Not in Main Navigation Shell) ---
     GoRoute(
       path: Constants.notificationsRoute,
       pageBuilder: (context, state) => SlideTransitionPage(
         key: state.pageKey,
         child: const NotificationsPage(),
-      ),
-    ),
-    GoRoute(
-      path: '${Constants.profileRoute}/:userId/edit',
-      pageBuilder: (context, state) => SlideTransitionPage(
-        key: state.pageKey,
-        child: EditProfilePage(userId: state.pathParameters['userId']!),
       ),
     ),
     GoRoute(
@@ -75,20 +68,19 @@ final GoRouter appRouter = GoRouter(
       path: '${Constants.postDetailsRoute}/:postId',
       pageBuilder: (context, state) {
         final postId = state.pathParameters['postId']!;
-        // Default values
         PostEntity? extraPost;
         String? highlightCommentId;
         String? parentCommentId;
+
         final extra = state.extra;
         if (extra is Map<String, dynamic>) {
           extraPost = extra['post'] as PostEntity?;
           highlightCommentId = extra['highlightCommentId'] as String?;
           parentCommentId = extra['parentCommentId'] as String?;
         } else if (extra is PostEntity) {
-          // Handle legacy case where only PostEntity was passed
           extraPost = extra;
         }
-        // Pass highlight IDs to PostDetailsPage
+
         return SlideTransitionPage(
           key: state.pageKey,
           child: PostDetailsPage(
@@ -105,26 +97,19 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) {
         PostEntity? post;
         String? heroTag;
+
         final extra = state.extra;
         if (extra is PostEntity) {
           post = extra;
-          heroTag = null;
         } else if (extra is Map) {
           final potentialPost = extra['post'];
           if (potentialPost is PostEntity) {
             post = potentialPost;
             final potentialTag = extra['heroTag'];
             if (potentialTag is String) heroTag = potentialTag;
-          } else {
-            AppLogger.info(
-              'Router /media: extra Map provided but missing "post" key or wrong type: ${extra.runtimeType}',
-            );
           }
-        } else if (extra != null) {
-          AppLogger.info(
-            'Router /media: unrecognized extra type: ${extra.runtimeType}',
-          );
         }
+
         if (post == null) {
           return SlideTransitionPage(
             key: state.pageKey,
@@ -137,6 +122,7 @@ final GoRouter appRouter = GoRouter(
             ),
           );
         }
+
         return SlideTransitionPage(
           key: state.pageKey,
           child: FullMediaPage(post: post, heroTag: heroTag),
@@ -157,6 +143,7 @@ final GoRouter appRouter = GoRouter(
         child: FollowingPage(userId: state.pathParameters['userId']!),
       ),
     ),
+
     // --- Main Stateful Shell Route for Tab Navigation ---
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
@@ -200,11 +187,22 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: '${Constants.profileRoute}/me',
               builder: (context, state) => const ProfilePage(),
+              routes: [
+                // Nested Edit Profile Route
+                GoRoute(
+                  path: 'edit',
+                  pageBuilder: (context, state) => SlideTransitionPage(
+                    key: state.pageKey,
+                    child: EditProfilePage(userId: 'me'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ],
     ),
+
     // --- Other User's Profile Page (outside shell) ---
     GoRoute(
       path: '${Constants.profileRoute}/:userId',
@@ -214,6 +212,7 @@ final GoRouter appRouter = GoRouter(
         final currentUserId = authState is AuthAuthenticated
             ? authState.user.id
             : null;
+
         if (currentUserId != null && currentUserId == userId) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             GoRouter.of(context).go('${Constants.profileRoute}/me');
@@ -225,14 +224,12 @@ final GoRouter appRouter = GoRouter(
             ),
           );
         }
+
         return SlideTransitionPage(
           key: state.pageKey,
-          // 2. USE MultiBlocProvider with the specialized BLoCs
           child: MultiBlocProvider(
             providers: [
-              // Factory creates fresh, isolated instance for this UserProfilePage
               BlocProvider<ProfileBloc>(create: (context) => sl<ProfileBloc>()),
-              // ✅ FIX: Use the dedicated UserPostsBloc for this profile view
               BlocProvider<UserPostsBloc>(
                 create: (context) => sl<UserPostsBloc>(),
               ),
@@ -243,34 +240,24 @@ final GoRouter appRouter = GoRouter(
       },
     ),
   ],
-  errorBuilder: (context, state) {
-    AppLogger.error(
-      'Router error: ${state.error?.message ?? "Page not found"}',
-    );
-    return Scaffold(
-      body: Center(
-        child: Text('Error: ${state.error?.message ?? "Page not found"}'),
-      ),
-    );
-  },
+  errorBuilder: (context, state) => Scaffold(
+    body: Center(
+      child: Text('Error: ${state.error?.message ?? "Page not found"}'),
+    ),
+  ),
   redirect: (context, state) async {
-    AppLogger.info('Router redirect check for path: ${state.uri.path}');
     final authState = context.read<AuthBloc>().state;
     final isLoggedIn = authState is AuthAuthenticated;
     final isAuthRoute =
         state.uri.path == Constants.loginRoute ||
         state.uri.path == Constants.signupRoute;
+
     if (!isLoggedIn && !isAuthRoute) {
-      AppLogger.warning(
-        'No auth session found (AuthBloc), redirecting to login',
-      );
       return Constants.loginRoute;
     }
     if (isLoggedIn && isAuthRoute) {
-      AppLogger.info('User authenticated (AuthBloc), redirecting to feed');
       return Constants.feedRoute;
     }
-    AppLogger.info('No redirect needed for path: ${state.uri.path}');
     return null;
   },
 );

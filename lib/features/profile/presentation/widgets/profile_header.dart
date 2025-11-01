@@ -27,19 +27,15 @@ class ProfileHeader extends StatelessWidget {
 
   static const Duration _followDebounce = Duration(milliseconds: 400);
 
-  // Overlay now only exits via the Close button. Includes download action.
+  /// Show the full-screen profile image overlay with download option
   void _showProfileImageOverlay(BuildContext context, String? imageUrl) {
-    if (imageUrl == null) {
-      return;
-    }
+    if (imageUrl == null) return;
 
     showDialog(
       context: context,
       useSafeArea: false,
-      // Prevent closing when tapping outside the dialog or pressing back button.
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
-        // Local state for download progress inside the dialog
         bool _isDownloading = false;
         double _downloadProgress = 0.0;
 
@@ -48,7 +44,6 @@ class ProfileHeader extends StatelessWidget {
             Future<void> _startDownload() async {
               if (_isDownloading) return;
 
-              // Defensive - ensure service registered
               if (!sl.isRegistered<MediaDownloadService>()) {
                 AppLogger.error('MediaDownloadService not registered in GetIt');
                 SnackbarUtils.showError(
@@ -73,7 +68,6 @@ class ProfileHeader extends StatelessWidget {
                   imageUrl,
                   'image',
                   onReceiveProgress: (received, total) {
-                    // Use dialogContext.mounted to verify the dialog is still in the tree
                     if (!dialogContext.mounted) return;
                     if (total > 0) {
                       setState(() {
@@ -83,12 +77,9 @@ class ProfileHeader extends StatelessWidget {
                   },
                 );
 
-                // Check dialog still mounted before touching state or showing snackbars
                 if (!dialogContext.mounted) return;
 
-                setState(() {
-                  _isDownloading = false;
-                });
+                setState(() => _isDownloading = false);
 
                 switch (result.status) {
                   case DownloadResultStatus.success:
@@ -131,9 +122,7 @@ class ProfileHeader extends StatelessWidget {
                   stackTrace: st,
                 );
                 if (!dialogContext.mounted) return;
-                setState(() {
-                  _isDownloading = false;
-                });
+                setState(() => _isDownloading = false);
                 SnackbarUtils.showError(
                   dialogContext,
                   'Download failed unexpectedly. Please try again.',
@@ -147,9 +136,7 @@ class ProfileHeader extends StatelessWidget {
               backgroundColor: Colors.black.withOpacity(0.9),
               body: Stack(
                 children: [
-                  // Image content center
                   GestureDetector(
-                    // disable tap-to-close (overlay only closes via Close)
                     onTap: () {},
                     child: Center(
                       child: Hero(
@@ -174,7 +161,7 @@ class ProfileHeader extends StatelessWidget {
                     ),
                   ),
 
-                  // Close Button (Top Right) - ONLY way to exit
+                  // Close Button (Top Right)
                   Positioned(
                     top: 36.0,
                     right: 16.0,
@@ -270,17 +257,12 @@ class ProfileHeader extends StatelessWidget {
     );
   }
 
-  //Follow icon overlay widget
   Widget _buildFollowIconOverlay(BuildContext context) {
     final theme = Theme.of(context);
-    // Determine the icon and background color based on following status
     final icon = isFollowing! ? Icons.check : Icons.add;
     final backgroundColor = isFollowing!
-        ? theme
-              .colorScheme
-              .surfaceVariant // Muted background if following
-        : theme.colorScheme.primary; // Primary color if not following
-
+        ? theme.colorScheme.surfaceVariant
+        : theme.colorScheme.primary;
     final foregroundColor = isFollowing!
         ? theme.colorScheme.onSurfaceVariant
         : theme.colorScheme.onPrimary;
@@ -289,20 +271,20 @@ class ProfileHeader extends StatelessWidget {
       onTap: isProcessingFollow || onFollowToggle == null
           ? null
           : () {
-              final key = 'follow_${profile.id}';
-              Debouncer.instance.debounce(key, _followDebounce, () {
-                onFollowToggle!(!isFollowing!);
-              });
+              Debouncer.instance.debounce(
+                'follow_${profile.id}',
+                _followDebounce,
+                () {
+                  onFollowToggle!(!isFollowing!);
+                },
+              );
             },
       child: Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           color: backgroundColor,
           shape: BoxShape.circle,
-          border: Border.all(
-            color: theme.colorScheme.surface, // Matches scaffold background
-            width: 3,
-          ),
+          border: Border.all(color: theme.colorScheme.surface, width: 3),
           boxShadow: [
             BoxShadow(
               color: theme.colorScheme.shadow.withOpacity(0.2),
@@ -336,11 +318,10 @@ class ProfileHeader extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Avatar + overlays
           Stack(
             clipBehavior: Clip.none,
             children: [
-              // Avatar (Wrapped in GestureDetector and Hero)
+              // Avatar
               GestureDetector(
                 onTap: () =>
                     _showProfileImageOverlay(context, profile.profileImageUrl),
@@ -367,7 +348,6 @@ class ProfileHeader extends StatelessWidget {
                 ),
               ),
 
-              // Follow Overlay (if applicable)
               if (showFollowOverlay && !isProcessingFollow)
                 Positioned(
                   right: 0,
@@ -375,7 +355,6 @@ class ProfileHeader extends StatelessWidget {
                   child: _buildFollowIconOverlay(context),
                 ),
 
-              // Loading Spinner Overlay (follow)
               if (showFollowOverlay && isProcessingFollow)
                 Positioned(
                   right: 0,
@@ -411,7 +390,7 @@ class ProfileHeader extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // Username & email
+          // Username & Email
           Text(
             profile.username,
             style: TextStyle(
@@ -444,7 +423,7 @@ class ProfileHeader extends StatelessWidget {
             ),
           const SizedBox(height: 16),
 
-          // Stats row
+          // Stats
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Row(
@@ -468,7 +447,6 @@ class ProfileHeader extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 16),
         ],
       ),
     );

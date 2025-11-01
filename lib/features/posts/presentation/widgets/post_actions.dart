@@ -12,11 +12,16 @@ class PostActions extends StatelessWidget {
   final String userId;
   final VoidCallback? onCommentTap;
 
+  /// When false, the comments *count* will not be shown (only the comment icon).
+  /// Used by PostDetailsPage where the comments section / input already shows counts.
+  final bool showCommentsCount;
+
   const PostActions({
     super.key,
     required this.post,
     required this.userId,
     this.onCommentTap,
+    this.showCommentsCount = true,
   });
 
   static const Duration _defaultDebounce = Duration(milliseconds: 500);
@@ -40,7 +45,7 @@ class PostActions extends StatelessWidget {
 
   Widget _buildActionItem({
     required Widget icon,
-    required String count,
+    String? count,
     required VoidCallback onTap,
     required String actionKey,
   }) {
@@ -58,11 +63,12 @@ class PostActions extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           icon,
-          Padding(
-            padding: const EdgeInsets.only(left: 6.0),
-            // UI/UX: Use titleSmall for more distinct and readable count text
-            child: Text(count),
-          ),
+          if (count != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 6.0),
+              // UI/UX: Use titleSmall for more distinct and readable count text
+              child: Text(count),
+            ),
         ],
       ),
     );
@@ -129,9 +135,7 @@ class PostActions extends StatelessWidget {
                     icon: Icon(
                       isLiked ? Icons.favorite : Icons.favorite_border,
                       size: _kActionIconSize,
-                      color: isLiked
-                          ? Colors.red.shade600
-                          : null, // UI/UX: Color-code
+                      color: isLiked ? Colors.red.shade600 : null,
                     ),
                   );
                 },
@@ -140,13 +144,12 @@ class PostActions extends StatelessWidget {
               // ==================== COMMENT BUTTON ====================
               _buildActionItem(
                 actionKey: 'comment_nav_${post.id}',
-                count: baseCommentsCount.toString(),
-                onTap: () =>
-                    _handleComment(context), // Calls the new overlay logic
+                count: showCommentsCount ? baseCommentsCount.toString() : null,
+                onTap: () => _handleComment(context),
                 icon: const Icon(
                   Icons.chat_bubble_outline,
                   size: _kActionIconSize,
-                ), // UI/UX: Switched to chat bubble
+                ),
               ),
               const SizedBox(width: 16), // UI/UX: Reduced space
               // ==================== SHARE BUTTON ====================
@@ -208,7 +211,7 @@ class PostActions extends StatelessWidget {
                   size: _kActionIconSize,
                   color: isFavorited
                       ? Theme.of(context).colorScheme.primary
-                      : null, // UI/UX: Color-code favorite
+                      : null,
                 ),
               );
             },

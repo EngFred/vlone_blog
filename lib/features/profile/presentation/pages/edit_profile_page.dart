@@ -1,3 +1,4 @@
+// edit_profile_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -13,8 +14,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 // ------------------------------------------------------------------
 // ⭐ REQUIRED PLACEHOLDER IMPORTS/DEFINITIONS FOR SYNCING
 // ------------------------------------------------------------------
-// NOTE: You must ensure these classes/imports are correctly set up in your actual project.
-// Replace with your actual imports for AuthBloc and UserEntity if they are separate.
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/auth/domain/entities/user_entity.dart';
 // ------------------------------------------------------------------
@@ -32,7 +31,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final _usernameController = TextEditingController();
   final _bioController = TextEditingController();
 
-  // Changed from XFile? to File? to hold the post-crop file.
   File? _profileImageFile;
   bool _isSubmitting = false;
 
@@ -42,7 +40,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   @override
   void initState() {
     super.initState();
-    // Initialize from current state if already loaded
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final currentState = context.read<ProfileBloc>().state;
       if (currentState is ProfileDataLoaded && !_hasInitializedControllers) {
@@ -53,7 +50,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   void _initializeFromProfile(ProfileEntity profile) {
     if (_hasInitializedControllers) return;
-
     setState(() {
       _initialProfile = profile;
       _usernameController.text = profile.username;
@@ -81,8 +77,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
       if (pickedXFile != null) {
         final imageFile = File(pickedXFile.path);
-
-        // Use the centralized cropping utility
         final croppedFile = await cropImageFile(
           context,
           imageFile,
@@ -90,7 +84,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
         );
 
         if (croppedFile != null) {
-          // If cropping was successful, update the state with the File
           setState(() {
             _profileImageFile = croppedFile;
           });
@@ -110,13 +103,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
         ? null
         : _bioController.text.trim();
 
-    // Check for actual changes
     final usernameChanged =
         _initialProfile == null || newUsername != _initialProfile!.username;
     final bioChanged =
         _initialProfile == null || newBio != _initialProfile!.bio;
-
-    // Check for image change using the new File field
     final hasImage = _profileImageFile != null;
 
     if (!usernameChanged && !bioChanged && !hasImage) {
@@ -124,30 +114,31 @@ class _EditProfilePageState extends State<EditProfilePage> {
       return;
     }
 
-    // Dispatch update
+    // ---------- NEW: Resolve 'me' to actual user id ----------
+    final authState = context.read<AuthBloc>().state;
+    final resolvedUserId =
+        (widget.userId == 'me' && authState is AuthAuthenticated)
+        ? authState.user.id
+        : widget.userId;
+    // --------------------------------------------------------
+
     setState(() => _isSubmitting = true);
     context.read<ProfileBloc>().add(
       UpdateProfileEvent(
-        userId: widget.userId,
+        userId: resolvedUserId,
         username: usernameChanged ? newUsername : null,
         bio: bioChanged ? newBio : null,
-        // Pass the File object to the BLoC by converting it back to XFile
-        // (assuming the BLoC still expects XFile for profileImage).
         profileImage: hasImage ? XFile(_profileImageFile!.path) : null,
       ),
     );
   }
 
-  // Helper for consistent input styling
   InputDecoration _getInputDecoration(String labelText, {String? hintText}) {
     final theme = Theme.of(context);
     final isLight = theme.brightness == Brightness.light;
-
-    // Lighter fill so inputs look airy in both light and dark modes.
     final borderColor = isLight
         ? theme.colorScheme.onSurface.withOpacity(0.08)
         : theme.colorScheme.outline.withOpacity(0.6);
-
     final fillColor = isLight
         ? theme.colorScheme.surfaceVariant.withOpacity(0.04)
         : theme.colorScheme.surfaceVariant.withOpacity(0.06);
@@ -201,25 +192,18 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 context,
                 'Profile updated successfully!',
               );
-              // Use the freshly updated ProfileEntity data to create the UserEntity
-              // This synchronizes the username/image across the app instantly.
               if (_initialProfile != null) {
                 final updatedUser = UserEntity(
                   id: state.profile.id,
-                  // Re-use email from the cached initial user data
                   email: _initialProfile!.email,
                   username: state.profile.username,
                   profileImageUrl: state.profile.profileImageUrl,
                 );
-                // Dispatch the update to the AuthBloc
                 context.read<AuthBloc>().add(UpdateUserEvent(updatedUser));
               }
-              // -------------------------------------------------------------
-
               context.pop();
               return;
             }
-            // Initial load logic
             if (!_hasInitializedControllers) {
               _initializeFromProfile(state.profile);
             }
@@ -231,14 +215,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
             return const Center(child: LoadingIndicator());
           }
 
-          // Use AbsorbPointer + Opacity to prevent interactions while submitting.
           return AbsorbPointer(
             absorbing: _isSubmitting,
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
               child: Column(
                 children: [
-                  // Avatar preview and pick area
                   Tooltip(
                     message: 'Tap to change profile photo',
                     child: Semantics(
@@ -270,8 +252,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                     )
                                   : null,
                             ),
-
-                            // Small edit badge at bottom-right instead of full overlay.
                             Positioned(
                               right: 0,
                               bottom: 0,
@@ -300,8 +280,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                 ),
                               ),
                             ),
-
-                            // Semi-transparent overlay shown only when submitting so user sees the disabled state
                             if (_isSubmitting)
                               Positioned.fill(
                                 child: Container(
@@ -321,7 +299,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 12),
                   TextButton.icon(
                     onPressed: _isSubmitting ? null : _pickImage,
@@ -336,8 +313,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     ),
                   ),
                   const SizedBox(height: 24),
-
-                  // Form Section
                   Form(
                     key: _formKey,
                     child: Column(
@@ -378,7 +353,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               elevation: 4,
-                              // explicit disabled look to improve clarity
                               disabledBackgroundColor: theme
                                   .colorScheme
                                   .onSurface
