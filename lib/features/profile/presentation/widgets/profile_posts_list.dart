@@ -139,7 +139,7 @@ class ProfilePostsList extends StatelessWidget {
             child: PostCard(key: ValueKey(post.id), post: post, userId: userId),
           );
         } else {
-          // ✅ FIX: Call the helper method with the local context
+          // Call the helper method with the local context
           return _buildLoadMoreFooter(context);
         }
       }, childCount: posts.length + (hasMore || loadMoreError != null ? 1 : 0)),

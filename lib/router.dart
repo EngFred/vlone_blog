@@ -2,29 +2,34 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
-import 'package:vlone_blog_app/core/di/injection_container.dart';
+import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 import 'package:vlone_blog_app/core/routes/slide_transition_page.dart';
+import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:vlone_blog_app/features/auth/presentation/pages/login_page.dart';
+import 'package:vlone_blog_app/features/auth/presentation/pages/signup_page.dart';
+import 'package:vlone_blog_app/core/pages/main_page.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/feed/feed_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/reels/reels_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/bloc/user_posts/user_posts_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/create_post_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/full_media_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/post_details_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/reels_page.dart';
+import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/edit_profile_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/user_profile_page.dart';
-import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/bloc/user_posts/user_posts_bloc.dart';
-import 'package:vlone_blog_app/core/pages/main_page.dart';
-import 'package:vlone_blog_app/features/auth/presentation/pages/login_page.dart';
-import 'package:vlone_blog_app/features/auth/presentation/pages/signup_page.dart';
+import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
 import 'package:vlone_blog_app/features/followers/presentation/pages/followers_page.dart';
 import 'package:vlone_blog_app/features/followers/presentation/pages/following_page.dart';
+import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 import 'package:vlone_blog_app/features/users/presentation/pages/users_page.dart';
+import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/pages/notifications_page.dart';
-import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 
-// Add these at the top of main.dart (global keys for branches)
+// Global keys for branches
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 final _shellNavigatorFeedKey = GlobalKey<NavigatorState>(debugLabel: 'feed');
 final _shellNavigatorReelsKey = GlobalKey<NavigatorState>(debugLabel: 'reels');
@@ -54,13 +59,18 @@ final GoRouter appRouter = GoRouter(
       path: Constants.notificationsRoute,
       pageBuilder: (context, state) => SlideTransitionPage(
         key: state.pageKey,
-        child: const NotificationsPage(),
+        // NotificationsBloc is provided here for the page itself (e.g. to load data)
+        child: BlocProvider<NotificationsBloc>(
+          create: (_) => di.sl<NotificationsBloc>(),
+          child: const NotificationsPage(),
+        ),
       ),
     ),
     GoRoute(
       path: Constants.createPostRoute,
       pageBuilder: (context, state) => SlideTransitionPage(
         key: state.pageKey,
+        // PostActionsBloc is Global
         child: const CreatePostPage(),
       ),
     ),
@@ -83,6 +93,7 @@ final GoRouter appRouter = GoRouter(
 
         return SlideTransitionPage(
           key: state.pageKey,
+          // All BLoCs (PostActions, Likes, Comments, Favorites) are now global.
           child: PostDetailsPage(
             postId: postId,
             post: extraPost,
@@ -98,34 +109,36 @@ final GoRouter appRouter = GoRouter(
         PostEntity? post;
         String? heroTag;
 
+        // 💡 FIX: Safely extract PostEntity and heroTag from state.extra
         final extra = state.extra;
-        if (extra is PostEntity) {
+        if (extra is Map<String, dynamic>) {
+          post = extra['post'] as PostEntity?;
+          heroTag = extra['heroTag'] as String?;
+        } else if (extra is PostEntity) {
           post = extra;
-        } else if (extra is Map) {
-          final potentialPost = extra['post'];
-          if (potentialPost is PostEntity) {
-            post = potentialPost;
-            final potentialTag = extra['heroTag'];
-            if (potentialTag is String) heroTag = potentialTag;
-          }
         }
 
+        // 💡 FIX: Handle null post object safely before using it
         if (post == null) {
           return SlideTransitionPage(
             key: state.pageKey,
-            child: Scaffold(
-              appBar: AppBar(
-                title: const Text('Media'),
-                backgroundColor: Theme.of(context).colorScheme.surface,
+            child: const Scaffold(
+              body: Center(
+                child: Text(
+                  'Error: Media data not found.',
+                  style: TextStyle(color: Colors.white),
+                ),
               ),
-              body: const Center(child: Text('Media not found')),
             ),
           );
         }
 
         return SlideTransitionPage(
           key: state.pageKey,
-          child: FullMediaPage(post: post, heroTag: heroTag),
+          child: FullMediaPage(
+            post: post, // Removed the crashing '!'
+            heroTag: heroTag,
+          ),
         );
       },
     ),
@@ -133,21 +146,43 @@ final GoRouter appRouter = GoRouter(
       path: '${Constants.followersRoute}/:userId',
       pageBuilder: (context, state) => SlideTransitionPage(
         key: state.pageKey,
-        child: FollowersPage(userId: state.pathParameters['userId']!),
+        // Provide FollowersBloc for FollowersPage
+        child: BlocProvider<FollowersBloc>(
+          create: (_) => di.sl<FollowersBloc>(),
+          child: FollowersPage(userId: state.pathParameters['userId']!),
+        ),
       ),
     ),
     GoRoute(
       path: '${Constants.followingRoute}/:userId',
       pageBuilder: (context, state) => SlideTransitionPage(
         key: state.pageKey,
-        child: FollowingPage(userId: state.pathParameters['userId']!),
+        // Provide FollowersBloc for FollowingPage
+        child: BlocProvider<FollowersBloc>(
+          create: (_) => di.sl<FollowersBloc>(),
+          child: FollowingPage(userId: state.pathParameters['userId']!),
+        ),
       ),
     ),
 
     // --- Main Stateful Shell Route for Tab Navigation ---
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
-        return MainPage(navigationShell: navigationShell);
+        // Provide BLoCs needed by tabs that AREN'T GLOBAL
+        return MultiBlocProvider(
+          providers: [
+            BlocProvider<FeedBloc>(create: (_) => di.sl<FeedBloc>()),
+            BlocProvider<ReelsBloc>(create: (_) => di.sl<ReelsBloc>()),
+            BlocProvider<UsersBloc>(create: (_) => di.sl<UsersBloc>()),
+            BlocProvider<ProfileBloc>(create: (_) => di.sl<ProfileBloc>()),
+            BlocProvider<UserPostsBloc>(create: (_) => di.sl<UserPostsBloc>()),
+            BlocProvider<FollowersBloc>(create: (_) => di.sl<FollowersBloc>()),
+            BlocProvider<NotificationsBloc>(
+              create: (_) => di.sl<NotificationsBloc>(),
+            ),
+          ],
+          child: MainPage(navigationShell: navigationShell),
+        );
       },
       branches: [
         // Tab 1: Feed/Home
@@ -229,9 +264,15 @@ final GoRouter appRouter = GoRouter(
           key: state.pageKey,
           child: MultiBlocProvider(
             providers: [
-              BlocProvider<ProfileBloc>(create: (context) => sl<ProfileBloc>()),
+              // ONLY BLoCs required for profile data and posts
+              BlocProvider<ProfileBloc>(
+                create: (context) => di.sl<ProfileBloc>(),
+              ),
               BlocProvider<UserPostsBloc>(
-                create: (context) => sl<UserPostsBloc>(),
+                create: (context) => di.sl<UserPostsBloc>(),
+              ),
+              BlocProvider<FollowersBloc>(
+                create: (context) => di.sl<FollowersBloc>(),
               ),
             ],
             child: UserProfilePage(userId: userId),
