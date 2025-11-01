@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart'; // Still needed for HapticFeedback when playing/pausing, but not double-tap
 import 'package:video_player/video_player.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/debouncer.dart';
@@ -11,23 +11,16 @@ import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
 
-/// ReelVideoPlayer
-/// - supports single tap toggle (play/pause)
-/// - supports double-tap to like (fires a callback provided by parent)
-/// - plays an internal heart animation for double-tap (no parent rebuild)
 class ReelVideoPlayer extends StatefulWidget {
   final PostEntity post;
   final bool isActive;
   final bool shouldPreload;
-  final VoidCallback?
-  onDoubleTap; // Notify parent (e.g., ReelItem) to perform like action
 
   const ReelVideoPlayer({
     super.key,
     required this.post,
     required this.isActive,
     this.shouldPreload = false,
-    this.onDoubleTap,
   });
 
   @override
@@ -35,24 +28,12 @@ class ReelVideoPlayer extends StatefulWidget {
 }
 
 class _ReelVideoPlayerState extends State<ReelVideoPlayer>
-    with AutomaticKeepAliveClientMixin, SingleTickerProviderStateMixin {
+    with AutomaticKeepAliveClientMixin {
   VideoPlayerController? _videoController;
   bool _initialized = false;
   bool _isDisposed = false;
   bool _isInitializing = false;
   final VideoControllerManager _videoManager = VideoControllerManager();
-
-  // Heart animation for double-tap
-  late final AnimationController _heartController;
-  late final Animation<double> _heartScale;
-  late final Animation<double> _heartOpacity;
-  Timer? _hideHeartTimer;
-  bool _showHeart = false;
-
-  // Small guard to prevent repeated double-tap actions in quick succession.
-  // We keep it local and short (safe single-source debounce).
-  DateTime? _lastDoubleTapAt;
-  static const Duration _doubleTapCooldown = Duration(milliseconds: 700);
 
   @override
   bool get wantKeepAlive => true;
@@ -60,35 +41,6 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
   @override
   void initState() {
     super.initState();
-
-    _heartController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 420),
-    );
-
-    _heartScale = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween(
-          begin: 0.6,
-          end: 1.12,
-        ).chain(CurveTween(curve: Curves.easeOutBack)),
-        weight: 60,
-      ),
-      TweenSequenceItem(
-        tween: Tween(
-          begin: 1.12,
-          end: 0.98,
-        ).chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 40,
-      ),
-    ]).animate(_heartController);
-
-    _heartOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _heartController,
-        curve: const Interval(0.0, 0.4, curve: Curves.easeOut),
-      ),
-    );
 
     if (widget.isActive || widget.shouldPreload) {
       _initializeIfNeeded();
@@ -157,6 +109,8 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
       VideoPlaybackManager.play(_videoController!, () {
         if (mounted && !_isDisposed) setState(() {});
       });
+      // Add haptic feedback for play action (optional, for better UX)
+      HapticFeedback.lightImpact();
       if (mounted) setState(() {});
     }
   }
@@ -167,6 +121,7 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
         VideoPlaybackManager.isPlaying(_videoController!)) {
       AppLogger.info('Pausing video for post: ${widget.post.id}');
       VideoPlaybackManager.pause();
+      HapticFeedback.lightImpact();
       if (mounted) setState(() {});
     }
   }
@@ -180,48 +135,6 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
       _pauseVideo();
     } else {
       _playVideo();
-    }
-  }
-
-  // Trigger heart animation and call parent callback
-  void _onDoubleTap() {
-    final now = DateTime.now();
-    if (_lastDoubleTapAt != null &&
-        now.difference(_lastDoubleTapAt!) < _doubleTapCooldown) {
-      AppLogger.info(
-        'Double-tap ignored due to cooldown for post: ${widget.post.id}',
-      );
-      return;
-    }
-    _lastDoubleTapAt = now;
-
-    // Animate heart (local)
-    if (_hideHeartTimer != null) {
-      _hideHeartTimer!.cancel();
-      _hideHeartTimer = null;
-    }
-    setState(() => _showHeart = true);
-    _heartController
-      ..reset()
-      ..forward();
-
-    // ensure it hides after animation
-    _hideHeartTimer = Timer(const Duration(milliseconds: 800), () {
-      if (mounted) setState(() => _showHeart = false);
-    });
-
-    // Haptic
-    HapticFeedback.mediumImpact();
-
-    // Notify parent to perform like action (parent should NOT re-debounce)
-    try {
-      widget.onDoubleTap?.call();
-    } catch (e, st) {
-      AppLogger.error(
-        'onDoubleTap callback threw: $e',
-        error: e,
-        stackTrace: st,
-      );
     }
   }
 
@@ -270,7 +183,7 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: onTapHandler,
-      onDoubleTap: _onDoubleTap,
+      // onDoubleTap handler removed: onDoubleTap: _onDoubleTap,
       child: Container(
         color: Colors.black,
         child: Stack(
@@ -333,43 +246,6 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
             // Play/pause overlay
             if (_initialized && _videoController != null)
               _buildPlayPauseOverlay(),
-
-            // Heart double-tap animation (center)
-            if (_showHeart)
-              Center(
-                child: IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: _heartController,
-                    builder: (context, child) {
-                      final scale = _heartScale.value;
-                      final opacity = _heartOpacity.value;
-                      return Opacity(
-                        opacity: opacity,
-                        child: Transform.scale(scale: scale, child: child),
-                      );
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.black.withOpacity(0.15),
-                      ),
-                      padding: const EdgeInsets.all(12),
-                      child: Icon(
-                        Icons.favorite,
-                        size: 96,
-                        color: Colors.white.withOpacity(0.95),
-                        shadows: [
-                          const Shadow(
-                            blurRadius: 12,
-                            color: Colors.black45,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
           ],
         ),
       ),
@@ -403,8 +279,6 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
   void dispose() {
     AppLogger.info('Disposing ReelVideoPlayer for post: ${widget.post.id}');
     _isDisposed = true;
-    _hideHeartTimer?.cancel();
-    _heartController.dispose();
     final controller = _videoController;
     _videoController = null;
 

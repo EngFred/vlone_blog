@@ -11,8 +11,6 @@ class LoginPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    //Use the app-level one.
-    // The AuthBloc is provided in MyApp's MultiBlocProvider.
     return Scaffold(
       body: BlocListener<AuthBloc, AuthState>(
         listener: (context, state) {

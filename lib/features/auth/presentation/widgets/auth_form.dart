@@ -18,8 +18,6 @@ class _AuthFormState extends State<AuthForm>
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  // REMOVE: Removed the _usernameController
-  // final _usernameController = TextEditingController();
   bool _obscurePassword = true;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -41,8 +39,6 @@ class _AuthFormState extends State<AuthForm>
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
-    // REMOVE: Dispose for _usernameController is removed
-    // _usernameController.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -67,8 +63,6 @@ class _AuthFormState extends State<AuthForm>
           SignupEvent(
             email: _emailController.text.trim(),
             password: _passwordController.text.trim(),
-            // REMOVE: Removed the username parameter from SignupEvent
-            // username: _usernameController.text.trim(),
           ),
         );
       }
@@ -96,16 +90,8 @@ class _AuthFormState extends State<AuthForm>
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ✅ ADDED: Modern Logo Placement
-                // Place the logo prominently at the top for brand recognition.
-                // Assuming 'assets/logo.png' exists based on pubspec.yaml.
-                Center(
-                  child: Image.asset(
-                    'assets/logo.png',
-                    height: 90, // Recommended size for a modern brand mark
-                  ),
-                ),
-                const SizedBox(height: 48), // Good vertical spacing
+                Center(child: Image.asset('assets/logo.png', height: 90)),
+                const SizedBox(height: 48),
 
                 Text(
                   widget.isLogin ? 'Welcome Back' : 'Create Account',
@@ -135,26 +121,6 @@ class _AuthFormState extends State<AuthForm>
                         absorbing: isLoading,
                         child: Column(
                           children: [
-                            // REMOVE: Removed the Username TextFormField and the SizedBox
-                            /*
-                            if (!widget.isLogin)
-                              TextFormField(
-                                controller: _usernameController,
-                                decoration: InputDecoration(
-                                  labelText: 'Username',
-                                  prefixIcon: const Icon(Icons.person_outline),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  filled: true,
-                                  fillColor: theme.scaffoldBackgroundColor
-                                      .withOpacity(0.5),
-                                ),
-                                validator: (value) =>
-                                    value!.isEmpty ? 'Enter username' : null,
-                              ),
-                            if (!widget.isLogin) const SizedBox(height: 16),
-                            */
                             TextFormField(
                               controller: _emailController,
                               decoration: InputDecoration(
@@ -266,6 +232,15 @@ class _AuthFormState extends State<AuthForm>
                       ),
                     );
                   },
+                ),
+
+                const SizedBox(height: 48),
+                Text(
+                  '© Engineer Fred 2025',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.grey[500],
+                  ),
+                  textAlign: TextAlign.center,
                 ),
               ],
             ),
