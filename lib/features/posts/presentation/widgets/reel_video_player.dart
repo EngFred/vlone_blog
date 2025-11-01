@@ -49,6 +49,11 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
   Timer? _hideHeartTimer;
   bool _showHeart = false;
 
+  // Small guard to prevent repeated double-tap actions in quick succession.
+  // We keep it local and short (safe single-source debounce).
+  DateTime? _lastDoubleTapAt;
+  static const Duration _doubleTapCooldown = Duration(milliseconds: 700);
+
   @override
   bool get wantKeepAlive => true;
 
@@ -180,6 +185,16 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
 
   // Trigger heart animation and call parent callback
   void _onDoubleTap() {
+    final now = DateTime.now();
+    if (_lastDoubleTapAt != null &&
+        now.difference(_lastDoubleTapAt!) < _doubleTapCooldown) {
+      AppLogger.info(
+        'Double-tap ignored due to cooldown for post: ${widget.post.id}',
+      );
+      return;
+    }
+    _lastDoubleTapAt = now;
+
     // Animate heart (local)
     if (_hideHeartTimer != null) {
       _hideHeartTimer!.cancel();
@@ -198,8 +213,16 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
     // Haptic
     HapticFeedback.mediumImpact();
 
-    // Notify parent to perform like action (debounced at parent)
-    widget.onDoubleTap?.call();
+    // Notify parent to perform like action (parent should NOT re-debounce)
+    try {
+      widget.onDoubleTap?.call();
+    } catch (e, st) {
+      AppLogger.error(
+        'onDoubleTap callback threw: $e',
+        error: e,
+        stackTrace: st,
+      );
+    }
   }
 
   Widget _buildPlayPauseOverlay() {
@@ -247,10 +270,7 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: onTapHandler,
-      onDoubleTap: () {
-        // Double tap triggers animation + parent callback
-        _onDoubleTap();
-      },
+      onDoubleTap: _onDoubleTap,
       child: Container(
         color: Colors.black,
         child: Stack(

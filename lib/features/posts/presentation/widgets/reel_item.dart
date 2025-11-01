@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
-import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:flutter/services.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
@@ -35,9 +34,6 @@ class _ReelItemState extends State<ReelItem>
     with AutomaticKeepAliveClientMixin {
   late PostEntity _currentPost;
 
-  // Debounce key for double-tap -> like
-  static const String _doubleTapLikeKeyPrefix = 'reel_double_like_';
-
   @override
   bool get wantKeepAlive => true;
 
@@ -61,43 +57,38 @@ class _ReelItemState extends State<ReelItem>
   // Called when the video widget detects a double-tap.
   // We now ensure double-tap only likes (never unlikes).
   void _handleDoubleTapLike() {
-    final key = '$_doubleTapLikeKeyPrefix${_currentPost.id}';
+    final isLiked = _currentPost.isLiked;
 
-    Debouncer.instance.throttle(key, const Duration(milliseconds: 700), () {
-      final isLiked = _currentPost.isLiked;
-
-      // NEW: If already liked, do NOT send an unlike. Just provide subtle feedback.
-      if (isLiked) {
-        // Provide subtle haptic feedback to acknowledge the action.
-        HapticFeedback.lightImpact();
-        AppLogger.info(
-          'Double-tap detected but post already liked: ${_currentPost.id}',
-        );
-        return;
-      }
-
-      // Otherwise, proceed to like the post (optimistic update + bloc event)
-      context.read<LikesBloc>().add(
-        LikePostEvent(
-          postId: _currentPost.id,
-          userId: widget.userId,
-          isLiked: true, // explicitly like
-          previousState: isLiked,
-        ),
+    // NEW: If already liked, do NOT send an unlike. Just provide subtle feedback.
+    if (isLiked) {
+      HapticFeedback.lightImpact();
+      AppLogger.info(
+        'Double-tap detected but post already liked: ${_currentPost.id}',
       );
+      return;
+    }
 
-      // Optimistically update post counts locally via PostActionsBloc
-      const int delta = 1;
-      context.read<PostActionsBloc>().add(
-        OptimisticPostUpdate(
-          post: _currentPost,
-          deltaLikes: delta,
-          deltaFavorites: 0,
-          isLiked: true,
-          isFavorited: null,
-        ),
-      );
-    });
+    // Otherwise, proceed to like the post (optimistic update + bloc event)
+    context.read<LikesBloc>().add(
+      LikePostEvent(
+        postId: _currentPost.id,
+        userId: widget.userId,
+        isLiked: true, // explicitly like
+        previousState: isLiked,
+      ),
+    );
+
+    // Optimistically update post counts locally via PostActionsBloc
+    const int delta = 1;
+    context.read<PostActionsBloc>().add(
+      OptimisticPostUpdate(
+        post: _currentPost,
+        deltaLikes: delta,
+        deltaFavorites: 0,
+        isLiked: true,
+        isFavorited: null,
+      ),
+    );
   }
 
   @override
@@ -134,7 +125,8 @@ class _ReelItemState extends State<ReelItem>
           post: _currentPost,
           isActive: widget.isActive,
           shouldPreload: widget.isPrevious || widget.isNext,
-          onDoubleTap: _handleDoubleTapLike, // <<-- Hook double-tap to like
+          onDoubleTap:
+              _handleDoubleTapLike, // <<-- Hook double-tap to like (no second debounce)
         ),
 
         // Gradients and overlays...
