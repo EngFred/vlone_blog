@@ -154,7 +154,6 @@ class _PostCardState extends State<PostCard> {
             }
           },
         ),
-        // --- UNCHANGED: PostActionsBloc Listener ---
         // This is now the SINGLE source of truth for updating _currentPost
         BlocListener<PostActionsBloc, PostActionsState>(
           listenWhen: (prev, curr) =>

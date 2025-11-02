@@ -54,7 +54,6 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) =>
           SlideTransitionPage(key: state.pageKey, child: const SignupPage()),
     ),
-
     // --- Secondary Routes (Not in Main Navigation Shell) ---
     GoRoute(
       path: Constants.notificationsRoute,
@@ -82,7 +81,6 @@ final GoRouter appRouter = GoRouter(
         PostEntity? extraPost;
         String? highlightCommentId;
         String? parentCommentId;
-
         final extra = state.extra;
         if (extra is Map<String, dynamic>) {
           extraPost = extra['post'] as PostEntity?;
@@ -91,7 +89,6 @@ final GoRouter appRouter = GoRouter(
         } else if (extra is PostEntity) {
           extraPost = extra;
         }
-
         return SlideTransitionPage(
           key: state.pageKey,
           // All BLoCs (PostActions, Likes, Comments, Favorites) are now global.
@@ -109,7 +106,6 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) {
         PostEntity? post;
         String? heroTag;
-
         // 💡 FIX: Safely extract PostEntity and heroTag from state.extra
         final extra = state.extra;
         if (extra is Map<String, dynamic>) {
@@ -118,10 +114,10 @@ final GoRouter appRouter = GoRouter(
         } else if (extra is PostEntity) {
           post = extra;
         }
-
-        // 💡 FIX: Handle null post object safely before using it
+        // Handle null post object safely before using it
         if (post == null) {
-          return SlideTransitionPage(
+          // --- MODIFIED: Use MaterialPage for the error state ---
+          return MaterialPage(
             key: state.pageKey,
             child: const Scaffold(
               body: Center(
@@ -133,13 +129,12 @@ final GoRouter appRouter = GoRouter(
             ),
           );
         }
-
-        return SlideTransitionPage(
+        // --- Replaced SlideTransitionPage with MaterialPage ---
+        // This allows the Hero animation to work correctly without a
+        // conflicting slide transition.
+        return MaterialPage(
           key: state.pageKey,
-          child: FullMediaPage(
-            post: post, // Removed the crashing '!'
-            heroTag: heroTag,
-          ),
+          child: FullMediaPage(post: post, heroTag: heroTag),
         );
       },
     ),
@@ -165,7 +160,6 @@ final GoRouter appRouter = GoRouter(
         ),
       ),
     ),
-
     // --- Main Stateful Shell Route for Tab Navigation ---
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
@@ -246,7 +240,6 @@ final GoRouter appRouter = GoRouter(
         ),
       ],
     ),
-
     // --- Other User's Profile Page (outside shell) ---
     GoRoute(
       path: '${Constants.profileRoute}/:userId',
@@ -256,7 +249,6 @@ final GoRouter appRouter = GoRouter(
         final currentUserId = authState is AuthAuthenticated
             ? authState.user.id
             : null;
-
         if (currentUserId != null && currentUserId == userId) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             GoRouter.of(context).go('${Constants.profileRoute}/me');
@@ -268,7 +260,6 @@ final GoRouter appRouter = GoRouter(
             ),
           );
         }
-
         return SlideTransitionPage(
           key: state.pageKey,
           child: MultiBlocProvider(
@@ -301,7 +292,6 @@ final GoRouter appRouter = GoRouter(
     final isAuthRoute =
         state.uri.path == Constants.loginRoute ||
         state.uri.path == Constants.signupRoute;
-
     if (!isLoggedIn && !isAuthRoute) {
       return Constants.loginRoute;
     }

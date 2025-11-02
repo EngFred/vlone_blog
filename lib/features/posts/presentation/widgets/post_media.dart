@@ -132,6 +132,50 @@ class _PostMediaState extends State<PostMedia>
     }
   }
 
+  /// Small reusable bottom-center translucent "View" chip/button
+  Widget _buildViewButton(String heroTag) {
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12.0),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(24.0),
+            onTap: () => _openFullMedia(heroTag),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12.0,
+                vertical: 6.0,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.34),
+                borderRadius: BorderRadius.circular(24.0),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.open_in_full,
+                    size: 16.0,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 8.0),
+                  Text(
+                    'View',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelMedium?.copyWith(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -160,18 +204,25 @@ class _PostMediaState extends State<PostMedia>
             child: SizedBox(
               width: double.infinity,
               height: height,
-              child: CachedNetworkImage(
-                imageUrl: widget.post.mediaUrl!,
-                fit: boxFit,
-                placeholder: (context, url) => SizedBox(
-                  height: height,
-                  child: const Center(child: CircularProgressIndicator()),
-                ),
-                errorWidget: (context, url, error) => Container(
-                  height: height,
-                  color: Theme.of(context).colorScheme.surfaceVariant,
-                  child: const Center(child: Icon(Icons.broken_image)),
-                ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CachedNetworkImage(
+                    imageUrl: widget.post.mediaUrl!,
+                    fit: boxFit,
+                    placeholder: (context, url) => SizedBox(
+                      height: height,
+                      child: const Center(child: CircularProgressIndicator()),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      height: height,
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      child: const Center(child: Icon(Icons.broken_image)),
+                    ),
+                  ),
+                  // view button placed above image content
+                  _buildViewButton(heroTag),
+                ],
               ),
             ),
           ),
@@ -245,6 +296,8 @@ class _PostMediaState extends State<PostMedia>
                   child: CircularProgressIndicator(color: Colors.white),
                 ),
               ),
+            // view button placed above everything so it's tappable
+            _buildViewButton(heroTag),
           ],
         ),
       ),

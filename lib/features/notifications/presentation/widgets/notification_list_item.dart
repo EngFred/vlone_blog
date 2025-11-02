@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:vlone_blog_app/core/constants/constants.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/cutsom_alert_dialog.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/notifications/domain/entities/notification_entity.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
@@ -156,31 +157,26 @@ class NotificationListItem extends StatelessWidget {
   }
 
   void _showDeleteConfirmationDialog(BuildContext context) {
-    showDialog(
+    // Replaced the AlertDialog with the custom showCustomDialog function
+    showCustomDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Notification?'),
-        content: const Text('This action cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              context.read<NotificationsBloc>().add(
-                NotificationsDeleteOne(notification.id),
-              );
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      title: 'Delete Notification?',
+      content: const Text('This action cannot be undone.'),
+      actions: [
+        // Using the reusable Cancel button
+        DialogActions.createCancelButton(context, label: 'Cancel'),
+        // Using the reusable Primary button, customizing its style for 'Delete'
+        DialogActions.createPrimaryButton(
+          context,
+          label: 'Delete',
+          onPressed: () {
+            // This onPressed is executed *after* the dialog pops
+            context.read<NotificationsBloc>().add(
+              NotificationsDeleteOne(notification.id),
+            );
+          },
+        ),
+      ],
     );
   }
 

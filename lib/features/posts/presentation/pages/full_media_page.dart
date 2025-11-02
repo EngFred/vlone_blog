@@ -475,9 +475,9 @@ class _FullMediaPageState extends State<FullMediaPage> {
     _videoController = null;
     if (controller != null) {
       controller.removeListener(_videoListener);
-      if (VideoPlaybackManager.isPlaying(controller)) {
-        VideoPlaybackManager.pause(invokeCallback: false);
-      }
+      // if (VideoPlaybackManager.isPlaying(controller)) {
+      //   VideoPlaybackManager.pause(invokeCallback: false);
+      // }
       _videoManager.releaseController(widget.post.id);
     }
     super.dispose();
