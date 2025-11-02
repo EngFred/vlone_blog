@@ -17,6 +17,7 @@ import 'package:vlone_blog_app/features/posts/presentation/pages/feed_page.dart'
 import 'package:vlone_blog_app/features/posts/presentation/pages/full_media_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/post_details_page.dart';
 import 'package:vlone_blog_app/features/posts/presentation/pages/reels_page.dart';
+import 'package:vlone_blog_app/features/profile/presentation/bloc/edit_profile_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/edit_profile_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
@@ -215,7 +216,11 @@ final GoRouter appRouter = GoRouter(
                   path: 'edit',
                   pageBuilder: (context, state) => SlideTransitionPage(
                     key: state.pageKey,
-                    child: EditProfilePage(userId: 'me'),
+                    // Provide EditProfileBloc locally to this page
+                    child: BlocProvider<EditProfileBloc>(
+                      create: (_) => di.sl<EditProfileBloc>(),
+                      child: EditProfilePage(userId: 'me'),
+                    ),
                   ),
                 ),
                 // Nested Settings Route (Added)

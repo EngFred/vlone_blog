@@ -85,6 +85,7 @@ import 'package:vlone_blog_app/features/profile/domain/repositories/profile_repo
 import 'package:vlone_blog_app/features/profile/domain/usecases/get_profile_usecase.dart';
 import 'package:vlone_blog_app/features/profile/domain/usecases/stream_profile_updates_usecase.dart';
 import 'package:vlone_blog_app/features/profile/domain/usecases/update_profile_usecase.dart';
+import 'package:vlone_blog_app/features/profile/presentation/bloc/edit_profile_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 
 // Users
@@ -111,15 +112,12 @@ final sl = GetIt.instance;
 // -------------------
 void initCoreServices() {
   // Register MediaDownloadService as a LazySingleton
-  // GetIt will manage the single instance lifecycle for you.
   sl.registerLazySingleton<MediaDownloadService>(() => MediaDownloadService());
 }
 
 /// Init only auth-related dependencies first for faster startup
 Future<void> initAuth({SupabaseClient? supabaseClient}) async {
   // External - Use provided client or get from instance
-  // PERFORMANCE: This prevents the "already initialized" warning
-  // and saves ~50-100ms by not re-initializing Supabase
   sl.registerLazySingleton<SupabaseClient>(() {
     if (supabaseClient != null) {
       return supabaseClient;
@@ -340,12 +338,17 @@ Future<void> initProfile() async {
   sl.registerLazySingleton<StreamProfileUpdatesUseCase>(
     () => StreamProfileUpdatesUseCase(sl<ProfileRepository>()),
   );
+
+  // Register ProfileBloc (Global)
   sl.registerFactory<ProfileBloc>(
     () => ProfileBloc(
       getProfileUseCase: sl<GetProfileUseCase>(),
-      updateProfileUseCase: sl<UpdateProfileUseCase>(),
       realtimeService: sl<RealtimeService>(),
     ),
+  );
+
+  sl.registerFactory<EditProfileBloc>(
+    () => EditProfileBloc(updateProfileUseCase: sl<UpdateProfileUseCase>()),
   );
 }
 

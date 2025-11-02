@@ -16,7 +16,7 @@ class ProfileLoading extends ProfileState {
 
 class ProfileDataLoaded extends ProfileState {
   final ProfileEntity profile;
-  final String userId; // Added
+  final String userId;
 
   const ProfileDataLoaded({required this.profile, required this.userId});
 

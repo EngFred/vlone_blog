@@ -1,22 +1,18 @@
-// edit_profile_page.dart
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+
 import 'package:vlone_blog_app/core/utils/crop_utils.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
-import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
+import 'package:vlone_blog_app/features/auth/domain/entities/user_entity.dart';
+import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-
-// ------------------------------------------------------------------
-// ⭐ REQUIRED PLACEHOLDER IMPORTS/DEFINITIONS FOR SYNCING
-// ------------------------------------------------------------------
-import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
-import 'package:vlone_blog_app/features/auth/domain/entities/user_entity.dart';
-// ------------------------------------------------------------------
+import 'package:vlone_blog_app/features/profile/presentation/bloc/edit_profile_bloc.dart';
 
 class EditProfilePage extends StatefulWidget {
   final String userId;
@@ -27,34 +23,40 @@ class EditProfilePage extends StatefulWidget {
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
-  final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
-  final _bioController = TextEditingController();
-
-  File? _profileImageFile;
-  bool _isSubmitting = false;
-
-  ProfileEntity? _initialProfile;
-  bool _hasInitializedControllers = false;
+  late final TextEditingController _usernameController;
+  late final TextEditingController _bioController;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final currentState = context.read<ProfileBloc>().state;
-      if (currentState is ProfileDataLoaded && !_hasInitializedControllers) {
-        _initializeFromProfile(currentState.profile);
-      }
-    });
-  }
+    _usernameController = TextEditingController();
+    _bioController = TextEditingController();
 
-  void _initializeFromProfile(ProfileEntity profile) {
-    if (_hasInitializedControllers) return;
-    setState(() {
-      _initialProfile = profile;
-      _usernameController.text = profile.username;
-      _bioController.text = profile.bio ?? '';
-      _hasInitializedControllers = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authState = context.read<AuthBloc>().state;
+
+      if (authState is AuthAuthenticated) {
+        final currentUser = authState.user;
+
+        // 🌟 FIX: Create ProfileEntity from UserEntity and pass it directly.
+        final initialProfileData = ProfileEntity(
+          id: currentUser.id,
+          username: currentUser.username,
+          profileImageUrl: currentUser.profileImageUrl,
+          bio: currentUser.bio,
+          email: currentUser.email,
+        );
+
+        context.read<EditProfileBloc>().add(
+          LoadInitialProfileEvent(initialProfileData), // Pass the entity
+        );
+      } else {
+        // Handle case where AuthState is not authenticated (shouldn't happen here)
+        SnackbarUtils.showError(
+          context,
+          'Authentication error: Cannot load profile data.',
+        );
+      }
     });
   }
 
@@ -66,15 +68,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   Future<void> _pickImage() async {
-    if (_isSubmitting) return;
-
     try {
       final picker = ImagePicker();
       final pickedXFile = await picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 85,
       );
-
       if (pickedXFile != null) {
         final imageFile = File(pickedXFile.path);
         final croppedFile = await cropImageFile(
@@ -82,11 +81,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
           imageFile,
           lockSquare: true,
         );
-
         if (croppedFile != null) {
-          setState(() {
-            _profileImageFile = croppedFile;
-          });
+          context.read<EditProfileBloc>().add(
+            SelectImageEvent(XFile(croppedFile.path)),
+          );
         }
       }
     } catch (e) {
@@ -95,45 +93,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
   }
 
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
-
-    final newUsername = _usernameController.text.trim();
-    final newBio = _bioController.text.trim().isEmpty
-        ? null
-        : _bioController.text.trim();
-
-    final usernameChanged =
-        _initialProfile == null || newUsername != _initialProfile!.username;
-    final bioChanged =
-        _initialProfile == null || newBio != _initialProfile!.bio;
-    final hasImage = _profileImageFile != null;
-
-    if (!usernameChanged && !bioChanged && !hasImage) {
-      SnackbarUtils.showInfo(context, 'No changes detected.');
-      return;
-    }
-
-    // ---------- NEW: Resolve 'me' to actual user id ----------
-    final authState = context.read<AuthBloc>().state;
-    final resolvedUserId =
-        (widget.userId == 'me' && authState is AuthAuthenticated)
-        ? authState.user.id
-        : widget.userId;
-    // --------------------------------------------------------
-
-    setState(() => _isSubmitting = true);
-    context.read<ProfileBloc>().add(
-      UpdateProfileEvent(
-        userId: resolvedUserId,
-        username: usernameChanged ? newUsername : null,
-        bio: bioChanged ? newBio : null,
-        profileImage: hasImage ? XFile(_profileImageFile!.path) : null,
-      ),
-    );
-  }
-
-  InputDecoration _getInputDecoration(String labelText, {String? hintText}) {
+  InputDecoration _getInputDecoration(
+    String labelText, {
+    String? hintText,
+    String? errorText,
+  }) {
+    // ... (Your _getInputDecoration method is good, no changes needed)
     final theme = Theme.of(context);
     final isLight = theme.brightness == Brightness.light;
     final borderColor = isLight
@@ -142,10 +107,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final fillColor = isLight
         ? theme.colorScheme.surfaceVariant.withOpacity(0.04)
         : theme.colorScheme.surfaceVariant.withOpacity(0.06);
-
     return InputDecoration(
       labelText: labelText,
       hintText: hintText,
+      errorText: errorText,
       filled: true,
       fillColor: fillColor,
       labelStyle: theme.textTheme.bodyMedium?.copyWith(
@@ -171,7 +136,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Edit Profile'),
@@ -180,210 +144,256 @@ class _EditProfilePageState extends State<EditProfilePage> {
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         elevation: 0,
       ),
-      body: BlocConsumer<ProfileBloc, ProfileState>(
+      body: BlocConsumer<EditProfileBloc, EditProfileState>(
+        listenWhen: (prev, current) {
+          // 1. Listen for one-time events (snackbars, navigation)
+          if (current is EditProfileSuccess || current is EditProfileError) {
+            return true;
+          }
+          // 2. Listen for the *first* time we enter the editing state
+          //    so we can populate the controllers. (We keep this for good measure)
+          if (prev is! EditProfileEditing && current is EditProfileEditing) {
+            return true;
+          }
+          return false;
+        },
         listener: (context, state) {
-          if (state is ProfileError) {
-            setState(() => _isSubmitting = false);
-            SnackbarUtils.showError(context, state.message);
-          } else if (state is ProfileDataLoaded) {
-            if (_isSubmitting) {
-              setState(() => _isSubmitting = false);
-              SnackbarUtils.showSuccess(
-                context,
-                'Profile updated successfully!',
+          if (state is EditProfileEditing) {
+            // Populate controllers *once* when data loads
+            _usernameController.text = state.initialUsername;
+            _bioController.text = state.initialBio;
+          } else if (state is EditProfileSuccess) {
+            SnackbarUtils.showSuccess(context, 'Profile updated successfully!');
+            final authState = context.read<AuthBloc>().state;
+            if (authState is AuthAuthenticated) {
+              final updatedUser = UserEntity(
+                id: state.updatedProfile.id,
+                email: authState.user.email,
+                username: state.updatedProfile.username,
+                profileImageUrl: state.updatedProfile.profileImageUrl,
+                bio: state.updatedProfile.bio,
+                followersCount: authState.user.followersCount,
+                followingCount: authState.user.followingCount,
+                postsCount: authState.user.postsCount,
+                totalLikes: authState.user.totalLikes,
               );
-              if (_initialProfile != null) {
-                final updatedUser = UserEntity(
-                  id: state.profile.id,
-                  email: _initialProfile!.email,
-                  username: state.profile.username,
-                  profileImageUrl: state.profile.profileImageUrl,
-                );
-                context.read<AuthBloc>().add(UpdateUserEvent(updatedUser));
-              }
-              context.pop();
-              return;
+              // Update AuthBloc with new user data
+              context.read<AuthBloc>().add(UpdateUserEvent(updatedUser));
             }
-            if (!_hasInitializedControllers) {
-              _initializeFromProfile(state.profile);
-            }
+            context.pop();
+          } else if (state is EditProfileError) {
+            // This error is from the *initial load*
+            SnackbarUtils.showError(context, state.message);
           }
         },
+        buildWhen: (prev, current) {
+          // Don't rebuild the UI on states that are handled by the listener
+          if (current is EditProfileSuccess) {
+            return false;
+          }
+          // Rebuild for all other state *type* changes (e.g., Initial -> Editing)
+          return prev.runtimeType != current.runtimeType ||
+              (current is EditProfileEditing &&
+                  (prev is EditProfileEditing &&
+                      (prev.isSubmitting != current.isSubmitting ||
+                          prev.selectedImage != current.selectedImage ||
+                          prev.initialImageUrl != current.initialImageUrl ||
+                          prev.usernameError != current.usernameError ||
+                          prev.bioError != current.bioError ||
+                          prev.generalError != current.generalError)));
+        },
         builder: (context, state) {
-          if (state is ProfileInitial ||
-              (state is ProfileLoading && !_hasInitializedControllers)) {
+          if (state is EditProfileInitial) {
+            // Since we load synchronously now, this should only show for a moment
             return const Center(child: LoadingIndicator());
           }
-
-          return AbsorbPointer(
-            absorbing: _isSubmitting,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                children: [
-                  Tooltip(
-                    message: 'Tap to change profile photo',
-                    child: Semantics(
-                      label: 'Profile photo, tap to change',
-                      button: true,
-                      child: GestureDetector(
-                        onTap: _isSubmitting ? null : _pickImage,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            CircleAvatar(
-                              radius: 60,
-                              backgroundColor: theme.colorScheme.surfaceVariant,
-                              backgroundImage: _profileImageFile != null
-                                  ? FileImage(_profileImageFile!)
-                                        as ImageProvider
-                                  : (_initialProfile?.profileImageUrl != null
-                                        ? CachedNetworkImageProvider(
-                                            _initialProfile!.profileImageUrl!,
-                                          )
-                                        : null),
-                              child:
-                                  _profileImageFile == null &&
-                                      (_initialProfile?.profileImageUrl == null)
-                                  ? Icon(
-                                      Icons.person,
-                                      size: 54,
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    )
-                                  : null,
-                            ),
-                            Positioned(
-                              right: 0,
-                              bottom: 0,
-                              child: Semantics(
-                                label: 'Change profile photo',
-                                button: true,
-                                child: Tooltip(
-                                  message: 'Change profile photo',
-                                  child: Material(
-                                    shape: const CircleBorder(),
-                                    elevation: 4,
-                                    color: theme.colorScheme.surface,
-                                    child: InkWell(
-                                      onTap: _isSubmitting ? null : _pickImage,
-                                      customBorder: const CircleBorder(),
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(8.0),
-                                        child: Icon(
-                                          Icons.camera_alt_outlined,
-                                          size: 18,
-                                          color: theme.colorScheme.primary,
+          if (state is EditProfileEditing) {
+            final hasErrors =
+                state.usernameError != null || state.bioError != null;
+            return AbsorbPointer(
+              absorbing: state.isSubmitting,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  children: [
+                    Tooltip(
+                      message: 'Tap to change profile photo',
+                      child: Semantics(
+                        label: 'Profile photo, tap to change',
+                        button: true,
+                        child: GestureDetector(
+                          onTap: state.isSubmitting ? null : _pickImage,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              CircleAvatar(
+                                radius: 60,
+                                backgroundColor:
+                                    theme.colorScheme.surfaceVariant,
+                                backgroundImage: state.selectedImage != null
+                                    ? FileImage(File(state.selectedImage!.path))
+                                    : (state.initialImageUrl != null
+                                          ? CachedNetworkImageProvider(
+                                              state.initialImageUrl!,
+                                            )
+                                          : null),
+                                child:
+                                    state.selectedImage == null &&
+                                        state.initialImageUrl == null
+                                    ? Icon(
+                                        Icons.person,
+                                        size: 54,
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
+                                      )
+                                    : null,
+                              ),
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: Semantics(
+                                  label: 'Change profile photo',
+                                  button: true,
+                                  child: Tooltip(
+                                    message: 'Change profile photo',
+                                    child: Material(
+                                      shape: const CircleBorder(),
+                                      elevation: 4,
+                                      color: theme.colorScheme.surface,
+                                      child: InkWell(
+                                        onTap: state.isSubmitting
+                                            ? null
+                                            : _pickImage,
+                                        customBorder: const CircleBorder(),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(8.0),
+                                          child: Icon(
+                                            Icons.camera_alt_outlined,
+                                            size: 18,
+                                            color: theme.colorScheme.primary,
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                            if (_isSubmitting)
-                              Positioned.fill(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: theme.brightness == Brightness.light
-                                        ? Colors.white.withOpacity(0.6)
-                                        : Colors.black.withOpacity(0.5),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: const Center(
-                                    child: CircularProgressIndicator(),
+                              if (state.isSubmitting)
+                                Positioned.fill(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color:
+                                          theme.brightness == Brightness.light
+                                          ? Colors.white.withOpacity(0.6)
+                                          : Colors.black.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: const Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton.icon(
-                    onPressed: _isSubmitting ? null : _pickImage,
-                    icon: const Icon(Icons.photo_library),
-                    label: Text(
-                      _profileImageFile != null
-                          ? 'Image Selected (Tap to Change/Crop)'
-                          : 'Change Profile Photo',
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: state.isSubmitting ? null : _pickImage,
+                      icon: const Icon(Icons.photo_library),
+                      label: Text(
+                        state.selectedImage != null
+                            ? 'Image Selected (Tap to Change/Crop)'
+                            : 'Change Profile Photo',
+                      ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: theme.colorScheme.primary,
+                      ),
                     ),
-                    style: TextButton.styleFrom(
-                      foregroundColor: theme.colorScheme.primary,
+                    const SizedBox(height: 24),
+                    // Use controller instead of initialValue
+                    TextFormField(
+                      controller: _usernameController,
+                      decoration: _getInputDecoration(
+                        'Username',
+                        errorText: state.usernameError,
+                      ),
+                      maxLength: 30,
+                      keyboardType: TextInputType.text,
+                      textInputAction: TextInputAction.next,
+                      onChanged: (value) => context.read<EditProfileBloc>().add(
+                        ChangeUsernameEvent(value),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Form(
-                    key: _formKey,
-                    child: Column(
-                      children: [
-                        TextFormField(
-                          controller: _usernameController,
-                          decoration: _getInputDecoration('Username'),
-                          maxLength: 30,
-                          keyboardType: TextInputType.text,
-                          textInputAction: TextInputAction.next,
-                          validator: (v) {
-                            if (v == null || v.trim().isEmpty)
-                              return 'Username cannot be empty';
-                            if (v.trim().length < 3)
-                              return 'Username too short';
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _bioController,
-                          decoration: _getInputDecoration(
-                            'Bio',
-                            hintText: 'Tell people about yourself (optional)',
-                          ),
-                          maxLines: 4,
-                          maxLength: 160,
-                          keyboardType: TextInputType.multiline,
-                        ),
-                        const SizedBox(height: 32),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: ElevatedButton(
-                            onPressed: _isSubmitting ? null : _submit,
-                            style: ElevatedButton.styleFrom(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                    const SizedBox(height: 16),
+                    // Use controller instead of initialValue
+                    TextFormField(
+                      controller: _bioController,
+                      decoration: _getInputDecoration(
+                        'Bio',
+                        hintText: 'Tell people about yourself (optional)',
+                        errorText: state.bioError,
+                      ),
+                      maxLines: 4,
+                      maxLength: 100,
+                      keyboardType: TextInputType.multiline,
+                      onChanged: (value) => context.read<EditProfileBloc>().add(
+                        ChangeBioEvent(value),
+                      ),
+                    ),
+                    if (state.generalError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        state.generalError!,
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    ],
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: (state.isSubmitting || hasErrors)
+                            ? null
+                            : () => context.read<EditProfileBloc>().add(
+                                SubmitChangesEvent(),
                               ),
-                              elevation: 4,
-                              disabledBackgroundColor: theme
-                                  .colorScheme
-                                  .onSurface
-                                  .withOpacity(0.12),
-                              disabledForegroundColor: theme
-                                  .colorScheme
-                                  .onSurface
-                                  .withOpacity(0.38),
-                            ),
-                            child: _isSubmitting
-                                ? SizedBox(
-                                    height: 24,
-                                    width: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 3,
-                                      color: theme.colorScheme.onPrimary,
-                                    ),
-                                  )
-                                : const Text(
-                                    'Save Changes',
-                                    style: TextStyle(fontSize: 18),
-                                  ),
+                        style: ElevatedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
+                          elevation: 4,
+                          disabledBackgroundColor: theme.colorScheme.onSurface
+                              .withOpacity(0.12),
+                          disabledForegroundColor: theme.colorScheme.onSurface
+                              .withOpacity(0.38),
                         ),
-                      ],
+                        child: state.isSubmitting
+                            ? SizedBox(
+                                height: 24,
+                                width: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 3,
+                                  color: theme.colorScheme.onPrimary,
+                                ),
+                              )
+                            : const Text(
+                                'Save Changes',
+                                style: TextStyle(fontSize: 18),
+                              ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          );
+            );
+          }
+          if (state is EditProfileError) {
+            // Since we load synchronously now, this indicates an Auth error
+            return Center(child: Text(state.message));
+          }
+          return const SizedBox.shrink();
         },
       ),
     );

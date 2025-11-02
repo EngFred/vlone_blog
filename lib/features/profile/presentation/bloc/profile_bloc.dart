@@ -1,22 +1,18 @@
 import 'dart:async';
-
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/features/profile/data/models/profile_model.dart';
 import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 import 'package:vlone_blog_app/features/profile/domain/usecases/get_profile_usecase.dart';
-import 'package:vlone_blog_app/features/profile/domain/usecases/update_profile_usecase.dart';
 
 part 'profile_event.dart';
 part 'profile_state.dart';
 
 class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   final GetProfileUseCase getProfileUseCase;
-  final UpdateProfileUseCase updateProfileUseCase;
   final RealtimeService realtimeService;
 
   // Stream subscription for real-time profile updates (per bloc instance)
@@ -24,11 +20,11 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
   ProfileBloc({
     required this.getProfileUseCase,
-    required this.updateProfileUseCase,
+    // Removed: required this.updateProfileUseCase,
     required this.realtimeService,
   }) : super(ProfileInitial()) {
     on<GetProfileDataEvent>(_onGetProfile);
-    on<UpdateProfileEvent>(_onUpdateProfile);
+    // Removed: on<UpdateProfileEvent>(_onUpdateProfile);
     on<StartProfileRealtimeEvent>(_onStartProfileRealtime);
     on<StopProfileRealtimeEvent>(_onStopProfileRealtime);
     on<_RealtimeProfileUpdatedEvent>(_onRealtimeProfileUpdated);
@@ -47,35 +43,6 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         emit(ProfileError(friendlyMessage));
       },
       (profile) {
-        emit(ProfileDataLoaded(profile: profile, userId: event.userId));
-      },
-    );
-  }
-
-  Future<void> _onUpdateProfile(
-    UpdateProfileEvent event,
-    Emitter<ProfileState> emit,
-  ) async {
-    AppLogger.info('UpdateProfileEvent: ${event.userId}');
-    emit(ProfileLoading());
-
-    final result = await updateProfileUseCase(
-      UpdateProfileParams(
-        userId: event.userId,
-        username: event.username,
-        bio: event.bio,
-        profileImage: event.profileImage,
-      ),
-    );
-
-    result.fold(
-      (failure) {
-        final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
-        AppLogger.error('UpdateProfile failed: $friendlyMessage');
-        emit(ProfileError(friendlyMessage));
-      },
-      (profile) {
-        AppLogger.info('Profile updated successfully: ${profile.id}');
         emit(ProfileDataLoaded(profile: profile, userId: event.userId));
       },
     );
