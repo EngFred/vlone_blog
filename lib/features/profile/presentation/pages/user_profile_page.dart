@@ -18,7 +18,6 @@ import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_pos
 
 /// Standalone profile page for viewing other users' profiles
 /// This page is NOT part of the bottom navigation bar
-// lib/features/profile/presentation/pages/user_profile_page.dart
 class UserProfilePage extends StatefulWidget {
   final String userId;
   const UserProfilePage({super.key, required this.userId});
@@ -176,9 +175,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
     );
   }
 
-  //REMOVED: _applyLikeUpdate, _revertLike, _applyFavoriteUpdate, _revertFavorite
-  // Delegation of optimistic updates is now handled by PostCard/PostActionsBloc.
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -202,7 +198,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               }
             },
           ),
-          // ✅ CHANGE: Listen to UserPostsBloc
+          //Listen to UserPostsBloc
           BlocListener<UserPostsBloc, UserPostsState>(
             listener: (context, state) {
               // Since UserPostsBloc is local to this page, we only check for mounted
@@ -244,11 +240,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   });
                 }
               }
-              //RealtimePostUpdate listener
-              //PostDeleted listener (now handled by PostActionsBloc listener below)
             },
           ),
-          // ✅ ADDED: Listener for PostActionsBloc to handle post deletion
+          // Listener for PostActionsBloc to handle post deletion
           BlocListener<PostActionsBloc, PostActionsState>(
             listenWhen: (previous, current) => current is PostDeletedSuccess,
             listener: (context, state) {
@@ -261,9 +255,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
               }
             },
           ),
-
-          // 💡 NOTE: LikesBloc and FavoritesBloc listeners removed as their manual list mutation logic was deleted.
-          // The PostCard widgets handle their own temporary state changes.
           BlocListener<FollowersBloc, FollowersState>(
             listener: (context, state) {
               if (state is FollowStatusLoaded &&
@@ -316,66 +307,80 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 );
                 return const Center(child: LoadingIndicator());
               }
-              return RefreshIndicator(
-                onRefresh: () async {
-                  if (_currentUserId != null) {
-                    // ✅ CHANGE: Refresh posts on the local UserPostsBloc
-                    context.read<UserPostsBloc>().add(
-                      RefreshUserPostsEvent(
-                        profileUserId: widget.userId,
-                        currentUserId: _currentUserId!,
-                      ),
-                    );
-                    if (mounted) {
-                      setState(() {
-                        _userPosts.clear();
-                        _userPostsError = null;
-                        _hasMoreUserPosts = true;
-                        _hasLoadedOnce =
-                            false; // reset guard for manual refresh
-                      });
+
+              // Wrap RefreshIndicator and CustomScrollView in SafeArea so bottom nav / gesture area
+              // doesn't overlap content. Also add explicit bottom padding from MediaQuery.
+              final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+              return SafeArea(
+                top: false, // keep the AppBar handling the top safe area
+                bottom: true,
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    if (_currentUserId != null) {
+                      // Refresh posts on the local UserPostsBloc
+                      context.read<UserPostsBloc>().add(
+                        RefreshUserPostsEvent(
+                          profileUserId: widget.userId,
+                          currentUserId: _currentUserId!,
+                        ),
+                      );
+                      if (mounted) {
+                        setState(() {
+                          _userPosts.clear();
+                          _userPostsError = null;
+                          _hasMoreUserPosts = true;
+                          _hasLoadedOnce =
+                              false; // reset guard for manual refresh
+                        });
+                      }
                     }
-                  }
-                },
-                child: CustomScrollView(
-                  controller: _scrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: ProfileHeader(
-                        profile: state.profile,
-                        isOwnProfile: _isOwnProfile,
-                        isFollowing: _isFollowing,
-                        onFollowToggle: _onFollowToggle,
-                        isProcessingFollow: _isProcessingFollow,
+                  },
+                  child: CustomScrollView(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    // Add bottom padding to ensure last item is above system nav bar
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: ProfileHeader(
+                          profile: state.profile,
+                          isOwnProfile: _isOwnProfile,
+                          isFollowing: _isFollowing,
+                          onFollowToggle: _onFollowToggle,
+                          isProcessingFollow: _isProcessingFollow,
+                        ),
                       ),
-                    ),
-                    ProfilePostsList(
-                      posts: _userPosts,
-                      userId: _currentUserId ?? '',
-                      isLoading: _isUserPostsLoading,
-                      error: _userPostsError,
-                      hasMore: _hasMoreUserPosts,
-                      isLoadingMore: _isLoadingMoreUserPosts,
-                      loadMoreError: _loadMoreError,
-                      onRetry: () {
-                        if (mounted && _currentUserId != null) {
-                          setState(() {
-                            _userPostsError = null;
-                            _isUserPostsLoading = true;
-                            _hasLoadedOnce = false;
-                          });
-                          // FIXED: Use Refresh for reset (vs. Get)
-                          context.read<UserPostsBloc>().add(
-                            RefreshUserPostsEvent(
-                              profileUserId: widget.userId,
-                              currentUserId: _currentUserId!,
-                            ),
-                          );
-                        }
-                      },
-                    ),
-                  ],
+                      SliverPadding(
+                        // Ensure posts list and footer respect bottom safe area + a little extra gap
+                        padding: EdgeInsets.only(bottom: bottomPadding + 16.0),
+                        sliver: ProfilePostsList(
+                          posts: _userPosts,
+                          userId: _currentUserId ?? '',
+                          isLoading: _isUserPostsLoading,
+                          error: _userPostsError,
+                          hasMore: _hasMoreUserPosts,
+                          isLoadingMore: _isLoadingMoreUserPosts,
+                          loadMoreError: _loadMoreError,
+                          onRetry: () {
+                            if (mounted && _currentUserId != null) {
+                              setState(() {
+                                _userPostsError = null;
+                                _isUserPostsLoading = true;
+                                _hasLoadedOnce = false;
+                              });
+                              // FIXED: Use Refresh for reset (vs. Get)
+                              context.read<UserPostsBloc>().add(
+                                RefreshUserPostsEvent(
+                                  profileUserId: widget.userId,
+                                  currentUserId: _currentUserId!,
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }

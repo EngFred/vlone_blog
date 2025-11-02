@@ -5,6 +5,7 @@ import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/service/secure_storage.dart';
+import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/settings/presentation/bloc/settings_bloc.dart';
 import 'core/presentation/theme/app_theme.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
@@ -76,6 +77,9 @@ class _MyAppState extends State<MyApp> {
           BlocProvider<CommentsBloc>(create: (_) => di.sl<CommentsBloc>()),
           BlocProvider<LikesBloc>(create: (_) => di.sl<LikesBloc>()),
           BlocProvider<FavoritesBloc>(create: (_) => di.sl<FavoritesBloc>()),
+          BlocProvider<NotificationsBloc>(
+            create: (_) => di.sl<NotificationsBloc>(),
+          ),
           BlocProvider<PostActionsBloc>(
             create: (_) => di.sl<PostActionsBloc>(),
           ),

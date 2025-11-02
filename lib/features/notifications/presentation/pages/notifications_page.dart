@@ -23,7 +23,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
     _setupScrollListener();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final bloc = context.read<NotificationsBloc>();
+      // Ensure the page both loads notifications and subscribes to unread count.
       bloc.add(const GetNotificationsEvent());
+      bloc.add(const NotificationsSubscribeUnreadCountStream());
       AppLogger.info(
         'NotificationsPage: Loaded initial notifications and subscribed to unread count.',
       );

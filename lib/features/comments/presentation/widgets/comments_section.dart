@@ -70,9 +70,10 @@ class _CommentsSectionState extends State<CommentsSection> {
         children: [
           Text(
             'Comments',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
           const SizedBox(width: 8),
           Container(

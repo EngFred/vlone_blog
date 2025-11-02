@@ -87,6 +87,32 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  // New method to handle the RefreshIndicator logic
+  Future<void> _onRefreshProfile() async {
+    if (_currentUserId == null) return;
+
+    // 1. Dispatch event to refresh the Profile (the fix for the user request)
+    context.read<ProfileBloc>().add(GetProfileDataEvent(_currentUserId!));
+
+    // 2. Dispatch event to refresh the User Posts
+    context.read<UserPostsBloc>().add(
+      RefreshUserPostsEvent(
+        profileUserId: _currentUserId!,
+        currentUserId: _currentUserId!,
+      ),
+    );
+
+    // 3. Reset local state for the post list to show a fresh loading indicator
+    if (!mounted) return;
+    setState(() {
+      _userPosts.clear();
+      _userPostsError = null;
+      _hasMoreUserPosts = true;
+      _isUserPostsLoading = true;
+      _hasLoadedOnce = false;
+    });
+  }
+
   void _setupScrollListener() {
     _scrollController.addListener(() {
       if (!_scrollController.hasClients) return;
@@ -394,29 +420,13 @@ class _ProfilePageState extends State<ProfilePage> {
                     if (state is ProfileError) {
                       return CustomErrorWidget(
                         message: state.message,
-                        onRetry: () => context.read<ProfileBloc>().add(
-                          GetProfileDataEvent(_currentUserId!),
-                        ),
+                        onRetry: () =>
+                            _onRefreshProfile(), // Use new refresh method on retry
                       );
                     }
                     if (state is ProfileDataLoaded) {
                       return RefreshIndicator(
-                        onRefresh: () async {
-                          context.read<UserPostsBloc>().add(
-                            RefreshUserPostsEvent(
-                              profileUserId: _currentUserId!,
-                              currentUserId: _currentUserId!,
-                            ),
-                          );
-                          if (!mounted) return;
-                          setState(() {
-                            _userPosts.clear();
-                            _userPostsError = null;
-                            _hasMoreUserPosts = true;
-                            _isUserPostsLoading = true;
-                            _hasLoadedOnce = false;
-                          });
-                        },
+                        onRefresh: _onRefreshProfile, // Use the new method
                         child: CustomScrollView(
                           controller: _scrollController,
                           physics: const AlwaysScrollableScrollPhysics(),

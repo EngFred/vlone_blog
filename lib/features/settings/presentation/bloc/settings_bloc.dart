@@ -17,6 +17,10 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     : super(const SettingsInitial(ThemeMode.system)) {
     on<LoadSettings>(_onLoadSettings);
     on<ChangeThemeMode>(_onChangeThemeMode);
+
+    // Automatically load saved settings when bloc is created.
+    // We dispatch the event after handlers are registered.
+    add(LoadSettings());
   }
 
   Future<void> _onLoadSettings(
@@ -27,7 +31,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     result.fold(
       (failure) {
         AppLogger.error('Failed to load theme mode: $failure');
-        emit(SettingsLoaded(state.themeMode)); // Fallback to current
+        // Keep whatever the current state.themeMode is (fallback).
+        emit(SettingsLoaded(state.themeMode));
       },
       (modeStr) {
         ThemeMode mode = ThemeMode.system;
@@ -62,7 +67,9 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     result.fold(
       (failure) {
         AppLogger.error('Failed to save theme mode: $failure');
-        // Could emit error state, but for now keep current
+        // If saving fails we still reflect the user's choice in UI (so user sees their change),
+        // but you could also choose to revert if you prefer.
+        emit(SettingsLoaded(event.mode));
       },
       (_) {
         AppLogger.info('Changed theme mode to: ${event.mode}');

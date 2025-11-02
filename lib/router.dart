@@ -26,7 +26,6 @@ import 'package:vlone_blog_app/features/followers/presentation/pages/followers_p
 import 'package:vlone_blog_app/features/followers/presentation/pages/following_page.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
 import 'package:vlone_blog_app/features/users/presentation/pages/users_page.dart';
-import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:vlone_blog_app/features/settings/presentation/pages/settings_page.dart';
 
@@ -59,11 +58,7 @@ final GoRouter appRouter = GoRouter(
       path: Constants.notificationsRoute,
       pageBuilder: (context, state) => SlideTransitionPage(
         key: state.pageKey,
-        // NotificationsBloc is provided here for the page itself (e.g. to load data)
-        child: BlocProvider<NotificationsBloc>(
-          create: (_) => di.sl<NotificationsBloc>(),
-          child: const NotificationsPage(),
-        ),
+        child: const NotificationsPage(),
       ),
     ),
     GoRoute(
@@ -172,9 +167,6 @@ final GoRouter appRouter = GoRouter(
             BlocProvider<ProfileBloc>(create: (_) => di.sl<ProfileBloc>()),
             BlocProvider<UserPostsBloc>(create: (_) => di.sl<UserPostsBloc>()),
             BlocProvider<FollowersBloc>(create: (_) => di.sl<FollowersBloc>()),
-            BlocProvider<NotificationsBloc>(
-              create: (_) => di.sl<NotificationsBloc>(),
-            ),
           ],
           child: MainPage(navigationShell: navigationShell),
         );

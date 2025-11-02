@@ -18,7 +18,11 @@ class _AuthFormState extends State<AuthForm>
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  // NEW: Controller for Confirm Password
+  final _confirmPasswordController = TextEditingController();
+
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true; // NEW: Visibility for Confirm Password
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
@@ -39,6 +43,7 @@ class _AuthFormState extends State<AuthForm>
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose(); // NEW: Dispose the new controller
     _animationController.dispose();
     super.dispose();
   }
@@ -49,8 +54,22 @@ class _AuthFormState extends State<AuthForm>
     });
   }
 
+  // Toggle visibility for Confirm Password
+  void _toggleConfirmPasswordVisibility() {
+    setState(() {
+      _obscureConfirmPassword = !_obscureConfirmPassword;
+    });
+  }
+
   void _submit() {
     if (_formKey.currentState!.validate()) {
+      // Validate again for signup to ensure passwords match *right before* submission
+      if (!widget.isLogin &&
+          _passwordController.text != _confirmPasswordController.text) {
+        // This check is redundant if the field validator works, but it's a good fail-safe
+        return;
+      }
+
       if (widget.isLogin) {
         context.read<AuthBloc>().add(
           LoginEvent(
@@ -121,6 +140,7 @@ class _AuthFormState extends State<AuthForm>
                         absorbing: isLoading,
                         child: Column(
                           children: [
+                            // Email Field
                             TextFormField(
                               controller: _emailController,
                               decoration: InputDecoration(
@@ -144,9 +164,8 @@ class _AuthFormState extends State<AuthForm>
                               },
                               keyboardType: TextInputType.emailAddress,
                             ),
-                            // NOTE: The SizedBox after the removed username field is also removed,
-                            // if it was there, but the next SizedBox after the email field remains.
                             const SizedBox(height: 16),
+                            // Password Field
                             TextFormField(
                               controller: _passwordController,
                               decoration: InputDecoration(
@@ -175,7 +194,43 @@ class _AuthFormState extends State<AuthForm>
                               },
                               obscureText: _obscurePassword,
                             ),
+                            // Confirm Password Field (only for signup)
+                            if (!widget.isLogin) ...[
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _confirmPasswordController,
+                                decoration: InputDecoration(
+                                  labelText: 'Confirm Password',
+                                  prefixIcon: const Icon(Icons.lock_outline),
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _obscureConfirmPassword
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
+                                    ),
+                                    onPressed: _toggleConfirmPasswordVisibility,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  filled: true,
+                                  fillColor: theme.scaffoldBackgroundColor
+                                      .withOpacity(0.5),
+                                ),
+                                validator: (value) {
+                                  if (value!.isEmpty) {
+                                    return 'Confirm your password';
+                                  }
+                                  if (value != _passwordController.text) {
+                                    return 'Passwords do not match';
+                                  }
+                                  return null;
+                                },
+                                obscureText: _obscureConfirmPassword,
+                              ),
+                            ],
                             const SizedBox(height: 24),
+                            // Submit Button
                             ElevatedButton(
                               onPressed: isLoading ? null : _submit,
                               style: ElevatedButton.styleFrom(
@@ -201,6 +256,7 @@ class _AuthFormState extends State<AuthForm>
                                   : Text(widget.isLogin ? 'Login' : 'Signup'),
                             ),
                             const SizedBox(height: 16),
+                            // Navigation Row
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
