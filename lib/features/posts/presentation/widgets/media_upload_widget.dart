@@ -5,8 +5,7 @@ import 'package:video_player/video_player.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/utils/crop_utils.dart';
 import 'package:vlone_blog_app/core/utils/helpers.dart';
-import 'package:vlone_blog_app/core/utils/snackbar_utils.dart'; // Already there, used for warning
-
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'media_picker_sheet.dart';
 import 'media_placeholder.dart';
 import 'media_preview.dart';

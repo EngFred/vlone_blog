@@ -6,17 +6,20 @@ abstract class PostActionsEvent extends Equatable {
   List<Object?> get props => [];
 }
 
+/// Existing events kept
 class CreatePostEvent extends PostActionsEvent {
   final String userId;
   final String? content;
   final File? mediaFile;
   final String? mediaType;
+
   const CreatePostEvent({
     required this.userId,
     this.content,
     this.mediaFile,
     this.mediaType,
   });
+
   @override
   List<Object?> get props => [userId, content, mediaFile, mediaType];
 }
@@ -24,14 +27,18 @@ class CreatePostEvent extends PostActionsEvent {
 class GetPostEvent extends PostActionsEvent {
   final String postId;
   final String currentUserId;
+
   const GetPostEvent({required this.postId, required this.currentUserId});
+
   @override
   List<Object?> get props => [postId, currentUserId];
 }
 
 class DeletePostEvent extends PostActionsEvent {
   final String postId;
+
   const DeletePostEvent(this.postId);
+
   @override
   List<Object?> get props => [postId];
 }
@@ -43,9 +50,7 @@ class SharePostEvent extends PostActionsEvent {
   List<Object?> get props => [postId];
 }
 
-// ✅ MODIFIED: OptimisticPostUpdate now carries the full PostEntity
 class OptimisticPostUpdate extends PostActionsEvent {
-  // We pass the *current* post to be updated
   final PostEntity post;
   final int deltaLikes;
   final int deltaFavorites;
@@ -60,7 +65,6 @@ class OptimisticPostUpdate extends PostActionsEvent {
     this.isFavorited,
   });
 
-  // Helper to maintain compatibility if needed, but props is what matters
   String get postId => post.id;
 
   @override
@@ -71,4 +75,39 @@ class OptimisticPostUpdate extends PostActionsEvent {
     isLiked,
     isFavorited,
   ];
+}
+
+/// NEW: Form/UI events
+class ContentChanged extends PostActionsEvent {
+  final String content;
+  const ContentChanged(this.content);
+  @override
+  List<Object?> get props => [content];
+}
+
+class MediaSelected extends PostActionsEvent {
+  final File? file;
+  final String? type;
+  const MediaSelected(this.file, this.type);
+  @override
+  List<Object?> get props => [file?.path, type];
+}
+
+/// Processing update can be triggered by MediaProgressNotifier or by widgets
+class ProcessingChanged extends PostActionsEvent {
+  final bool processing;
+  final String? message;
+  final double? percent;
+
+  const ProcessingChanged({
+    required this.processing,
+    this.message,
+    this.percent,
+  }) : assert(percent == null || (percent >= 0.0 && percent <= 100.0));
+  // helper constructor for simple toggles
+  const ProcessingChanged.simple(bool processing)
+    : this(processing: processing);
+
+  @override
+  List<Object?> get props => [processing, message, percent];
 }

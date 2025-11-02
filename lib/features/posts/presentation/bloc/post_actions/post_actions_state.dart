@@ -10,6 +10,7 @@ class PostActionsInitial extends PostActionsState {
   const PostActionsInitial();
 }
 
+/// standard loading/error/success states for actions
 class PostActionLoading extends PostActionsState {
   const PostActionLoading();
 }
@@ -42,8 +43,6 @@ class PostSharedSuccess extends PostActionsState {
   List<Object?> get props => [postId];
 }
 
-// --- Loaded State (for GetPost) ---
-// This is a persistent state for a detail screen.
 class PostLoaded extends PostActionsState {
   final PostEntity post;
   const PostLoaded(this.post);
@@ -51,16 +50,12 @@ class PostLoaded extends PostActionsState {
   List<Object?> get props => [post];
 }
 
-//  State for optimistic updates
-// This is the new state that the PostActions widget should listen to.
 class PostOptimisticallyUpdated extends PostActionsState {
   final PostEntity post;
   const PostOptimisticallyUpdated(this.post);
   @override
   List<Object?> get props => [post];
 }
-
-// --- Specific Action States (Optional but good for UI) ---
 
 class PostDeleting extends PostActionsState {
   final String postId;
@@ -75,4 +70,80 @@ class PostDeleteError extends PostActionsState {
   const PostDeleteError(this.postId, this.message);
   @override
   List<Object?> get props => [postId, message];
+}
+
+/// NEW: Form state that holds all UI related data for create-post
+class PostFormState extends PostActionsState {
+  final String content;
+  final File? mediaFile;
+  final String? mediaType;
+  final bool isProcessing;
+  final String processingMessage;
+  final double? processingPercent;
+  final int currentCharCount;
+  final int maxCharacterLimit;
+  final int warningThreshold;
+  final bool isPostButtonEnabled;
+
+  const PostFormState({
+    this.content = '',
+    this.mediaFile,
+    this.mediaType,
+    this.isProcessing = false,
+    this.processingMessage = 'Processing...',
+    this.processingPercent,
+    this.currentCharCount = 0,
+    this.maxCharacterLimit = 5000,
+    this.warningThreshold = 4500,
+    this.isPostButtonEnabled = false,
+  });
+
+  bool get isOverLimit => currentCharCount > maxCharacterLimit;
+  bool get isNearLimit => currentCharCount >= warningThreshold;
+  String get computedUploadMessage {
+    if (mediaFile == null) return 'Uploading post...';
+    if (mediaType == 'video') return 'Uploading video...';
+    if (mediaType == 'image') return 'Uploading image...';
+    return 'Uploading...';
+  }
+
+  PostFormState copyWith({
+    String? content,
+    File? mediaFile,
+    String? mediaType,
+    bool? isProcessing,
+    String? processingMessage,
+    double? processingPercent,
+    int? currentCharCount,
+    int? maxCharacterLimit,
+    int? warningThreshold,
+    bool? isPostButtonEnabled,
+  }) {
+    return PostFormState(
+      content: content ?? this.content,
+      mediaFile: mediaFile ?? this.mediaFile,
+      mediaType: mediaType ?? this.mediaType,
+      isProcessing: isProcessing ?? this.isProcessing,
+      processingMessage: processingMessage ?? this.processingMessage,
+      processingPercent: processingPercent ?? this.processingPercent,
+      currentCharCount: currentCharCount ?? this.currentCharCount,
+      maxCharacterLimit: maxCharacterLimit ?? this.maxCharacterLimit,
+      warningThreshold: warningThreshold ?? this.warningThreshold,
+      isPostButtonEnabled: isPostButtonEnabled ?? this.isPostButtonEnabled,
+    );
+  }
+
+  @override
+  List<Object?> get props => [
+    content,
+    mediaFile?.path,
+    mediaType,
+    isProcessing,
+    processingMessage,
+    processingPercent,
+    currentCharCount,
+    maxCharacterLimit,
+    warningThreshold,
+    isPostButtonEnabled,
+  ];
 }

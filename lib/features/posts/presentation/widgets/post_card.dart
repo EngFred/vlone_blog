@@ -5,6 +5,7 @@ import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bl
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/expandable_text.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_actions.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_header.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/post_media.dart';
@@ -32,18 +33,9 @@ class _PostCardState extends State<PostCard> {
   @override
   void didUpdateWidget(covariant PostCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Only update _currentPost from widget.post if it's a *different* post
-    // or if the incoming post is newer (e.g., from a refresh).
-    // This check prevents stomping on optimistic updates.
     if (widget.post != oldWidget.post && widget.post.id == oldWidget.post.id) {
-      // If the post objects are different but the ID is the same,
-      // it's likely a refresh. We should only update if the new
-      // post isn't "older" than our current optimistic state.
-      // For simplicity, we'll just update if the reference changes.
-      // A more complex solution might use versioning or timestamps.
       _currentPost = widget.post;
     } else if (widget.post.id != oldWidget.post.id) {
-      // Different post entirely
       _currentPost = widget.post;
     }
   }
@@ -52,11 +44,8 @@ class _PostCardState extends State<PostCard> {
   Widget build(BuildContext context) {
     return MultiBlocListener(
       listeners: [
-        // --- MODIFIED: LikesBloc Listener ---
         BlocListener<LikesBloc, LikesState>(
           listenWhen: (prev, curr) {
-            // We ONLY care about errors for reverting,
-            // or realtime updates (delta == 0) for syncing.
             if (curr is LikeError &&
                 curr.postId == _currentPost.id &&
                 curr.shouldRevert) {
@@ -64,7 +53,7 @@ class _PostCardState extends State<PostCard> {
             }
             if (curr is LikeUpdated &&
                 curr.postId == _currentPost.id &&
-                curr.delta == 0 && // delta 0 implies a realtime sync
+                curr.delta == 0 &&
                 curr.isLiked != _currentPost.isLiked) {
               return true;
             }
@@ -72,43 +61,34 @@ class _PostCardState extends State<PostCard> {
           },
           listener: (context, state) {
             if (state is LikeUpdated) {
-              // This is a REALTIME SYNC (e.g., from Supabase)
               AppLogger.info(
                 'PostCard received REALTIME LikeUpdated for post: ${_currentPost.id}. Syncing boolean.',
               );
-              // Dispatch to PostActionsBloc to update the state centrally
               context.read<PostActionsBloc>().add(
                 OptimisticPostUpdate(
                   post: _currentPost,
                   deltaLikes: 0,
                   deltaFavorites: 0,
-                  isLiked: state.isLiked, // Sync the boolean
+                  isLiked: state.isLiked,
                 ),
               );
             } else if (state is LikeError) {
-              // This is a FAILED optimistic update. We must REVERT.
               AppLogger.info(
                 'PostCard received LikeError for post: ${_currentPost.id}. Reverting count and boolean.',
               );
-              // Dispatch a "revert" event to PostActionsBloc
               context.read<PostActionsBloc>().add(
                 OptimisticPostUpdate(
-                  post:
-                      _currentPost, // Pass the *current* (optimistically updated) post
-                  deltaLikes: -state.delta, // Apply the *opposite* delta
+                  post: _currentPost,
+                  deltaLikes: -state.delta,
                   deltaFavorites: 0,
-                  isLiked:
-                      state.previousState, // Revert to the previous boolean
+                  isLiked: state.previousState,
                 ),
               );
             }
           },
         ),
-        // --- MODIFIED: FavoritesBloc Listener ---
         BlocListener<FavoritesBloc, FavoritesState>(
           listenWhen: (prev, curr) {
-            // We ONLY care about errors for reverting,
-            // or realtime updates (delta == 0) for syncing.
             if (curr is FavoriteError &&
                 curr.postId == _currentPost.id &&
                 curr.shouldRevert) {
@@ -116,7 +96,7 @@ class _PostCardState extends State<PostCard> {
             }
             if (curr is FavoriteUpdated &&
                 curr.postId == _currentPost.id &&
-                curr.delta == 0 && // delta 0 implies a realtime sync
+                curr.delta == 0 &&
                 curr.isFavorited != _currentPost.isFavorited) {
               return true;
             }
@@ -124,7 +104,6 @@ class _PostCardState extends State<PostCard> {
           },
           listener: (context, state) {
             if (state is FavoriteUpdated) {
-              // This is a REALTIME SYNC
               AppLogger.info(
                 'PostCard received REALTIME FavoriteUpdated for post: ${_currentPost.id}. Syncing boolean.',
               );
@@ -133,28 +112,24 @@ class _PostCardState extends State<PostCard> {
                   post: _currentPost,
                   deltaLikes: 0,
                   deltaFavorites: 0,
-                  isFavorited: state.isFavorited, // Sync the boolean
+                  isFavorited: state.isFavorited,
                 ),
               );
             } else if (state is FavoriteError) {
-              // This is a FAILED optimistic update. We must REVERT.
               AppLogger.info(
                 'PostCard received FavoriteError for post: ${_currentPost.id}. Reverting count and boolean.',
               );
-              // Dispatch a "revert" event to PostActionsBloc
               context.read<PostActionsBloc>().add(
                 OptimisticPostUpdate(
                   post: _currentPost,
                   deltaLikes: 0,
-                  deltaFavorites: -state.delta, // Apply the *opposite* delta
-                  isFavorited:
-                      state.previousState, // Revert to the previous boolean
+                  deltaFavorites: -state.delta,
+                  isFavorited: state.previousState,
                 ),
               );
             }
           },
         ),
-        // This is now the SINGLE source of truth for updating _currentPost
         BlocListener<PostActionsBloc, PostActionsState>(
           listenWhen: (prev, curr) =>
               curr is PostOptimisticallyUpdated &&
@@ -200,22 +175,27 @@ class _PostCardState extends State<PostCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   PostHeader(post: _currentPost, currentUserId: widget.userId),
+
+                  // --- NEW: Expandable / collapsible text for long text-only posts ---
                   if (_currentPost.content != null)
                     Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20.0,
                         vertical: 12,
                       ),
-                      child: Text(
-                        _currentPost.content!,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          height: 1.5,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withOpacity(0.8),
-                        ),
+                      child: ExpandableText(
+                        text: _currentPost.content!,
+                        textStyle: Theme.of(context).textTheme.bodyLarge
+                            ?.copyWith(
+                              height: 1.5,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withOpacity(0.8),
+                            ),
+                        collapsedMaxLines: 4, // default collapsed lines
                       ),
                     ),
+
                   if (_currentPost.mediaUrl != null) const SizedBox(height: 4),
                   if (_currentPost.mediaUrl != null)
                     PostMedia(post: _currentPost, height: _kMediaDefaultHeight),

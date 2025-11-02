@@ -1,14 +1,12 @@
-import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/loading_overlay.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/media_upload_widget.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
-import 'package:vlone_blog_app/core/utils/media_progress_notifier.dart';
 
 class CreatePostPage extends StatefulWidget {
   const CreatePostPage({super.key});
@@ -19,155 +17,52 @@ class CreatePostPage extends StatefulWidget {
 
 class _CreatePostPageState extends State<CreatePostPage> {
   final _contentController = TextEditingController();
-  File? _mediaFile;
-  String? _mediaType;
-  bool _isPostButtonEnabled = false;
-
-  // Local UI state for showing full-screen processing overlay driven by notifier.
-  bool _isProcessingMedia = false;
-  String _processingMessage = 'Processing...';
-
-  /// NOTE: nullable — we only show percent for compression stage.
-  /// When uploading, this stays `null` so the overlay shows an indeterminate spinner.
-  double? _processingPercent;
-
-  StreamSubscription<MediaProgress>? _progressSub;
 
   @override
   void initState() {
     super.initState();
-    _contentController.addListener(_validatePost);
-    _validatePost();
 
-    // Subscribe to MediaProgressNotifier stream so we can show compress/upload messages
-    _progressSub = MediaProgressNotifier.stream.listen((progress) {
-      if (!mounted) return;
+    // Initialize controller with bloc value if any
+    final bloc = context.read<PostActionsBloc>();
+    final formState = bloc.state is PostFormState
+        ? (bloc.state as PostFormState)
+        : null;
+    if (formState != null && formState.content.isNotEmpty) {
+      _contentController.text = formState.content;
+    }
 
-      // IMPORTANT: only show numeric percentage during compression stage.
-      // Uploading will show message only (no percent) because Supabase storage
-      // upload in the current flow does not provide progress callbacks.
-      switch (progress.stage) {
-        case MediaProcessingStage.compressing:
-          setState(() {
-            _isProcessingMedia = true;
-            // Compression only applies to video — but be defensive:
-            _processingMessage = _mediaType == 'video'
-                ? 'Compressing video...'
-                : 'Compressing...';
-            // Use provided percent (0..100)
-            _processingPercent = progress.percent.clamp(0.0, 100.0);
-          });
-          break;
-        case MediaProcessingStage.uploading:
-          setState(() {
-            _isProcessingMedia = true;
-            // Dynamically pick upload message based on currently-selected media type.
-            // This prevents "Uploading video..." from showing when user uploads an image.
-            if (_mediaType == 'image') {
-              _processingMessage = 'Uploading image...';
-            } else if (_mediaType == 'video') {
-              _processingMessage = 'Uploading video...';
-            } else {
-              _processingMessage = 'Uploading...';
-            }
-            // IMPORTANT: clear percent so the overlay shows an indeterminate spinner
-            // instead of a numeric % for upload.
-            _processingPercent = null;
-          });
-          break;
-        case MediaProcessingStage.done:
-          setState(() {
-            _processingPercent = 100.0;
-            _processingMessage = 'Done';
-            _isProcessingMedia = false;
-          });
-          break;
-        case MediaProcessingStage.error:
-          setState(() {
-            _isProcessingMedia = false;
-            _processingMessage = progress.message ?? 'Error processing media';
-            _processingPercent = null;
-          });
-          // Show an error toast/snackbar
-          if (progress.message != null && progress.message!.isNotEmpty) {
-            SnackbarUtils.showError(context, progress.message!);
-          }
-          break;
-        case MediaProcessingStage.idle:
-          setState(() {
-            _isProcessingMedia = false;
-            _processingMessage = 'Processing...';
-            _processingPercent = null;
-          });
-      }
+    // Dispatch ContentChanged on text changes (debounce not needed here).
+    _contentController.addListener(() {
+      context.read<PostActionsBloc>().add(
+        ContentChanged(_contentController.text),
+      );
     });
   }
 
   @override
   void dispose() {
-    _contentController.removeListener(_validatePost);
+    _contentController.removeListener(() {});
     _contentController.dispose();
-    _progressSub?.cancel();
-    _progressSub = null;
     super.dispose();
   }
 
-  void _validatePost() {
-    final isEnabled =
-        _contentController.text.trim().isNotEmpty || _mediaFile != null;
-    if (isEnabled != _isPostButtonEnabled) {
-      setState(() {
-        _isPostButtonEnabled = isEnabled;
-      });
-    }
-  }
-
-  void _onMediaSelected(File? file, String? type) {
-    setState(() {
-      _mediaFile = file;
-      _mediaType = type;
-    });
-    _validatePost();
-  }
-
-  // This callback is still supported by MediaUploadWidget for local processing (trim/preview).
-  void _onProcessingChanged(bool processing) {
-    if (!mounted) return;
-    // We keep the existing behavior (a simple overlay), but the detailed stages now come
-    // from MediaProgressNotifier during create/upload.
-    setState(() {
-      _isProcessingMedia = processing;
-      if (!_isProcessingMedia) {
-        _processingPercent = null;
-        _processingMessage = 'Processing...';
-      } else {
-        _processingMessage = 'Processing media...';
-      }
-    });
-  }
-
-  // Helper: compute a consistent upload message based on current selected media.
-  String get _computedUploadMessage {
-    if (_mediaFile == null) return 'Uploading post...';
-    if (_mediaType == 'video') return 'Uploading video...';
-    if (_mediaType == 'image') return 'Uploading image...';
-    return 'Uploading...';
+  void _submit(String userId) {
+    // In the UI we simply dispatch CreatePostEvent without repeating content/media
+    // so the bloc uses current PostFormState values (or fallback to event values if provided).
+    context.read<PostActionsBloc>().add(CreatePostEvent(userId: userId));
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    // Read user id from AuthBloc reactively
     final currentUserId = context.select((AuthBloc b) => b.cachedUser?.id);
 
     return BlocListener<PostActionsBloc, PostActionsState>(
       listener: (context, state) {
         if (state is PostCreatedSuccess) {
-          MediaProgressNotifier.notifyDone();
+          // done processing media
           if (context.mounted) context.pop();
         } else if (state is PostActionError) {
-          MediaProgressNotifier.notifyError(state.message);
           SnackbarUtils.showError(context, state.message);
         }
       },
@@ -182,32 +77,22 @@ class _CreatePostPageState extends State<CreatePostPage> {
           scrolledUnderElevation: 0.0,
           elevation: 0,
           actions: [
-            // 🎯 CHANGE 5: Use PostActionsBloc for building/button state
             BlocBuilder<PostActionsBloc, PostActionsState>(
               builder: (context, state) {
-                // 🎯 CHANGE 6: Check for PostActionLoading state
                 final isLoading = state is PostActionLoading;
+                final form = state is PostFormState
+                    ? state
+                    : const PostFormState();
                 return Padding(
                   padding: const EdgeInsets.only(right: 12.0),
                   child: FilledButton(
                     onPressed:
                         (currentUserId != null &&
-                            _isPostButtonEnabled &&
-                            !isLoading)
-                        ? () {
-                            context.read<PostActionsBloc>().add(
-                              CreatePostEvent(
-                                userId: currentUserId,
-                                content: _contentController.text.trim().isEmpty
-                                    ? null
-                                    : _contentController.text.trim(),
-                                mediaFile: _mediaFile,
-                                mediaType: _mediaType,
-                              ),
-                            );
-                          }
+                            form.isPostButtonEnabled &&
+                            !isLoading &&
+                            !form.isOverLimit)
+                        ? () => _submit(currentUserId)
                         : null,
-                    // Loading is handled by overlay and bloc state; keep text simple
                     child: const Text('Post'),
                   ),
                 );
@@ -215,16 +100,26 @@ class _CreatePostPageState extends State<CreatePostPage> {
             ),
           ],
         ),
-        // We use a Stack to layer the main content and the overlay
         body: BlocBuilder<PostActionsBloc, PostActionsState>(
           builder: (context, state) {
             final isLoading = state is PostActionLoading;
+            final form = state is PostFormState ? state : const PostFormState();
+
+            // Keep controller in sync if the form.content changed externally (e.g. optimistic resets)
+            if (_contentController.text != form.content) {
+              // avoid moving cursor if possible
+              final selection = _contentController.selection;
+              _contentController.text = form.content;
+              _contentController.selection = selection.copyWith(
+                baseOffset: form.content.length.clamp(0, form.content.length),
+                extentOffset: form.content.length.clamp(0, form.content.length),
+              );
+            }
+
             return Stack(
               children: [
-                // 1. Main Content (always visible)
                 SingleChildScrollView(
-                  // IMPORTANT: Added padding at the bottom (60.0) to make room for the fixed footer
-                  padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 60.0),
+                  padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 90.0),
                   child: Column(
                     children: [
                       TextField(
@@ -242,31 +137,113 @@ class _CreatePostPageState extends State<CreatePostPage> {
                             horizontal: 16,
                             vertical: 12,
                           ),
+                          enabledBorder: form.isOverLimit
+                              ? OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color: theme.colorScheme.error,
+                                    width: 2,
+                                  ),
+                                )
+                              : OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
+                                ),
+                          focusedBorder: form.isOverLimit
+                              ? OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color: theme.colorScheme.error,
+                                    width: 2,
+                                  ),
+                                )
+                              : OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color: theme.colorScheme.primary,
+                                    width: 2,
+                                  ),
+                                ),
                         ),
                         maxLines: 8,
                         minLines: 3,
+                        maxLength: null,
                       ),
+
+                      // Character counter
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0, right: 4.0),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            '${form.currentCharCount} / ${form.maxCharacterLimit}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: form.isOverLimit
+                                  ? theme.colorScheme.error
+                                  : form.isNearLimit
+                                  ? theme.colorScheme.tertiary
+                                  : theme.colorScheme.onSurfaceVariant,
+                              fontWeight: form.isOverLimit || form.isNearLimit
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      if (form.isOverLimit)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 16,
+                                color: theme.colorScheme.error,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Post exceeds maximum character limit',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.error,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
                       const SizedBox(height: 20),
-                      // Pass the processing callback to the widget so it can toggle the page overlay
+
                       MediaUploadWidget(
-                        onMediaSelected: _onMediaSelected,
-                        onProcessing: _onProcessingChanged,
+                        onMediaSelected: (file, type) {
+                          // dispatch event to bloc
+                          context.read<PostActionsBloc>().add(
+                            MediaSelected(file, type),
+                          );
+                        },
+                        onProcessing: (processing) {
+                          // if MediaUploadWidget needs to inform processing explicitly, it can
+                          // call this — but the bloc already subscribes to MediaProgressNotifier
+                          context.read<PostActionsBloc>().add(
+                            ProcessingChanged(processing: processing),
+                          );
+                        },
                       ),
                     ],
                   ),
                 ),
-                // 2. Loading Overlay for post upload (covers screen)
-                // Now checks for PostActionLoading
-                if (isLoading && !_isProcessingMedia)
-                  SavingLoadingOverlay(message: _computedUploadMessage),
-                // 3. Media-processing overlay driven by MediaProgressNotifier
-                if (_isProcessingMedia)
+
+                if (isLoading && !form.isProcessing)
+                  SavingLoadingOverlay(message: form.computedUploadMessage),
+
+                if (form.isProcessing)
                   SavingLoadingOverlay(
-                    message: _processingMessage,
-                    percent: _processingPercent,
+                    message: form.processingMessage,
+                    percent: form.processingPercent,
                   ),
 
-                // 4. FOOTER TEXT PLACED AT THE BOTTOM OF THE PAGE
                 Align(
                   alignment: Alignment.bottomCenter,
                   child: Padding(
@@ -274,7 +251,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
                       bottom: 16.0,
                       left: 16.0,
                       right: 16.0,
-                    ), // Padding from the very bottom
+                    ),
                     child: Text(
                       'Large videos and images will be compressed before uploading.',
                       style: theme.textTheme.bodySmall?.copyWith(
