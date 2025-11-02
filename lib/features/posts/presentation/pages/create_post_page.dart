@@ -118,120 +118,135 @@ class _CreatePostPageState extends State<CreatePostPage> {
 
             return Stack(
               children: [
-                SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 90.0),
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _contentController,
-                        decoration: InputDecoration(
-                          hintText: "What's on your mind?",
-                          filled: true,
-                          fillColor: theme.colorScheme.secondaryContainer
-                              .withOpacity(0.2),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
+                // *** FIX 1: Only use SafeArea for top (or not at all if AppBar handles it) ***
+                // Removed `bottom: true` to allow the SingleChildScrollView to fill the screen
+                // up to the system navigation bar, letting us correctly apply padding later.
+                SafeArea(
+                  top: true, // Keep top safe area for below AppBar content
+                  bottom: false, // <-- Changed to false
+                  child: SingleChildScrollView(
+                    // *** FIX 2: Removed extra bottom padding from SingleChildScrollView ***
+                    // The bottom padding will now only be 16.0.
+                    padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 16.0),
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _contentController,
+                          decoration: InputDecoration(
+                            hintText: "What's on your mind?",
+                            filled: true,
+                            fillColor: theme.colorScheme.secondaryContainer
+                                .withOpacity(0.2),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            enabledBorder: form.isOverLimit
+                                ? OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: theme.colorScheme.error,
+                                      width: 2,
+                                    ),
+                                  )
+                                : OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
+                                  ),
+                            focusedBorder: form.isOverLimit
+                                ? OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: theme.colorScheme.error,
+                                      width: 2,
+                                    ),
+                                  )
+                                : OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: theme.colorScheme.primary,
+                                      width: 2,
+                                    ),
+                                  ),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          enabledBorder: form.isOverLimit
-                              ? OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: theme.colorScheme.error,
-                                    width: 2,
-                                  ),
-                                )
-                              : OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                          focusedBorder: form.isOverLimit
-                              ? OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: theme.colorScheme.error,
-                                    width: 2,
-                                  ),
-                                )
-                              : OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: theme.colorScheme.primary,
-                                    width: 2,
-                                  ),
-                                ),
+                          maxLines: 8,
+                          minLines: 3,
+                          maxLength: null,
                         ),
-                        maxLines: 8,
-                        minLines: 3,
-                        maxLength: null,
-                      ),
 
-                      // Character counter
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0, right: 4.0),
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Text(
-                            '${form.currentCharCount} / ${form.maxCharacterLimit}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: form.isOverLimit
-                                  ? theme.colorScheme.error
-                                  : form.isNearLimit
-                                  ? theme.colorScheme.tertiary
-                                  : theme.colorScheme.onSurfaceVariant,
-                              fontWeight: form.isOverLimit || form.isNearLimit
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
+                        // Character counter
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0, right: 4.0),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              '${form.currentCharCount} / ${form.maxCharacterLimit}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: form.isOverLimit
+                                    ? theme.colorScheme.error
+                                    : form.isNearLimit
+                                    ? theme.colorScheme.tertiary
+                                    : theme.colorScheme.onSurfaceVariant,
+                                fontWeight: form.isOverLimit || form.isNearLimit
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              ),
                             ),
                           ),
                         ),
-                      ),
 
-                      if (form.isOverLimit)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.error_outline,
-                                size: 16,
-                                color: theme.colorScheme.error,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Post exceeds maximum character limit',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.error,
+                        if (form.isOverLimit)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.error_outline,
+                                  size: 16,
+                                  color: theme.colorScheme.error,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Post exceeds maximum character limit',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.error,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
+
+                        const SizedBox(height: 20),
+
+                        MediaUploadWidget(
+                          onMediaSelected: (file, type) {
+                            // dispatch event to bloc
+                            context.read<PostActionsBloc>().add(
+                              MediaSelected(file, type),
+                            );
+                          },
+                          onProcessing: (processing) {
+                            // if MediaUploadWidget needs to inform processing explicitly, it can
+                            // call this — but the bloc already subscribes to MediaProgressNotifier
+                            context.read<PostActionsBloc>().add(
+                              ProcessingChanged(processing: processing),
+                            );
+                          },
                         ),
 
-                      const SizedBox(height: 20),
-
-                      MediaUploadWidget(
-                        onMediaSelected: (file, type) {
-                          // dispatch event to bloc
-                          context.read<PostActionsBloc>().add(
-                            MediaSelected(file, type),
-                          );
-                        },
-                        onProcessing: (processing) {
-                          // if MediaUploadWidget needs to inform processing explicitly, it can
-                          // call this — but the bloc already subscribes to MediaProgressNotifier
-                          context.read<PostActionsBloc>().add(
-                            ProcessingChanged(processing: processing),
-                          );
-                        },
-                      ),
-                    ],
+                        // Extra spacing at bottom to ensure content isn't flush against nav bar
+                        SizedBox(
+                          height:
+                              8, // Reduced since the main padding handles it now
+                        ),
+                      ],
+                    ),
                   ),
                 ),
 
@@ -244,11 +259,16 @@ class _CreatePostPageState extends State<CreatePostPage> {
                     percent: form.processingPercent,
                   ),
 
+                // *** FIX 3: Apply system bottom padding here to lift the footer ***
                 Align(
                   alignment: Alignment.bottomCenter,
                   child: Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: 16.0,
+                    padding: EdgeInsets.only(
+                      bottom:
+                          16.0 +
+                          MediaQuery.of(
+                            context,
+                          ).padding.bottom, // <-- Added view padding
                       left: 16.0,
                       right: 16.0,
                     ),

@@ -218,7 +218,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
             ),
           );
         }
-
         if (_userId == null) {
           _userId = user.id;
           if (widget.post == null) {
@@ -227,7 +226,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
             _subscribeToCommentsIfNeeded();
           }
         }
-
         return WillPopScope(
           onWillPop: () async {
             if (_isDeleting) {
@@ -242,6 +240,11 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
           child: Stack(
             children: [
               Scaffold(
+                // *** FIX HERE ***
+                // Setting this to 'false' stops the Scaffold from shrinking.
+                // Your manual Padding with viewInsets.bottom will now be
+                // the only thing lifting the input field.
+                resizeToAvoidBottomInset: false,
                 backgroundColor: Theme.of(context).colorScheme.background,
                 appBar: AppBar(
                   title: const Text(
@@ -290,45 +293,58 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                             ],
                           ),
                         )
-                      : Column(
-                          children: [
-                            Expanded(
-                              child: CustomScrollView(
-                                slivers: [
-                                  SliverToBoxAdapter(
-                                    child: PostDetailsContent(
-                                      post: _post!,
-                                      userId: _userId!,
-                                      onCommentTap: () {
-                                        setState(() => _replyingTo = null);
-                                        _focusNode.requestFocus();
-                                      },
+                      : SafeArea(
+                          top: false,
+                          bottom: true,
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: CustomScrollView(
+                                  slivers: [
+                                    SliverToBoxAdapter(
+                                      child: PostDetailsContent(
+                                        post: _post!,
+                                        userId: _userId!,
+                                        onCommentTap: () {
+                                          setState(() => _replyingTo = null);
+                                          _focusNode.requestFocus();
+                                        },
+                                      ),
                                     ),
-                                  ),
-                                  SliverToBoxAdapter(
-                                    child: CommentsSection(
-                                      commentsCount: _post!.commentsCount,
-                                      currentUserId: _userId!,
-                                      onReply: (comment) {
-                                        setState(() => _replyingTo = comment);
-                                        _focusNode.requestFocus();
-                                      },
-                                      postId: widget.postId,
+                                    SliverToBoxAdapter(
+                                      child: CommentsSection(
+                                        commentsCount: _post!.commentsCount,
+                                        currentUserId: _userId!,
+                                        onReply: (comment) {
+                                          setState(() => _replyingTo = comment);
+                                          _focusNode.requestFocus();
+                                        },
+                                        postId: widget.postId,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                            CommentInputField(
-                              userAvatarUrl: user.profileImageUrl,
-                              controller: _commentController,
-                              focusNode: _focusNode,
-                              replyingTo: _replyingTo,
-                              onSend: _addComment,
-                              onCancelReply: () =>
-                                  setState(() => _replyingTo = null),
-                            ),
-                          ],
+                              // This Padding now correctly lifts the input
+                              // field from the bottom of the *full* screen.
+                              Padding(
+                                padding: EdgeInsets.only(
+                                  bottom: MediaQuery.of(
+                                    context,
+                                  ).viewInsets.bottom,
+                                ),
+                                child: CommentInputField(
+                                  userAvatarUrl: user.profileImageUrl,
+                                  controller: _commentController,
+                                  focusNode: _focusNode,
+                                  replyingTo: _replyingTo,
+                                  onSend: _addComment,
+                                  onCancelReply: () =>
+                                      setState(() => _replyingTo = null),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                 ),
               ),

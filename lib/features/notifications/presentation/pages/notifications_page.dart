@@ -124,9 +124,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
             state is NotificationsLoaded && state.isDeleting;
 
         return Scaffold(
+          // Ensure the scaffold background extends full-screen
           backgroundColor: Theme.of(context).colorScheme.background,
           appBar: AppBar(
             centerTitle: false,
+            // Keep app bar transparent/elevated as desired
             backgroundColor: Colors.transparent,
             elevation: 0,
             scrolledUnderElevation: 4,
@@ -218,79 +220,97 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ),
           body: Stack(
             children: [
-              BlocBuilder<NotificationsBloc, NotificationsState>(
-                builder: (context, state) {
-                  if (state is NotificationsLoading ||
-                      state is NotificationsInitial) {
-                    return const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          LoadingIndicator(size: 32),
-                          SizedBox(height: 16),
-                          Text(
-                            'Loading notifications...',
-                            style: TextStyle(fontSize: 16, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  if (state is NotificationsError) {
-                    return CustomErrorWidget(
-                      message: state.message,
-                      onRetry: () {
-                        context.read<NotificationsBloc>().add(
-                          const GetNotificationsEvent(),
-                        );
-                      },
-                    );
-                  }
-
-                  if (state is NotificationsLoaded) {
-                    if (state.notifications.isEmpty && !state.hasMore) {
-                      return const EmptyStateWidget(
-                        message: 'No notifications yet',
-                        subMessage:
-                            'Notifications will appear here when you get new activity',
-                        icon: Icons.notifications_off_outlined,
+              // Use SafeArea around the content but disable bottom to achieve
+              // edge-to-edge content scrolling behind the system navigation bar.
+              SafeArea(
+                top: false, // AppBar handles top inset
+                bottom: false, // <-- FIX: Do not apply bottom system inset here
+                child: BlocBuilder<NotificationsBloc, NotificationsState>(
+                  builder: (context, state) {
+                    if (state is NotificationsLoading ||
+                        state is NotificationsInitial) {
+                      return const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            LoadingIndicator(size: 32),
+                            SizedBox(height: 16),
+                            Text(
+                              'Loading notifications...',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
                       );
                     }
 
-                    return RefreshIndicator(
-                      onRefresh: _onRefresh,
-                      child: CustomScrollView(
-                        controller: _scrollController,
-                        slivers: [
-                          SliverList(
-                            delegate: SliverChildBuilderDelegate((
-                              context,
-                              index,
-                            ) {
-                              final notification = state.notifications[index];
-                              return NotificationListItem(
-                                key: ValueKey(notification.id),
-                                notification: notification,
-                                isSelectionMode: state.isSelectionMode,
-                                isSelected: state.selectedNotificationIds
-                                    .contains(notification.id),
-                              );
-                            }, childCount: state.notifications.length),
-                          ),
-                          if (state.hasMore)
-                            SliverToBoxAdapter(
-                              child: _buildLoadMoreFooter(state),
-                            ),
-                        ],
-                      ),
-                    );
-                  }
+                    if (state is NotificationsError) {
+                      return CustomErrorWidget(
+                        message: state.message,
+                        onRetry: () {
+                          context.read<NotificationsBloc>().add(
+                            const GetNotificationsEvent(),
+                          );
+                        },
+                      );
+                    }
 
-                  return const Center(
-                    child: Text('An unexpected error occurred.'),
-                  );
-                },
+                    if (state is NotificationsLoaded) {
+                      if (state.notifications.isEmpty && !state.hasMore) {
+                        return const EmptyStateWidget(
+                          message: 'No notifications yet',
+                          subMessage:
+                              'Notifications will appear here when you get new activity',
+                          icon: Icons.notifications_off_outlined,
+                        );
+                      }
+
+                      return RefreshIndicator(
+                        onRefresh: _onRefresh,
+                        child: CustomScrollView(
+                          controller: _scrollController,
+                          // The content will now extend under the system bar
+                          slivers: [
+                            SliverList(
+                              delegate: SliverChildBuilderDelegate((
+                                context,
+                                index,
+                              ) {
+                                final notification = state.notifications[index];
+                                return NotificationListItem(
+                                  key: ValueKey(notification.id),
+                                  notification: notification,
+                                  isSelectionMode: state.isSelectionMode,
+                                  isSelected: state.selectedNotificationIds
+                                      .contains(notification.id),
+                                );
+                              }, childCount: state.notifications.length),
+                            ),
+                            if (state.hasMore)
+                              SliverToBoxAdapter(
+                                child: _buildLoadMoreFooter(state),
+                              ),
+                            // Manually add the bottom padding (system inset) to the end
+                            // of the scrollable content to prevent the last items
+                            // from being covered by the system navigation bar.
+                            SliverToBoxAdapter(
+                              child: SizedBox(
+                                height: MediaQuery.of(context).padding.bottom,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return const Center(
+                      child: Text('An unexpected error occurred.'),
+                    );
+                  },
+                ),
               ),
               if (isDeleting)
                 Container(
