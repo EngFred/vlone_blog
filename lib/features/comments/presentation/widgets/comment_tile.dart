@@ -36,15 +36,15 @@ class CommentTileState extends State<CommentTile> {
 
   List<CommentEntity> _flattenReplies(List<CommentEntity> replies) {
     final List<CommentEntity> flatList = [];
-    void _addRecursively(CommentEntity comment) {
+    void addRecursively(CommentEntity comment) {
       flatList.add(comment);
       for (final reply in comment.replies) {
-        _addRecursively(reply);
+        addRecursively(reply);
       }
     }
 
     for (final reply in replies) {
-      _addRecursively(reply);
+      addRecursively(reply);
     }
     return flatList;
   }
@@ -129,7 +129,7 @@ class CommentTileState extends State<CommentTile> {
                     child: CircleAvatar(
                       radius: avatarRadius - 1,
                       // FIX: Ensure the background color respects the current theme
-                      backgroundColor: theme.colorScheme.background,
+                      backgroundColor: theme.colorScheme.surface,
                       child: CircleAvatar(
                         radius: avatarRadius - 2,
                         backgroundImage: comment.avatarUrl != null
@@ -234,7 +234,9 @@ class CommentTileState extends State<CommentTile> {
                                       ? theme.colorScheme.primary.withOpacity(
                                           0.1,
                                         )
-                                      : theme.colorScheme.surfaceVariant
+                                      : theme
+                                            .colorScheme
+                                            .surfaceContainerHighest
                                             .withOpacity(0.5),
                                   borderRadius: BorderRadius.circular(12),
                                 ),

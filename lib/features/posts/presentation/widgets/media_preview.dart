@@ -96,7 +96,7 @@ class MediaPreview extends StatelessWidget {
                   : Container(
                       height: 200,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceVariant,
+                        color: theme.colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: const Center(child: LoadingIndicator()),

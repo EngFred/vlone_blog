@@ -89,9 +89,8 @@ class CommentInputField extends StatelessWidget {
                         vertical: 10,
                       ),
                       filled: true,
-                      fillColor: theme.colorScheme.surfaceVariant.withOpacity(
-                        0.6,
-                      ),
+                      fillColor: theme.colorScheme.surfaceContainerHighest
+                          .withOpacity(0.6),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide: BorderSide.none,

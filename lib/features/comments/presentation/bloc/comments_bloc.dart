@@ -103,8 +103,9 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     if (!_hasMore ||
         state is CommentsLoadingMore ||
         _lastCreatedAt == null ||
-        _lastId == null)
+        _lastId == null) {
       return;
+    }
 
     // Ensure we are in a loaded state to load more
     if (state is! CommentsLoaded) return;

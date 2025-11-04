@@ -98,8 +98,9 @@ class NotificationsRemoteDataSource {
             error: e,
             stackTrace: st,
           );
-          if (!controller.isClosed)
+          if (!controller.isClosed) {
             controller.addError(ServerException(e.toString()));
+          }
           // still continue to subscribe to realtime to recover
         }
 

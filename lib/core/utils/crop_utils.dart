@@ -21,7 +21,7 @@ Future<File?> cropImageFile(
         toolbarColor: theme.colorScheme.surface,
         toolbarWidgetColor: theme.colorScheme.onSurface,
         activeControlsWidgetColor: theme.colorScheme.primary,
-        backgroundColor: theme.colorScheme.background,
+        backgroundColor: theme.colorScheme.surface,
         // When lockSquare is true, start with square and lock the ratio.
         initAspectRatio: lockSquare
             ? CropAspectRatioPreset.square

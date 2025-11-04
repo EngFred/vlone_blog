@@ -125,7 +125,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
         return Scaffold(
           // Ensure the scaffold background extends full-screen
-          backgroundColor: Theme.of(context).colorScheme.background,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           appBar: AppBar(
             centerTitle: false,
             // Keep app bar transparent/elevated as desired

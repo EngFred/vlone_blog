@@ -59,8 +59,13 @@ class _CreatePostPageState extends State<CreatePostPage> {
 
     return BlocListener<PostActionsBloc, PostActionsState>(
       listener: (context, state) {
-        if (state is PostCreatedSuccess) {
-          // done processing media
+        // Listen for the PostCreationScheduledSuccess state
+        if (state is PostCreationScheduledSuccess) {
+          SnackbarUtils.showSuccess(
+            context,
+            'Post scheduled! It will appear on the feed shortly after uploading.',
+          );
+          // Immediately pop the page once scheduled
           if (context.mounted) context.pop();
         } else if (state is PostActionError) {
           SnackbarUtils.showError(context, state.message);

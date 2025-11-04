@@ -214,7 +214,7 @@ class _ProfilePageState extends State<ProfilePage> {
       builder: (context, authState) {
         final isLoggingOut = authState is AuthLoading;
         return Scaffold(
-          backgroundColor: Theme.of(context).colorScheme.background,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           appBar: AppBar(
             title: const Text(
               'My Profile',
@@ -233,7 +233,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   },
                   icon: Icon(
                     Icons.edit_outlined,
-                    color: Theme.of(context).colorScheme.onBackground,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                   tooltip: 'Edit Profile',
                 ),
@@ -241,7 +241,7 @@ class _ProfilePageState extends State<ProfilePage> {
               PopupMenuButton<ProfileMenuOption>(
                 icon: Icon(
                   Icons.more_vert,
-                  color: Theme.of(context).colorScheme.onBackground,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
                 onSelected: (value) {
                   switch (value) {
@@ -365,8 +365,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         setState(() => _isUserPostsLoading = true);
                       } else if (state is UserPostsLoadMoreError) {
                         if (state.profileUserId != null &&
-                            state.profileUserId != _currentUserId)
+                            state.profileUserId != _currentUserId) {
                           return;
+                        }
                         if (!mounted) return;
                         setState(() {
                           _loadMoreError = state.message;

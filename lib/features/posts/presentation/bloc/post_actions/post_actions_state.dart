@@ -147,3 +147,10 @@ class PostFormState extends PostActionsState {
     isPostButtonEnabled,
   ];
 }
+
+//New state for when the post is successfully scheduled
+class PostCreationScheduledSuccess extends PostActionsState {
+  const PostCreationScheduledSuccess();
+  @override
+  List<Object> get props => [];
+}

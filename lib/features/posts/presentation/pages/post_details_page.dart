@@ -245,7 +245,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                 // Your manual Padding with viewInsets.bottom will now be
                 // the only thing lifting the input field.
                 resizeToAvoidBottomInset: false,
-                backgroundColor: Theme.of(context).colorScheme.background,
+                backgroundColor: Theme.of(context).colorScheme.surface,
                 appBar: AppBar(
                   title: const Text(
                     'Post',
@@ -256,7 +256,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                   elevation: 0,
                   scrolledUnderElevation: 4,
                   iconTheme: IconThemeData(
-                    color: Theme.of(context).colorScheme.onBackground,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                   actions: [
                     // REMOVED BOOKMARK ICON BUTTON

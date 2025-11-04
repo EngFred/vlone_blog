@@ -36,13 +36,13 @@ class ProfileHeader extends StatelessWidget {
       useSafeArea: false,
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
-        bool _isDownloading = false;
-        double _downloadProgress = 0.0;
+        bool isDownloading = false;
+        double downloadProgress = 0.0;
 
         return StatefulBuilder(
           builder: (context, setState) {
-            Future<void> _startDownload() async {
-              if (_isDownloading) return;
+            Future<void> startDownload() async {
+              if (isDownloading) return;
 
               if (!sl.isRegistered<MediaDownloadService>()) {
                 AppLogger.error('MediaDownloadService not registered in GetIt');
@@ -57,8 +57,8 @@ class ProfileHeader extends StatelessWidget {
                   sl<MediaDownloadService>();
 
               setState(() {
-                _isDownloading = true;
-                _downloadProgress = 0.0;
+                isDownloading = true;
+                downloadProgress = 0.0;
               });
 
               SnackbarUtils.showInfo(dialogContext, 'Starting download...');
@@ -71,7 +71,7 @@ class ProfileHeader extends StatelessWidget {
                     if (!dialogContext.mounted) return;
                     if (total > 0) {
                       setState(() {
-                        _downloadProgress = received / total;
+                        downloadProgress = received / total;
                       });
                     }
                   },
@@ -79,7 +79,7 @@ class ProfileHeader extends StatelessWidget {
 
                 if (!dialogContext.mounted) return;
 
-                setState(() => _isDownloading = false);
+                setState(() => isDownloading = false);
 
                 switch (result.status) {
                   case DownloadResultStatus.success:
@@ -122,7 +122,7 @@ class ProfileHeader extends StatelessWidget {
                   stackTrace: st,
                 );
                 if (!dialogContext.mounted) return;
-                setState(() => _isDownloading = false);
+                setState(() => isDownloading = false);
                 SnackbarUtils.showError(
                   dialogContext,
                   'Download failed unexpectedly. Please try again.',
@@ -185,7 +185,7 @@ class ProfileHeader extends StatelessWidget {
                     child: SafeArea(
                       child: Padding(
                         padding: const EdgeInsets.only(right: 4.0),
-                        child: _isDownloading
+                        child: isDownloading
                             ? Container(
                                 width: 40,
                                 height: 40,
@@ -199,8 +199,8 @@ class ProfileHeader extends StatelessWidget {
                                   ),
                                 ),
                                 child:
-                                    _downloadProgress > 0 &&
-                                        _downloadProgress <= 1.0
+                                    downloadProgress > 0 &&
+                                        downloadProgress <= 1.0
                                     ? Stack(
                                         alignment: Alignment.center,
                                         children: [
@@ -208,7 +208,7 @@ class ProfileHeader extends StatelessWidget {
                                             width: 24,
                                             height: 24,
                                             child: CircularProgressIndicator(
-                                              value: _downloadProgress,
+                                              value: downloadProgress,
                                               strokeWidth: 2.5,
                                               color: Colors.white,
                                             ),
@@ -225,7 +225,7 @@ class ProfileHeader extends StatelessWidget {
                                       ),
                               )
                             : InkWell(
-                                onTap: _startDownload,
+                                onTap: startDownload,
                                 borderRadius: BorderRadius.circular(24),
                                 child: Container(
                                   width: 40,
@@ -261,7 +261,7 @@ class ProfileHeader extends StatelessWidget {
     final theme = Theme.of(context);
     final icon = isFollowing! ? Icons.check : Icons.add;
     final backgroundColor = isFollowing!
-        ? theme.colorScheme.surfaceVariant
+        ? theme.colorScheme.surfaceContainerHighest
         : theme.colorScheme.primary;
     final foregroundColor = isFollowing!
         ? theme.colorScheme.onSurfaceVariant

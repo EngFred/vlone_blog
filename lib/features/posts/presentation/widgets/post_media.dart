@@ -61,11 +61,8 @@ class _PostMediaState extends State<PostMedia>
     }
 
     // 2) If we don't have server dims and it's an image, attempt to load image dimensions (async)
-    if (_aspectRatio == null &&
-        widget.post.mediaType == 'image' &&
-        // 🌟 Only load if media is already 'completed'
-        (widget.post.uploadStatus == 'completed' ||
-            widget.post.uploadStatus == 'none')) {
+    if (_aspectRatio == null && widget.post.mediaType == 'image') {
+      // Check for mediaUrl presence implicitly handled inside _loadImageAspectRatio
       _loadImageAspectRatio();
     }
     // For video: we'll set aspect ratio after controller initialization if available
@@ -311,49 +308,6 @@ class _PostMediaState extends State<PostMedia>
     );
   }
 
-  /// Builds a placeholder to show during upload processing or failure.
-  Widget _buildUploadStatusWidget({
-    bool isProcessing = false,
-    bool isError = false,
-    String message = '',
-  }) {
-    // Use the calculated aspect ratio to prevent layout jumps
-    final effectiveAspect = _aspectRatio ?? 1.0;
-
-    return AspectRatio(
-      aspectRatio: effectiveAspect,
-      child: Container(
-        width: double.infinity,
-        color: isError
-            ? Theme.of(context).colorScheme.errorContainer
-            : Theme.of(context).colorScheme.surfaceVariant,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (isProcessing) const CircularProgressIndicator(),
-              if (isError)
-                Icon(
-                  Icons.error_outline,
-                  size: 48,
-                  color: Theme.of(context).colorScheme.onErrorContainer,
-                ),
-              const SizedBox(height: 12),
-              Text(
-                message,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: isError
-                      ? Theme.of(context).colorScheme.onErrorContainer
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildMediaStack(String heroTag, BoxFit boxFit) {
     return Stack(
       fit: StackFit.expand,
@@ -365,7 +319,7 @@ class _PostMediaState extends State<PostMedia>
             placeholder: (context, url) =>
                 const Center(child: CircularProgressIndicator()),
             errorWidget: (context, url, error) => Container(
-              color: Theme.of(context).colorScheme.surfaceVariant,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               child: const Center(child: Icon(Icons.broken_image)),
             ),
           )
@@ -389,7 +343,9 @@ class _PostMediaState extends State<PostMedia>
                         height: double.infinity,
                       )
                     : Container(
-                        color: Theme.of(context).colorScheme.surfaceVariant,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
                         child: const Center(
                           child: Icon(Icons.play_circle_outline),
                         ),
@@ -414,24 +370,20 @@ class _PostMediaState extends State<PostMedia>
               child: CircularProgressIndicator(color: Colors.white),
             ),
           ),
-        // Don't show 'View' button if it's still processing
-        if (!_isInitializing) _buildViewButton(heroTag),
+        // Always show 'View' button if mediaUrl is present (i.e., completed)
+        _buildViewButton(heroTag),
       ],
     );
   }
 
   Widget _buildMediaContent(String heroTag, BoxFit boxFit) {
-    // If we have a valid aspect ratio, use AspectRatio to reserve space immediately.
-    // Otherwise fallback sequence: image stream (maybe set _aspectRatio later) -> 1:1 placeholder.
     if (_hasError) {
-      // Use fallback aspect ratio wrapper to keep sizing consistent with parent usage.
       final fallback = _aspectRatio ?? 1.0;
       return AspectRatio(aspectRatio: fallback, child: _buildErrorContent());
     }
 
     final effectiveAspect = _aspectRatio ?? 1.0;
 
-    // Wrap media stack in AspectRatio to reserve exact space on first frame when server dims are present.
     return AspectRatio(
       aspectRatio: effectiveAspect,
       child: GestureDetector(
@@ -461,38 +413,21 @@ class _PostMediaState extends State<PostMedia>
     final heroTag = 'media_${widget.post.id}_${identityHashCode(this)}';
     final boxFit = _getBoxFit();
 
-    // 🌟 NEW: Get upload status and media type
-    final uploadStatus = widget.post.uploadStatus;
+    // 🌟 REMOVED: final uploadStatus = widget.post.uploadStatus;
     final mediaType = widget.post.mediaType;
 
-    // If no media type (text-only post), render nothing.
-    if (mediaType == 'none' || mediaType == null) {
+    // 1. If no media type (text-only post), render nothing.
+    // 2. If mediaType exists but mediaUrl is missing (the new "failed/processing" state, if the DB record was created too early), render nothing or an error.
+    if (mediaType == 'none' ||
+        mediaType == null ||
+        widget.post.mediaUrl == null) {
+      // In the new world, if a media-type post has no mediaUrl, it's an error/incomplete state.
+      // Since the post only exists *after* the worker runs, this shouldn't happen often.
+      // We will default to a blank space (SizedBox.shrink) for safety, but you could show an error here if desired.
       return const SizedBox.shrink();
     }
 
-    // 1. Handle non-completed upload statuses FIRST
-    if (uploadStatus == 'processing' || uploadStatus == 'pending_retry') {
-      return _buildUploadStatusWidget(
-        isProcessing: true,
-        message: 'Processing...',
-      );
-    }
-    if (uploadStatus == 'failed') {
-      return _buildUploadStatusWidget(
-        isProcessing: false,
-        isError: true,
-        message: 'Upload Failed',
-      );
-    }
-
-    // 2. If status is 'completed' or 'none', proceed with media display logic.
-    // If post has no mediaUrl (e.g. legacy error), return empty
-    if (widget.post.mediaUrl == null) {
-      return const SizedBox.shrink();
-    }
-
-    // 3. Proceed with existing video/image logic
-    // For videos we still want to lazily init controller when visible
+    // 3. Proceed with existing video/image logic (all posts here are considered "completed")
     if (mediaType == 'video') {
       final content = _buildMediaContent(heroTag, boxFit);
       if (widget.useVisibilityDetector) {
@@ -547,7 +482,7 @@ class _PostMediaState extends State<PostMedia>
       }
     }
 
-    // For images: we can display immediately as _aspectRatio may already be set from server or stream.
+    // For images: display immediately.
     if (mediaType == 'image') {
       return _buildMediaContent(heroTag, boxFit);
     }

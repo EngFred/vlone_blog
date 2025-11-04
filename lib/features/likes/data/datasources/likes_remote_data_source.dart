@@ -102,8 +102,9 @@ class LikesRemoteDataSource {
           await _likesChannel?.unsubscribe();
         } catch (_) {}
         try {
-          if (!(_likesController?.isClosed ?? true))
+          if (!(_likesController?.isClosed ?? true)) {
             await _likesController?.close();
+          }
         } catch (_) {}
         _likesChannel = null;
         _likesController = null;

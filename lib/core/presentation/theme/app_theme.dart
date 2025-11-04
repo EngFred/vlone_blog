@@ -15,9 +15,8 @@ class AppTheme {
     );
 
     return ThemeData.light().copyWith(
-      useMaterial3: true,
       colorScheme: lightColorScheme,
-      scaffoldBackgroundColor: lightColorScheme.background,
+      scaffoldBackgroundColor: lightColorScheme.surface,
 
       // --- Status Bar Configuration for Light Theme ---
       appBarTheme: AppBarTheme(
@@ -36,9 +35,9 @@ class AppTheme {
       ),
 
       textTheme: TextTheme(
-        bodyLarge: TextStyle(color: lightColorScheme.onBackground),
+        bodyLarge: TextStyle(color: lightColorScheme.onSurface),
         bodyMedium: TextStyle(
-          color: lightColorScheme.onBackground.withOpacity(0.8),
+          color: lightColorScheme.onSurface.withOpacity(0.8),
         ),
         headlineMedium: TextStyle(
           color: lightColorScheme.onSurface,
@@ -52,7 +51,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: lightColorScheme.primary, width: 2),
         ),
-        fillColor: lightColorScheme.surfaceVariant.withOpacity(0.2),
+        fillColor: lightColorScheme.surfaceContainerHighest.withOpacity(0.2),
         filled: true,
       ),
 
@@ -86,9 +85,8 @@ class AppTheme {
     );
 
     return ThemeData.dark().copyWith(
-      useMaterial3: true,
       colorScheme: darkColorScheme,
-      scaffoldBackgroundColor: darkColorScheme.background,
+      scaffoldBackgroundColor: darkColorScheme.surface,
 
       // --- Status Bar Configuration for Dark Theme ---
       appBarTheme: AppBarTheme(
@@ -112,10 +110,10 @@ class AppTheme {
           fontWeight: FontWeight.w600,
         ),
         bodyLarge: TextStyle(
-          color: darkColorScheme.onBackground.withOpacity(0.85),
+          color: darkColorScheme.onSurface.withOpacity(0.85),
         ),
         bodyMedium: TextStyle(
-          color: darkColorScheme.onBackground.withOpacity(0.7),
+          color: darkColorScheme.onSurface.withOpacity(0.7),
         ),
       ),
 

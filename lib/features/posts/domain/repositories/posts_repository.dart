@@ -6,7 +6,7 @@ import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 
 abstract class PostsRepository {
   // CRUD
-  Future<Either<Failure, PostEntity>> createPost({
+  Future<Either<Failure, Unit>> createPost({
     required String userId,
     String? content,
     File? mediaFile,

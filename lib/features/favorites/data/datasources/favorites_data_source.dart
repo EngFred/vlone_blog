@@ -156,8 +156,9 @@ class FavoritesRemoteDataSource {
           await _favoritesChannel?.unsubscribe();
         } catch (_) {}
         try {
-          if (!(_favoritesController?.isClosed ?? true))
+          if (!(_favoritesController?.isClosed ?? true)) {
             await _favoritesController?.close();
+          }
         } catch (_) {}
         _favoritesChannel = null;
         _favoritesController = null;

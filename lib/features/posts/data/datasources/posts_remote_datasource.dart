@@ -10,11 +10,11 @@ import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/helpers.dart';
 import 'package:vlone_blog_app/core/utils/media_dimensions_util.dart';
 import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
-import 'package:workmanager/workmanager.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:vlone_blog_app/core/utils/video_compressor.dart';
 import 'package:vlone_blog_app/core/utils/image_compressor.dart';
 import 'package:vlone_blog_app/core/utils/media_progress_notifier.dart';
+import 'package:workmanager/workmanager.dart';
 
 class PostsRemoteDataSource {
   final SupabaseClient client;
@@ -35,38 +35,137 @@ class PostsRemoteDataSource {
   PostsRemoteDataSource(this.client);
 
   // =========================================================================
-  // Non-Blocking Post Creation
-  // This logic now correctly uses the 'upload_status' column.
+  // 1. `createPost` (Called by the UI)
   // =========================================================================
-  Future<PostModel> createPost({
+  Future<void> createPost({
     required String userId,
     String? content,
     File? mediaFile,
     String? mediaType,
   }) async {
-    AppLogger.info('Attempting to create post for user: $userId');
+    AppLogger.info('Scheduling post creation for user: $userId');
+    String? persistentFilePath;
+    String? mediaFileExt;
 
-    // --- 1. Pre-processing (Compression & Validation) ---
-    File? fileToProcess;
-    int? mediaWidth;
-    int? mediaHeight;
-
+    // --- 1. Copy Media to a Permanent Location ---
     if (mediaFile != null) {
-      fileToProcess = mediaFile;
       try {
+        // getApplicationSupportDirectory is persistent
+        final appDir = await getApplicationSupportDirectory();
+        mediaFileExt = mediaFile.path.split('.').last;
+        final persistentFileName = '${const Uuid().v4()}.$mediaFileExt';
+        persistentFilePath = '${appDir.path}/$persistentFileName';
+
+        // Copy the file
+        await mediaFile.copy(persistentFilePath);
+        AppLogger.info(
+          'Copied media file to persistent path: $persistentFilePath',
+        );
+      } catch (e, st) {
+        AppLogger.error(
+          'Failed to copy file for worker: $e',
+          error: e,
+          stackTrace: st,
+        );
+        MediaProgressNotifier.notifyError('Failed to schedule post');
+        throw ServerException('Failed to copy file for worker: $e');
+      }
+    }
+
+    // --- 2. Schedule the Worker ---
+    try {
+      final inputData = <String, dynamic>{
+        'userId': userId,
+        'content': content,
+        'mediaType': mediaType,
+        'filePath': persistentFilePath, // The path to the *new* file
+        'fileExt': mediaFileExt, // Pass extension for storage path
+      };
+
+      // Remove nulls so Workmanager doesn't crash
+      inputData.removeWhere((key, value) => value == null);
+
+      await Workmanager().registerOneOffTask(
+        'create_post_${const Uuid().v4()}', // Unique task name
+        'create_new_post_task', // The task registered in main.dart
+        inputData: inputData,
+        constraints: Constraints(
+          networkType: NetworkType.connected, // Only run when connected
+        ),
+      );
+
+      AppLogger.info('Post creation task scheduled successfully.');
+      // Notify the UI immediately that it's "processing"
+      MediaProgressNotifier.notifyUploading(0.0);
+    } catch (e, st) {
+      AppLogger.error(
+        'Failed to schedule Workmanager task: $e',
+        error: e,
+        stackTrace: st,
+      );
+      MediaProgressNotifier.notifyError('Failed to schedule post');
+      // If scheduling fails, delete the persistent file
+      if (persistentFilePath != null) {
+        try {
+          await File(persistentFilePath).delete();
+        } catch (_) {}
+      }
+      throw ServerException('Failed to schedule task: $e');
+    }
+  }
+
+  // =========================================================================
+  // 2. `executeCreatePostFromWorker` (Called by the Worker) - UPDATED
+  // =========================================================================
+  Future<bool> executeCreatePostFromWorker(
+    Map<String, dynamic>? inputData,
+  ) async {
+    if (inputData == null) {
+      AppLogger.error('Worker: No input data. Task failed permanently.');
+      return true; // Return true (don't retry)
+    }
+
+    final userId = inputData['userId'] as String?;
+    final content = inputData['content'] as String?;
+    final mediaType = inputData['mediaType'] as String?;
+    final filePath = inputData['filePath'] as String?;
+    final fileExt = inputData['fileExt'] as String?;
+
+    if (userId == null) {
+      AppLogger.error('Worker: Missing userId. Task failed permanently.');
+      return true; // Don't retry
+    }
+
+    File? fileToProcess;
+    File? originalFile; // This is the one we must delete at the end
+    if (filePath != null) {
+      originalFile = File(filePath);
+      if (!await originalFile.exists()) {
+        AppLogger.error(
+          'Worker: File $filePath does not exist. Task failed permanently.',
+        );
+        return true; // Don't retry
+      }
+      fileToProcess = originalFile;
+    }
+
+    try {
+      // --- 1. Pre-processing (Compression, Validation) ---
+      int? mediaWidth;
+      int? mediaHeight;
+      if (fileToProcess != null && mediaType != null) {
         // --- Duration Check (Fail Fast) ---
         if (mediaType == 'video') {
           try {
             final duration = await getVideoDuration(fileToProcess);
             if (duration > Constants.maxVideoDurationSeconds) {
-              AppLogger.warning(
-                'createPost: video duration $duration exceeds limit.',
+              AppLogger.error(
+                'Worker: Video duration exceeds limit. Task failed permanently.',
               );
-              throw const ServerException('Video exceeds allowed duration');
+              return true; // Don't retry (Permanent failure)
             }
           } catch (e) {
-            AppLogger.warning('createPost: getVideoDuration probe failed: $e');
-            // Allow proceeding; compressor will re-check
+            AppLogger.warning('Worker: getVideoDuration probe failed: $e');
           }
         }
 
@@ -79,124 +178,103 @@ class PostsRemoteDataSource {
               : ImageCompressor.defaultMaxSizeBytes;
           shouldAttemptCompression = bytes > threshold;
         } catch (e) {
-          AppLogger.warning('createPost: failed to stat file size: $e');
+          AppLogger.warning('Worker: failed to stat file size: $e');
         }
 
         if (shouldAttemptCompression) {
           File? compressedFile;
           if (mediaType == 'video') {
-            MediaProgressNotifier.notifyCompressing(0.0);
             compressedFile = await VideoCompressor.compressIfNeeded(
               fileToProcess,
-              onProgress: MediaProgressNotifier.notifyCompressing,
             );
           } else if (mediaType == 'image') {
             compressedFile = await ImageCompressor.compressIfNeeded(
               fileToProcess,
             );
           }
-
           if (compressedFile != null &&
               compressedFile.path != fileToProcess.path) {
             AppLogger.info(
-              'createPost: using compressed $mediaType at ${compressedFile.path}',
+              'Worker: using compressed file at ${compressedFile.path}',
             );
             fileToProcess = compressedFile;
+            // We still keep 'originalFile' to delete later
           }
         }
 
         // --- Get Dimensions ---
-        // Probe *after* compression/trimming
-        final dimensions = await getMediaDimensions(fileToProcess, mediaType!);
+        final dimensions = await getMediaDimensions(fileToProcess, mediaType);
         mediaWidth = dimensions?.width;
         mediaHeight = dimensions?.height;
-
-        // --- Final Duration Safety Check ---
-        if (mediaType == 'video') {
-          try {
-            final duration = await getVideoDuration(fileToProcess);
-            if (duration > Constants.maxVideoDurationSeconds) {
-              throw const ServerException('Video exceeds allowed duration');
-            }
-          } catch (e) {
-            AppLogger.warning(
-              'createPost: duration probe failed after compression: $e',
-            );
-          }
-        }
-      } catch (e) {
-        AppLogger.error('Pre-processing failed: $e', error: e);
-        MediaProgressNotifier.notifyError(e.toString());
-        throw ServerException(e.toString());
       }
-    }
 
-    // --- 2. Create Post Record in Database ---
-    try {
+      // --- 2. Upload Media ---
+      String? mediaUrl;
+      String? thumbnailUrl;
+
+      if (fileToProcess != null && mediaType != null) {
+        AppLogger.info('Worker: Uploading media...');
+        final urls = await _uploadMediaAndGetUrls(
+          userId: userId,
+          mediaFile: fileToProcess,
+          mediaType: mediaType,
+          fileExt: fileExt ?? 'file', // Use original extension
+        );
+        mediaUrl = urls['mediaUrl'];
+        thumbnailUrl = urls['thumbnailUrl'];
+      }
+
+      // --- 3. Create Post Record in Database ---
       final postData = {
         'user_id': userId,
         'content': content,
         'media_type': mediaType ?? 'none',
         'media_width': mediaWidth,
         'media_height': mediaHeight,
-        // 🌟 Use the 'upload_status' column
-        'upload_status': fileToProcess != null ? 'processing' : 'none',
-        // media_url and thumbnail_url are null by default
+        'media_url': mediaUrl,
+        'thumbnail_url': thumbnailUrl,
+        // REMOVED: 'upload_status'
       };
 
-      final response = await client
-          .from('posts')
-          .insert(postData)
-          .select('*, profiles ( username, profile_image_url )')
-          .single();
+      await client.from('posts').insert(postData);
 
-      AppLogger.info(
-        'Post record created successfully with ID: ${response['id']}',
-      );
+      AppLogger.info('Worker: Post created successfully in database!');
 
-      // Inject default status fields for immediate UI use
-      final postMap = response;
-      postMap['is_liked'] = false;
-      postMap['is_favorited'] = false;
-      // The 'upload_status' is already in the map from the .select()
-
-      final newPost = PostModel.fromMap(postMap);
-
-      // --- 3. Fire-and-Forget Media Processing ---
-      if (fileToProcess != null) {
-        _handleMediaProcessing(
-          postId: newPost.id,
-          userId: userId,
-          mediaFile: fileToProcess,
-          mediaType: mediaType!,
-        );
-        MediaProgressNotifier.notifyUploading(0.0);
-      } else {
-        MediaProgressNotifier.notifyDone();
+      // --- 4. Cleanup ---
+      if (originalFile != null) {
+        try {
+          await originalFile.delete();
+        } catch (_) {}
+      }
+      if (fileToProcess != null && fileToProcess.path != originalFile?.path) {
+        try {
+          await fileToProcess.delete();
+        } catch (_) {}
       }
 
-      // --- 4. Return Initial Post Model ---
-      return newPost;
+      return true; // SUCCESS! Task is complete.
     } catch (e, st) {
       AppLogger.error(
-        'Error creating post record: $e',
+        'Worker: Post creation failed: $e',
         error: e,
         stackTrace: st,
       );
-      MediaProgressNotifier.notifyError(e.toString());
-      throw ServerException(e.toString());
+      return false; // RETRY!
     }
   }
 
-  /// [Private Helper] Handles all blocking I/O for media.
-  Future<void> _handleMediaProcessing({
-    required String postId,
+  // =========================================================================
+  // 3. PRIVATE HELPERS (Called by the Worker)
+  // =========================================================================
+
+  /// [Private Helper] Uploads media and returns the public URLs.
+  Future<Map<String, String?>> _uploadMediaAndGetUrls({
     required String userId,
     required File mediaFile,
     required String mediaType,
+    required String fileExt,
   }) async {
     // Generate unique file path *once*
-    final fileExt = mediaFile.path.split('.').last;
     final fileName = '${const Uuid().v4()}.$fileExt';
     final mediaUploadPath = 'posts/media/$userId/$fileName';
     String? mediaUrl;
@@ -227,66 +305,10 @@ class PostsRemoteDataSource {
           } catch (_) {}
         }
       }
-
-      // --- 3. Update Post with URLs & 'completed' status ---
-      await client
-          .from('posts')
-          .update({
-            'media_url': mediaUrl,
-            'thumbnail_url': thumbnailUrl,
-            'upload_status': 'completed',
-          })
-          .eq('id', postId);
-
-      AppLogger.info('Media processing complete for post: $postId');
-      MediaProgressNotifier.notifyDone();
-    } catch (e, st) {
-      AppLogger.error(
-        'Media processing failed for post: $postId. Scheduling background retry.',
-        error: e,
-        stackTrace: st,
-      );
-      MediaProgressNotifier.notifyError(
-        'Upload failed, will retry in background.',
-      );
-
-      // --- 4. Schedule Background Retry (Workmanager) ---
-      String? localCopyPath;
-      try {
-        // Copy file to a persistent temp location for the worker
-        final tempDir = await getTemporaryDirectory();
-        localCopyPath = '${tempDir.path}/$fileName';
-        await mediaFile.copy(localCopyPath);
-
-        // Schedule the worker
-        Workmanager().registerOneOffTask(
-          'upload_post_media_$postId',
-          'upload_post_media_task', // Name of your task in main.dart
-          inputData: {
-            'postId': postId,
-            'userId': userId,
-            'mediaType': mediaType,
-            'filePath': localCopyPath,
-            'mediaUploadPath': mediaUploadPath,
-          },
-        );
-
-        // Update post status to 'pending_retry'
-        await client
-            .from('posts')
-            .update({'upload_status': 'pending_retry'})
-            .eq('id', postId);
-      } catch (copyError) {
-        AppLogger.error(
-          'Failed to schedule background retry for post $postId: $copyError',
-          error: copyError,
-        );
-        // Mark as failed if we can't even schedule the retry
-        await client
-            .from('posts')
-            .update({'upload_status': 'failed'})
-            .eq('id', postId);
-      }
+      return {'mediaUrl': mediaUrl, 'thumbnailUrl': thumbnailUrl};
+    } catch (e) {
+      AppLogger.error('Media processing failed during upload phase: $e');
+      throw ServerException('Media upload failed: $e');
     }
   }
 
@@ -298,21 +320,18 @@ class PostsRemoteDataSource {
     try {
       final fileSize = await file.length();
       AppLogger.info(
-        'Uploading file to path: $uploadPath (size=${fileSize} bytes)',
+        'Worker: Uploading file to path: $uploadPath (size=$fileSize bytes)',
       );
-
       await client.storage.from('posts').upload(uploadPath, file);
       final url = client.storage.from('posts').getPublicUrl(uploadPath);
-
-      AppLogger.info('File uploaded successfully, url: $url');
+      AppLogger.info('Worker: File uploaded successfully, url: $url');
       return url;
     } catch (e, st) {
       AppLogger.error(
-        'Upload failed for path: $uploadPath',
+        'Worker: Upload failed for path: $uploadPath',
         error: e,
         stackTrace: st,
       );
-      // Re-throw to be caught by _handleMediaProcessing
       throw ServerException('File upload failed: $e');
     }
   }
@@ -328,15 +347,14 @@ class PostsRemoteDataSource {
         quality: 75,
         maxHeight: 720,
       );
-
       if (thumbPath == null) {
         throw Exception('Thumbnail generation returned null');
       }
-      AppLogger.info('Thumbnail generated at: $thumbPath');
+      AppLogger.info('Worker: Thumbnail generated at: $thumbPath');
       return File(thumbPath);
     } catch (e, st) {
       AppLogger.error(
-        'Thumbnail generation failed: $e',
+        'Worker: Thumbnail generation failed: $e',
         error: e,
         stackTrace: st,
       );
@@ -378,9 +396,6 @@ class PostsRemoteDataSource {
   }
 
   // ==================== RPC for Feed Retrieval ====================
-  // These methods will now receive the 'upload_status' from the RPCs
-  // and pass it to the PostModel.
-  // ================================================================
   Future<List<PostModel>> getFeed({
     required String currentUserId,
     int pageSize = 20,
@@ -490,16 +505,14 @@ class PostsRemoteDataSource {
     }
   }
 
-  // ==================== Share Count (FIXED) ====================
+  // ==================== Share Count ====================
   Future<void> sharePost({required String postId}) async {
     try {
       AppLogger.info('Attempting to share post: $postId');
       final shareUrl = 'Check this post: https://myapp.com/post/$postId';
-
-      // ⚠️ FIX: Use shareWithResult from the 'share_plus' package
-      final result = await Share.share(shareUrl);
-
-      // Only increment the count if the share was successful.
+      final result = await SharePlus.instance.share(
+        ShareParams(text: shareUrl),
+      );
       if (result.status == ShareResultStatus.success) {
         AppLogger.info('Post shared, incrementing count via RPC...');
         await _callRpcWithRetry(
@@ -519,8 +532,6 @@ class PostsRemoteDataSource {
   Future<void> deletePost(String postId) async {
     try {
       AppLogger.info('Attempting to delete post: $postId');
-      // Note: RLS will handle authorization.
-      // We must also handle media deletion (e.g., via Storage triggers)
       await client.from('posts').delete().eq('id', postId);
       AppLogger.info('Post deleted successfully: $postId');
     } catch (e) {
@@ -534,8 +545,6 @@ class PostsRemoteDataSource {
   /// Stream for new posts being created.
   Stream<PostModel> streamNewPosts() {
     AppLogger.info('Setting up real-time stream for new posts (coalesced)');
-
-    // --- INJECTED: use current logged-in Supabase user id from the provided client
     final currentUserId = client.auth.currentUser?.id;
     if (currentUserId == null) {
       AppLogger.warning(
@@ -543,18 +552,15 @@ class PostsRemoteDataSource {
       );
       return Stream<PostModel>.empty();
     }
-
     if (_newPostsController != null && !_newPostsController!.isClosed) {
       return _newPostsController!.stream;
     }
     _newPostsController = StreamController<PostModel>.broadcast();
     final channel = client.channel('realtime:posts:inserts');
     _postsInsertsChannel = channel;
-
     final List<String> idBuffer = [];
     Timer? flushTimer;
     bool isFlushing = false;
-
     Future<void> flushIds() async {
       if (isFlushing) return;
       isFlushing = true;
@@ -565,7 +571,6 @@ class PostsRemoteDataSource {
         isFlushing = false;
         return;
       }
-
       for (int i = 0; i < ids.length; i += _maxBatchSize) {
         final end = (i + _maxBatchSize < ids.length)
             ? i + _maxBatchSize
@@ -650,7 +655,6 @@ class PostsRemoteDataSource {
           },
         )
         .subscribe();
-
     _newPostsController!.onCancel = () async {
       try {
         flushTimer?.cancel();
@@ -670,7 +674,7 @@ class PostsRemoteDataSource {
     return _newPostsController!.stream;
   }
 
-  /// Stream for post updates (likes_count, comments_count, etc.)
+  /// Stream for post updates (likes_count, comments_count, etc.) - UPDATED
   Stream<Map<String, dynamic>> streamPostUpdates() {
     AppLogger.info('Setting up real-time stream for post updates');
     if (_postsController != null && !_postsController!.isClosed) {
@@ -679,7 +683,6 @@ class PostsRemoteDataSource {
     _postsController = StreamController<Map<String, dynamic>>.broadcast();
     final channel = client.channel('realtime:posts:updates');
     _postsUpdatesChannel = channel;
-
     channel
         .onPostgresChanges(
           event: PostgresChangeEvent.update,
@@ -690,15 +693,14 @@ class PostsRemoteDataSource {
               final newRec = payload.newRecord;
               final id = newRec['id'] as String?;
               if (id == null) return;
-              // Also pass upload_status for UI updates
               final data = {
                 'id': id,
                 'likes_count': newRec['likes_count'],
                 'comments_count': newRec['comments_count'],
                 'favorites_count': newRec['favorites_count'],
                 'shares_count': newRec['shares_count'],
-                'upload_status': newRec['upload_status'], // 🌟 Pass status
-                'media_url': newRec['media_url'], // 🌟 Pass URLs
+                // REMOVED: 'upload_status'
+                'media_url': newRec['media_url'],
                 'thumbnail_url': newRec['thumbnail_url'],
               };
               if (!(_postsController?.isClosed ?? true)) {
@@ -714,7 +716,6 @@ class PostsRemoteDataSource {
           },
         )
         .subscribe();
-
     _postsController!.onCancel = () async {
       try {
         if (!(_postsController?.hasListener ?? false)) {
@@ -743,7 +744,6 @@ class PostsRemoteDataSource {
     _postDeletionsController = StreamController<String>.broadcast();
     final channel = client.channel('realtime:posts:deletions');
     _postDeletionsChannel = channel;
-
     channel
         .onPostgresChanges(
           event: PostgresChangeEvent.delete,
@@ -766,7 +766,6 @@ class PostsRemoteDataSource {
           },
         )
         .subscribe();
-
     _postDeletionsController!.onCancel = () async {
       try {
         if (!(_postDeletionsController?.hasListener ?? false)) {

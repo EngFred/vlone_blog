@@ -91,12 +91,14 @@ class PostActions extends StatelessWidget {
               BlocBuilder<LikesBloc, LikesState>(
                 buildWhen: (prev, curr) {
                   if (curr is LikesInitial) return true;
-                  if (curr is LikeUpdated && curr.postId == post.id)
+                  if (curr is LikeUpdated && curr.postId == post.id) {
                     return true;
+                  }
                   if (curr is LikeError &&
                       curr.postId == post.id &&
-                      curr.shouldRevert)
+                      curr.shouldRevert) {
                     return true;
+                  }
                   return false;
                 },
                 builder: (context, state) {
@@ -166,12 +168,14 @@ class PostActions extends StatelessWidget {
           BlocBuilder<FavoritesBloc, FavoritesState>(
             buildWhen: (prev, curr) {
               if (curr is FavoritesInitial) return true;
-              if (curr is FavoriteUpdated && curr.postId == post.id)
+              if (curr is FavoriteUpdated && curr.postId == post.id) {
                 return true;
+              }
               if (curr is FavoriteError &&
                   curr.postId == post.id &&
-                  curr.shouldRevert)
+                  curr.shouldRevert) {
                 return true;
+              }
               return false;
             },
             builder: (context, state) {

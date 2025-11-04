@@ -138,8 +138,9 @@ class _FeedPageState extends State<FeedPage>
         if (head.isNotEmpty) _posts.insertAll(0, head);
         for (int i = 0; i < oldIds.length; i++) {
           final newIndex = headLength + i;
-          if (_posts[newIndex] != newPosts[newIndex])
+          if (_posts[newIndex] != newPosts[newIndex]) {
             _posts[newIndex] = newPosts[newIndex];
+          }
         }
       });
       return;
@@ -185,7 +186,7 @@ class _FeedPageState extends State<FeedPage>
     }
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         title: const UserGreetingTitle(),
         centerTitle: false,
@@ -219,7 +220,7 @@ class _FeedPageState extends State<FeedPage>
           ),
         ],
         child: RefreshIndicator(
-          backgroundColor: Theme.of(context).colorScheme.background,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           color: Theme.of(context).colorScheme.primary,
           onRefresh: _onRefresh,
           child: Builder(

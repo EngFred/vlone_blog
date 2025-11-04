@@ -337,8 +337,9 @@ class _ReelsPageState extends State<ReelsPage>
                   );
                 }
 
-                if (reelsState is ReelsLoading || reelsState is ReelsInitial)
+                if (reelsState is ReelsLoading || reelsState is ReelsInitial) {
                   return const Center(child: LoadingIndicator(size: 32));
+                }
                 if (reelsState is ReelsError) {
                   return CustomErrorWidget(
                     message: reelsState.message,

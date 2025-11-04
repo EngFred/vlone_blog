@@ -26,7 +26,7 @@ class EmptyStateWidget extends StatelessWidget {
     final effectiveIconColor =
         iconColor ?? theme.colorScheme.onSurface.withOpacity(0.6);
     final effectiveBackgroundColor =
-        backgroundColor ?? theme.colorScheme.background;
+        backgroundColor ?? theme.colorScheme.surface;
 
     return Container(
       color: effectiveBackgroundColor,
@@ -39,7 +39,9 @@ class EmptyStateWidget extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(
+                    0.3,
+                  ),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, size: 48.0, color: effectiveIconColor),

@@ -13,20 +13,23 @@ class PostsRepositoryImpl implements PostsRepository {
   PostsRepositoryImpl(this.remoteDataSource);
 
   @override
-  Future<Either<Failure, PostEntity>> createPost({
+  // 🎯 FIX: Changed return type from PostEntity to Unit
+  Future<Either<Failure, Unit>> createPost({
     required String userId,
     String? content,
     File? mediaFile,
     String? mediaType,
   }) async {
     try {
-      final postModel = await remoteDataSource.createPost(
+      // 🎯 FIX: Await the void-returning function, no need to capture a result
+      await remoteDataSource.createPost(
         userId: userId,
         content: content,
         mediaFile: mediaFile,
         mediaType: mediaType,
       );
-      return Right(postModel.toEntity());
+      // 🎯 FIX: Return Right(unit) to signify successful scheduling
+      return const Right(unit);
     } on ServerException catch (e) {
       AppLogger.error(
         'ServerException in createPost repo: ${e.message}',

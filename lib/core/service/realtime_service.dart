@@ -570,8 +570,10 @@ class RealtimeService {
 
   //Public method to unsubscribe
   Future<void> unsubscribeFromProfile(String userId) async {
-    if (userId == _currentUserId || !_additionalProfileSubs.containsKey(userId))
+    if (userId == _currentUserId ||
+        !_additionalProfileSubs.containsKey(userId)) {
       return;
+    }
 
     AppLogger.info('Unsubscribing from profile updates for: $userId');
     await _additionalProfileSubs[userId]?.cancel();

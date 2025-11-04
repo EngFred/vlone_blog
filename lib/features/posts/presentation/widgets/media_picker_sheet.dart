@@ -14,6 +14,8 @@ class MediaPickerSheet extends StatelessWidget {
     required VoidCallback onTap,
     required Color color,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
@@ -27,19 +29,20 @@ class MediaPickerSheet extends StatelessWidget {
         ),
         title: Text(
           title,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: colorScheme.onSurface,
+          ),
         ),
         subtitle: Text(
           subtitle,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
         ),
         onTap: onTap,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        tileColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+        tileColor: colorScheme.surfaceContainerHighest,
       ),
     );
   }
@@ -47,10 +50,11 @@ class MediaPickerSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SafeArea(
@@ -64,7 +68,7 @@ class MediaPickerSheet extends StatelessWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.outline.withOpacity(0.3),
+                  color: colorScheme.outline.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -73,13 +77,14 @@ class MediaPickerSheet extends StatelessWidget {
                 'Add Media',
                 style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 'Choose from your gallery',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 24),
@@ -120,14 +125,14 @@ class MediaPickerSheet extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     side: BorderSide(
-                      color: theme.colorScheme.outline.withOpacity(0.3),
+                      color: colorScheme.outline.withOpacity(0.3),
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                   child: Text(
                     'Cancel',
                     style: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.onSurface,
+                      color: colorScheme.onSurface,
                     ),
                   ),
                 ),

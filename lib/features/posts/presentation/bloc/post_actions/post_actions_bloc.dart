@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
@@ -11,9 +9,7 @@ import 'package:vlone_blog_app/features/posts/domain/usecases/create_post_usecas
 import 'package:vlone_blog_app/features/posts/domain/usecases/delete_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
-
 import 'package:vlone_blog_app/core/utils/media_progress_notifier.dart';
-
 part 'post_actions_event.dart';
 part 'post_actions_state.dart';
 
@@ -60,7 +56,8 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
           add(
             ProcessingChanged(
               processing: true,
-              message: progress.message ?? 'Uploading...',
+              // 🎯 IMPROVED MESSAGE: Reflects that the work is starting/scheduled
+              message: progress.message ?? 'Scheduling upload...',
               percent: null,
             ),
           );
@@ -207,7 +204,15 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
       return;
     }
 
+    // 🎯 FIX: Emit PostActionLoading AND set isProcessing before calling the Use Case
     emit(const PostActionLoading());
+    // Use form state to show processing message before the async call
+    emit(
+      form.copyWith(
+        isProcessing: true,
+        processingMessage: 'Scheduling post...',
+      ),
+    );
 
     final result = await createPostUseCase(
       CreatePostParams(
@@ -223,13 +228,17 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
         final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
         AppLogger.error('Create post failed: $friendlyMessage');
         emit(PostActionError(friendlyMessage));
-        // re-emit form state so UI can continue
-        emit(form);
+        // Reset processing and re-emit form state on failure
+        emit(
+          form.copyWith(isProcessing: false, mediaFile: null, mediaType: null),
+        );
       },
-      (post) {
-        AppLogger.info('Post created successfully: ${post.id}');
-        emit(PostCreatedSuccess(post));
-        // reset form after successful create
+      // 🎯 FIX: Success returns Unit (_), not PostEntity (post)
+      (_) {
+        AppLogger.info('Post creation scheduled successfully. Worker started.');
+        // 🎯 FIX: Emit the new success state for scheduling
+        emit(const PostCreationScheduledSuccess());
+        // 🎯 FIX: Reset form immediately after scheduling so the user can leave the page
         emit(const PostFormState());
       },
     );

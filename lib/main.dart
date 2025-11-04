@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
@@ -8,6 +6,7 @@ import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/service/secure_storage.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
+import 'package:vlone_blog_app/features/posts/data/datasources/posts_remote_datasource.dart';
 import 'package:vlone_blog_app/features/settings/presentation/bloc/settings_bloc.dart';
 import 'core/presentation/theme/app_theme.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
@@ -25,11 +24,10 @@ void backgroundCallbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     AppLogger.info('Background task started: $task');
 
-    // -----------------------------------------------------------------
-    // 🌟 THIS IS THE LOGIC YOU NEED TO ADD 🌟
-    // -----------------------------------------------------------------
-    if (task == 'upload_post_media_task') {
+    // 🌟 THIS IS THE NEW WORKER LOGIC 🌟
+    if (task == 'create_new_post_task') {
       // 1. Initialize Supabase *in this background isolate*
+      // This uses your existing SecureStorage class, which is correct.
       await Supabase.initialize(
         url: Constants.supabaseUrl,
         anonKey: Constants.supabaseAnonKey,
@@ -37,68 +35,41 @@ void backgroundCallbackDispatcher() {
       );
       final client = Supabase.instance.client;
 
-      // 2. Get the data
-      final input = inputData ?? {};
-      final postId = input['postId'] as String?;
-      final filePath = input['filePath'] as String?;
-      final uploadPath = input['mediaUploadPath'] as String?;
-      // Note: We don't need userId or mediaType for the re-upload
+      // 2. Instantiate the data source
+      // We pass the newly initialized client to it.
+      final dataSource = PostsRemoteDataSource(client);
 
-      if (postId == null || filePath == null || uploadPath == null) {
-        AppLogger.error('Background task: Missing input data. Task failed.');
-        return Future.value(false); // Task failed, will retry
-      }
-
-      // 3. Try to perform the upload
+      AppLogger.info('Executing background post creation...');
       try {
-        final file = File(filePath);
-        if (!await file.exists()) {
-          AppLogger.error(
-            'Background task: File $filePath does not exist. Task failed permanently.',
-          );
-          return Future.value(
-            true,
-          ); // Return true so it doesn't retry a impossible task
-        }
-
-        AppLogger.info('Background task: Uploading $filePath to $uploadPath');
-        await client.storage.from('posts').upload(uploadPath, file);
-        final mediaUrl = client.storage.from('posts').getPublicUrl(uploadPath);
-
-        // 4. Update the post in the database
-        await client
-            .from('posts')
-            .update({'media_url': mediaUrl, 'upload_status': 'completed'})
-            .eq('id', postId);
-
-        AppLogger.info('Background task: Upload for post $postId complete.');
-        await file.delete(); // Clean up the temp file
-        return Future.value(true); // Task succeeded
+        // 3. Delegate all logic to the data source
+        // This function will contain the compress, upload, and insert logic
+        final success = await dataSource.executeCreatePostFromWorker(inputData);
+        return success; // Returns true (success) or false (retryable failure)
       } catch (e, st) {
         AppLogger.error(
-          'Background task: Upload failed for post $postId: $e',
+          'Background task: create_new_post_task unhandled failure: $e',
           error: e,
           stackTrace: st,
         );
-        // On failure, update status to 'failed' so UI can show error
-        try {
-          await client
-              .from('posts')
-              .update({'upload_status': 'failed'})
-              .eq('id', postId);
-        } catch (_) {}
-
-        return Future.value(false); // Task failed, Workmanager will retry
+        return false; // Task failed, Workmanager will retry
       }
     }
-    // -----------------------------------------------------------------
-    // 🌟 END OF NEW LOGIC 🌟
-    // -----------------------------------------------------------------
+
+    // This is your old, obsolete task.
+    // We'll log it as a warning and return true so it doesn't retry.
+    if (task == 'upload_post_media_task') {
+      AppLogger.warning('Obsolete task executed: $task. Ignoring.');
+      return true; // Acknowledge task, do not retry
+    }
 
     AppLogger.warning('Background task: No handler for task $task');
     return Future.value(true); // Acknowledge task was seen
   });
 }
+
+//
+// --- THE REST OF YOUR main.dart FILE (UNCHANGED) ---
+//
 
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -115,7 +86,9 @@ void main() async {
   await di.initRealtime();
   // Parallelize Workmanager and other feature inits
   await Future.wait([
-    Workmanager().initialize(backgroundCallbackDispatcher),
+    Workmanager().initialize(
+      backgroundCallbackDispatcher,
+    ), // 🌟 This is now correct
     di.initPosts(),
     di.initLikes(),
     di.initFavorites(),
@@ -132,12 +105,14 @@ void main() async {
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
   @override
   State<MyApp> createState() => _MyAppState();
 }
 
 class _MyAppState extends State<MyApp> {
   bool _didInitialAuthNavigate = false;
+
   @override
   Widget build(BuildContext context) {
     // 1. AuthBloc remains at the root

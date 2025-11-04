@@ -131,16 +131,16 @@ class CommentsRepositoryImpl implements CommentsRepository {
       children.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     }
 
-    CommentEntity _buildNode(CommentEntity node) {
+    CommentEntity buildNode(CommentEntity node) {
       final children = childrenMap[node.id] ?? [];
       final builtChildren = children.map((child) {
         final childWithParent = child.copyWith(parentUsername: node.username);
-        return _buildNode(childWithParent);
+        return buildNode(childWithParent);
       }).toList();
 
       return node.copyWith(replies: builtChildren);
     }
 
-    return roots.map(_buildNode).toList();
+    return roots.map(buildNode).toList();
   }
 }

@@ -103,8 +103,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
         ? theme.colorScheme.onSurface.withOpacity(0.08)
         : theme.colorScheme.outline.withOpacity(0.6);
     final fillColor = isLight
-        ? theme.colorScheme.surfaceVariant.withOpacity(0.04)
-        : theme.colorScheme.surfaceVariant.withOpacity(0.06);
+        ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.04)
+        : theme.colorScheme.surfaceContainerHighest.withOpacity(0.06);
     return InputDecoration(
       labelText: labelText,
       hintText: hintText,
@@ -234,7 +234,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                               CircleAvatar(
                                 radius: 60,
                                 backgroundColor:
-                                    theme.colorScheme.surfaceVariant,
+                                    theme.colorScheme.surfaceContainerHighest,
                                 backgroundImage: state.selectedImage != null
                                     ? FileImage(File(state.selectedImage!.path))
                                     : (state.initialImageUrl != null

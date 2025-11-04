@@ -113,7 +113,7 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
                   ),
                   child: Container(
                     // FIX: Replaced hardcoded dark gradient with theme-aware color
-                    color: theme.colorScheme.background,
+                    color: theme.colorScheme.surface,
                     child: Column(
                       children: [
                         // Enhanced Header
@@ -184,7 +184,9 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
                                       height: 40,
                                       decoration: BoxDecoration(
                                         // FIX: Replaced Colors.grey[800] with theme-aware color
-                                        color: theme.colorScheme.surfaceVariant,
+                                        color: theme
+                                            .colorScheme
+                                            .surfaceContainerHighest,
                                         shape: BoxShape.circle,
                                       ),
                                       child: IconButton(
