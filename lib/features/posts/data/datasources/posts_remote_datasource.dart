@@ -233,7 +233,6 @@ class PostsRemoteDataSource {
         'media_height': mediaHeight,
         'media_url': mediaUrl,
         'thumbnail_url': thumbnailUrl,
-        // REMOVED: 'upload_status'
       };
 
       await client.from('posts').insert(postData);
@@ -674,7 +673,7 @@ class PostsRemoteDataSource {
     return _newPostsController!.stream;
   }
 
-  /// Stream for post updates (likes_count, comments_count, etc.) - UPDATED
+  /// Stream for post updates (likes_count, comments_count, etc.)
   Stream<Map<String, dynamic>> streamPostUpdates() {
     AppLogger.info('Setting up real-time stream for post updates');
     if (_postsController != null && !_postsController!.isClosed) {
@@ -699,7 +698,6 @@ class PostsRemoteDataSource {
                 'comments_count': newRec['comments_count'],
                 'favorites_count': newRec['favorites_count'],
                 'shares_count': newRec['shares_count'],
-                // REMOVED: 'upload_status'
                 'media_url': newRec['media_url'],
                 'thumbnail_url': newRec['thumbnail_url'],
               };

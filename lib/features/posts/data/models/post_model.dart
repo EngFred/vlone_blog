@@ -23,8 +23,6 @@ class PostModel {
   final int? mediaWidth;
   final int? mediaHeight;
 
-  // REMOVED: final String uploadStatus;
-
   PostModel({
     required this.id,
     required this.userId,
@@ -46,7 +44,6 @@ class PostModel {
     this.avatarUrl,
     this.mediaWidth,
     this.mediaHeight,
-    // REMOVED: this.uploadStatus = 'none',
   });
 
   factory PostModel.fromMap(Map<String, dynamic> map) {
@@ -111,7 +108,6 @@ class PostModel {
       avatarUrl: profileSource?['profile_image_url'] as String?,
       mediaWidth: safeNullableInt(map['media_width']),
       mediaHeight: safeNullableInt(map['media_height']),
-      // REMOVED: uploadStatus: map['upload_status'] as String? ?? 'none',
     );
   }
 

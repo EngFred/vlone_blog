@@ -24,8 +24,6 @@ class PostEntity extends Equatable {
   final int? mediaWidth;
   final int? mediaHeight;
 
-  // REMOVED: final String uploadStatus;
-
   const PostEntity({
     required this.id,
     required this.userId,
@@ -47,7 +45,6 @@ class PostEntity extends Equatable {
     this.avatarUrl,
     this.mediaWidth,
     this.mediaHeight,
-    // REMOVED: this.uploadStatus = 'none',
   });
 
   PostEntity copyWith({
@@ -71,7 +68,6 @@ class PostEntity extends Equatable {
     String? avatarUrl,
     int? mediaWidth,
     int? mediaHeight,
-    // REMOVED: String? uploadStatus,
   }) {
     return PostEntity(
       id: id ?? this.id,
@@ -94,7 +90,6 @@ class PostEntity extends Equatable {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       mediaWidth: mediaWidth ?? this.mediaWidth,
       mediaHeight: mediaHeight ?? this.mediaHeight,
-      // REMOVED: uploadStatus: uploadStatus ?? this.uploadStatus,
     );
   }
 

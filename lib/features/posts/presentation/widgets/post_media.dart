@@ -65,7 +65,6 @@ class _PostMediaState extends State<PostMedia>
       // Check for mediaUrl presence implicitly handled inside _loadImageAspectRatio
       _loadImageAspectRatio();
     }
-    // For video: we'll set aspect ratio after controller initialization if available
   }
 
   void _loadImageAspectRatio() {
@@ -413,15 +412,12 @@ class _PostMediaState extends State<PostMedia>
     final heroTag = 'media_${widget.post.id}_${identityHashCode(this)}';
     final boxFit = _getBoxFit();
 
-    // 🌟 REMOVED: final uploadStatus = widget.post.uploadStatus;
     final mediaType = widget.post.mediaType;
 
     // 1. If no media type (text-only post), render nothing.
-    // 2. If mediaType exists but mediaUrl is missing (the new "failed/processing" state, if the DB record was created too early), render nothing or an error.
     if (mediaType == 'none' ||
         mediaType == null ||
         widget.post.mediaUrl == null) {
-      // In the new world, if a media-type post has no mediaUrl, it's an error/incomplete state.
       // Since the post only exists *after* the worker runs, this shouldn't happen often.
       // We will default to a blank space (SizedBox.shrink) for safety, but you could show an error here if desired.
       return const SizedBox.shrink();
