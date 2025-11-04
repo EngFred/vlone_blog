@@ -119,6 +119,5 @@ class PostEntity extends Equatable {
     avatarUrl,
     mediaWidth,
     mediaHeight,
-    // REMOVED: uploadStatus,
   ];
 }

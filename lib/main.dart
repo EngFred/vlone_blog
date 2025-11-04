@@ -67,10 +67,6 @@ void backgroundCallbackDispatcher() {
   });
 }
 
-//
-// --- THE REST OF YOUR main.dart FILE (UNCHANGED) ---
-//
-
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
