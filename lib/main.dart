@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
@@ -21,8 +23,80 @@ import 'router.dart';
 @pragma('vm:entry-point')
 void backgroundCallbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
-    AppLogger.info('Executing background task: $task');
-    return Future.value(true);
+    AppLogger.info('Background task started: $task');
+
+    // -----------------------------------------------------------------
+    // 🌟 THIS IS THE LOGIC YOU NEED TO ADD 🌟
+    // -----------------------------------------------------------------
+    if (task == 'upload_post_media_task') {
+      // 1. Initialize Supabase *in this background isolate*
+      await Supabase.initialize(
+        url: Constants.supabaseUrl,
+        anonKey: Constants.supabaseAnonKey,
+        authOptions: FlutterAuthClientOptions(localStorage: SecureStorage()),
+      );
+      final client = Supabase.instance.client;
+
+      // 2. Get the data
+      final input = inputData ?? {};
+      final postId = input['postId'] as String?;
+      final filePath = input['filePath'] as String?;
+      final uploadPath = input['mediaUploadPath'] as String?;
+      // Note: We don't need userId or mediaType for the re-upload
+
+      if (postId == null || filePath == null || uploadPath == null) {
+        AppLogger.error('Background task: Missing input data. Task failed.');
+        return Future.value(false); // Task failed, will retry
+      }
+
+      // 3. Try to perform the upload
+      try {
+        final file = File(filePath);
+        if (!await file.exists()) {
+          AppLogger.error(
+            'Background task: File $filePath does not exist. Task failed permanently.',
+          );
+          return Future.value(
+            true,
+          ); // Return true so it doesn't retry a impossible task
+        }
+
+        AppLogger.info('Background task: Uploading $filePath to $uploadPath');
+        await client.storage.from('posts').upload(uploadPath, file);
+        final mediaUrl = client.storage.from('posts').getPublicUrl(uploadPath);
+
+        // 4. Update the post in the database
+        await client
+            .from('posts')
+            .update({'media_url': mediaUrl, 'upload_status': 'completed'})
+            .eq('id', postId);
+
+        AppLogger.info('Background task: Upload for post $postId complete.');
+        await file.delete(); // Clean up the temp file
+        return Future.value(true); // Task succeeded
+      } catch (e, st) {
+        AppLogger.error(
+          'Background task: Upload failed for post $postId: $e',
+          error: e,
+          stackTrace: st,
+        );
+        // On failure, update status to 'failed' so UI can show error
+        try {
+          await client
+              .from('posts')
+              .update({'upload_status': 'failed'})
+              .eq('id', postId);
+        } catch (_) {}
+
+        return Future.value(false); // Task failed, Workmanager will retry
+      }
+    }
+    // -----------------------------------------------------------------
+    // 🌟 END OF NEW LOGIC 🌟
+    // -----------------------------------------------------------------
+
+    AppLogger.warning('Background task: No handler for task $task');
+    return Future.value(true); // Acknowledge task was seen
   });
 }
 
@@ -50,7 +124,7 @@ void main() async {
     di.initFollowers(),
     di.initUsers(),
     di.initNotifications(),
-    di.initSettings(), // Added
+    di.initSettings(),
   ]);
   AppLogger.info('Starting app');
   runApp(const MyApp());
@@ -118,7 +192,6 @@ class _MyAppState extends State<MyApp> {
                           'Skipping navigation to feed because initial auth navigation already occurred.',
                         );
                       }
-                      // -------------------------------------------------------------
                       // START RealtimeService ONCE at app-level for the authenticated user.
                       try {
                         final realtime = di.sl<RealtimeService>();

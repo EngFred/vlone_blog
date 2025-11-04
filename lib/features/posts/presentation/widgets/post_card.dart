@@ -21,7 +21,6 @@ class PostCard extends StatefulWidget {
 }
 
 class _PostCardState extends State<PostCard> {
-  static const double _kMediaDefaultHeight = 420.0;
   late PostEntity _currentPost;
 
   @override
@@ -147,65 +146,35 @@ class _PostCardState extends State<PostCard> {
         ),
       ],
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-        child: PhysicalModel(
-          color: Colors.transparent,
-          elevation: 8,
-          shadowColor: Colors.black.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Theme.of(context).colorScheme.surface,
-                  Theme.of(context).colorScheme.surface.withOpacity(0.9),
-                ],
+        margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            PostHeader(post: _currentPost, currentUserId: widget.userId),
+            // --- NEW: Expandable / collapsible text for long text-only posts ---
+            if (_currentPost.content != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 8,
+                ),
+                child: ExpandableText(
+                  text: _currentPost.content!,
+                  textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    height: 1.4,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.8),
+                  ),
+                  collapsedMaxLines: 3, // Adjusted for Instagram-like brevity
+                ),
               ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
-                width: 1,
-              ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  PostHeader(post: _currentPost, currentUserId: widget.userId),
-
-                  // --- NEW: Expandable / collapsible text for long text-only posts ---
-                  if (_currentPost.content != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20.0,
-                        vertical: 12,
-                      ),
-                      child: ExpandableText(
-                        text: _currentPost.content!,
-                        textStyle: Theme.of(context).textTheme.bodyLarge
-                            ?.copyWith(
-                              height: 1.5,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurface.withOpacity(0.8),
-                            ),
-                        collapsedMaxLines: 4, // default collapsed lines
-                      ),
-                    ),
-
-                  if (_currentPost.mediaUrl != null) const SizedBox(height: 4),
-                  if (_currentPost.mediaUrl != null)
-                    PostMedia(post: _currentPost, height: _kMediaDefaultHeight),
-                  const SizedBox(height: 12),
-                  PostActions(post: _currentPost, userId: widget.userId),
-                  const SizedBox(height: 12),
-                ],
-              ),
-            ),
-          ),
+            if (_currentPost.mediaUrl != null) const SizedBox(height: 4),
+            if (_currentPost.mediaUrl != null) PostMedia(post: _currentPost),
+            const SizedBox(height: 8),
+            PostActions(post: _currentPost, userId: widget.userId),
+            const SizedBox(height: 12),
+          ],
         ),
       ),
     );

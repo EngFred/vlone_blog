@@ -1,3 +1,4 @@
+// lib/features/posts/presentation/widgets/post_media.dart
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -31,41 +32,137 @@ class _PostMediaState extends State<PostMedia>
   VideoPlayerController? _videoController;
   bool _initialized = false;
   bool _isInitializing = false;
+  bool _hasError = false;
   final VideoControllerManager _videoManager = VideoControllerManager();
   bool _isDisposed = false;
-  bool _isOpeningFull =
-      false; // Flag to ignore visibility pause during nav to full
+  bool _isOpeningFull = false;
+
+  double? _aspectRatio;
+
+  // Trackers for image stream cleanup
+  ImageStream? _imageStream;
+  ImageStreamListener? _imageStreamListener;
 
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // 1) Prefer server-provided dimensions (immediate)
+    try {
+      final w = widget.post.mediaWidth;
+      final h = widget.post.mediaHeight;
+      if (w != null && h != null && w > 0 && h > 0) {
+        _aspectRatio = w.toDouble() / h.toDouble();
+      }
+    } catch (_) {
+      // ignore and continue to fallback
+    }
+
+    // 2) If we don't have server dims and it's an image, attempt to load image dimensions (async)
+    if (_aspectRatio == null && widget.post.mediaType == 'image') {
+      _loadImageAspectRatio();
+    }
+    // For video: we'll set aspect ratio after controller initialization if available
+  }
+
+  void _loadImageAspectRatio() {
+    if (widget.post.mediaUrl == null) {
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+        });
+      }
+      return;
+    }
+
+    final imageProvider = CachedNetworkImageProvider(widget.post.mediaUrl!);
+
+    _imageStreamListener = ImageStreamListener(
+      (ImageInfo info, bool synchronousCall) {
+        if (mounted && _aspectRatio == null) {
+          final newAspectRatio =
+              info.image.width.toDouble() / info.image.height.toDouble();
+          setState(() {
+            _aspectRatio = newAspectRatio;
+          });
+        }
+        _imageStream?.removeListener(_imageStreamListener!);
+      },
+      onError: (dynamic exception, StackTrace? stackTrace) {
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+          });
+        }
+        _imageStream?.removeListener(_imageStreamListener!);
+      },
+    );
+
+    _imageStream = imageProvider.resolve(const ImageConfiguration());
+    _imageStream!.addListener(_imageStreamListener!);
+  }
 
   Future<void> _ensureControllerInitialized() async {
     if (_isDisposed || !mounted) return;
     if (_videoController != null && _initialized) return;
     if (_isInitializing) return;
+
     _isInitializing = true;
+    _hasError = false;
+
     try {
       final controller = await _videoManager.getController(
         widget.post.id,
         widget.post.mediaUrl!,
       );
+
       if (_isDisposed || !mounted) {
         try {
           _videoManager.releaseController(widget.post.id);
         } catch (_) {}
+        _isInitializing = false;
         return;
       }
-      if (mounted) {
+
+      _videoController = controller;
+      _initialized = true;
+
+      // If we don't already have an aspect ratio, set from video controller
+      if (widget.post.mediaType == 'video' &&
+          _aspectRatio == null &&
+          controller.value.isInitialized) {
         setState(() {
-          _videoController = controller;
-          _initialized = true;
+          _aspectRatio = controller.value.aspectRatio;
         });
+      } else {
+        // If controller isn't initialized yet, listen for initialization
+        if (widget.post.mediaType == 'video' &&
+            !controller.value.isInitialized) {
+          controller.addListener(() {
+            if (!mounted) return;
+            if (_aspectRatio == null && controller.value.isInitialized) {
+              setState(() {
+                _aspectRatio = controller.value.aspectRatio;
+              });
+            }
+            // when playing state changes, rebuild to update play button overlay etc
+            if (mounted) setState(() {});
+          });
+        }
       }
     } catch (e) {
-      // ignore
+      _hasError = true;
     } finally {
-      _isInitializing = false;
-      if (mounted) setState(() {});
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _isInitializing = false;
+        });
+      } else {
+        _isInitializing = false;
+      }
     }
   }
 
@@ -88,20 +185,22 @@ class _PostMediaState extends State<PostMedia>
       });
       return;
     }
+
     final isPlaying = VideoPlaybackManager.isPlaying(_videoController!);
+
     if (isPlaying) {
       if (_videoController!.value.isInitialized) {
         VideoPlaybackManager.pause();
       }
-      if (mounted) setState(() {});
     } else {
       if (_videoController!.value.isInitialized) {
         VideoPlaybackManager.play(_videoController!, () {
           if (mounted && !_isDisposed) setState(() {});
         });
       }
-      if (mounted) setState(() {});
     }
+
+    if (mounted) setState(() {});
   }
 
   BoxFit _getBoxFit() {
@@ -109,8 +208,7 @@ class _PostMediaState extends State<PostMedia>
   }
 
   void _openFullMedia(String heroTag) async {
-    if (_isOpeningFull) return; // Prevent multiple pushes during navigation
-    // Hold the controller to prevent disposal during hero/navigation
+    if (_isOpeningFull) return;
     if (widget.post.mediaType == 'video') {
       _videoManager.holdForNavigation(
         widget.post.id,
@@ -132,7 +230,6 @@ class _PostMediaState extends State<PostMedia>
     }
   }
 
-  /// Small reusable bottom-center translucent "View" chip/button
   Widget _buildViewButton(String heroTag) {
     return Align(
       alignment: Alignment.bottomCenter,
@@ -176,145 +273,162 @@ class _PostMediaState extends State<PostMedia>
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    final heroTag = 'media_${widget.post.id}_${identityHashCode(this)}';
-    final double height = widget.height ?? 320.0;
-    if (widget.post.mediaType == 'image') {
-      return _buildImage(height, heroTag);
-    } else if (widget.post.mediaType == 'video') {
-      return _buildVideo(height, heroTag);
-    } else {
-      return const SizedBox.shrink();
-    }
-  }
-
-  Widget _buildImage(double height, String heroTag) {
-    final boxFit = _getBoxFit();
-    return SizedBox(
-      height: height,
+  Widget _buildErrorContent() {
+    // We use AspectRatio wrapper outside; caller controls height via AspectRatio.
+    return Container(
       width: double.infinity,
-      child: GestureDetector(
-        onTap: () =>
-            _openFullMedia(heroTag), // Single-tap to open full for images
-        child: Center(
-          child: Hero(
-            tag: heroTag,
-            child: SizedBox(
-              width: double.infinity,
-              height: height,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CachedNetworkImage(
-                    imageUrl: widget.post.mediaUrl!,
-                    fit: boxFit,
-                    placeholder: (context, url) => SizedBox(
-                      height: height,
-                      child: const Center(child: CircularProgressIndicator()),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      height: height,
-                      color: Theme.of(context).colorScheme.surfaceVariant,
-                      child: const Center(child: Icon(Icons.broken_image)),
-                    ),
-                  ),
-                  // view button placed above image content
-                  _buildViewButton(heroTag),
-                ],
+      color: Theme.of(context).colorScheme.errorContainer,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              size: 48,
+              color: Theme.of(context).colorScheme.onErrorContainer,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Media failed to load',
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onErrorContainer,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMediaStack(String heroTag, BoxFit boxFit) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (widget.post.mediaType == 'image')
+          CachedNetworkImage(
+            imageUrl: widget.post.mediaUrl!,
+            fit: boxFit,
+            placeholder: (context, url) =>
+                const Center(child: CircularProgressIndicator()),
+            errorWidget: (context, url, error) => Container(
+              color: Theme.of(context).colorScheme.surfaceVariant,
+              child: const Center(child: Icon(Icons.broken_image)),
+            ),
+          )
+        else if (widget.post.mediaType == 'video')
+          _initialized &&
+                  _videoController != null &&
+                  _videoController!.value.isInitialized
+              ? FittedBox(
+                  fit: boxFit,
+                  child: SizedBox(
+                    width: _videoController!.value.size.width.toDouble(),
+                    height: _videoController!.value.size.height.toDouble(),
+                    child: VideoPlayer(_videoController!),
+                  ),
+                )
+              : (widget.post.thumbnailUrl != null
+                    ? CachedNetworkImage(
+                        imageUrl: widget.post.thumbnailUrl!,
+                        fit: boxFit,
+                        width: double.infinity,
+                        height: double.infinity,
+                      )
+                    : Container(
+                        color: Theme.of(context).colorScheme.surfaceVariant,
+                        child: const Center(
+                          child: Icon(Icons.play_circle_outline),
+                        ),
+                      )),
+        // Play icon overlay for videos when not actively playing
+        if (widget.post.mediaType == 'video' &&
+            (!(_initialized &&
+                _videoController != null &&
+                VideoPlaybackManager.isPlaying(_videoController!))))
+          Center(
+            child: Icon(
+              Icons.play_circle_fill,
+              size: 64.0,
+              color: Colors.white.withOpacity(0.8),
+            ),
+          ),
+        if (_isInitializing)
+          const Center(
+            child: SizedBox(
+              width: 36,
+              height: 36,
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+          ),
+        _buildViewButton(heroTag),
+      ],
+    );
+  }
+
+  Widget _buildMediaContent(String heroTag, BoxFit boxFit) {
+    // If we have a valid aspect ratio, use AspectRatio to reserve space immediately.
+    // Otherwise fallback sequence: image stream (maybe set _aspectRatio later) -> 1:1 placeholder.
+    if (_hasError) {
+      // Use fallback aspect ratio wrapper to keep sizing consistent with parent usage.
+      final fallback = _aspectRatio ?? 1.0;
+      return AspectRatio(aspectRatio: fallback, child: _buildErrorContent());
+    }
+
+    final effectiveAspect = _aspectRatio ?? 1.0;
+
+    // Wrap media stack in AspectRatio to reserve exact space on first frame when server dims are present.
+    return AspectRatio(
+      aspectRatio: effectiveAspect,
+      child: GestureDetector(
+        onTap: widget.post.mediaType == 'image'
+            ? () => _openFullMedia(heroTag)
+            : null,
+        onDoubleTap: widget.post.mediaType == 'video'
+            ? () => _openFullMedia(heroTag)
+            : null,
+        onLongPress: () {
+          // keep existing behavior: treat tap/double-tap for video play/pause via Debouncer
+        },
+        child: Hero(
+          tag: heroTag,
+          child: ClipRRect(
+            borderRadius: BorderRadius.zero,
+            child: _buildMediaStack(heroTag, boxFit),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildVideo(double height, String heroTag) {
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final heroTag = 'media_${widget.post.id}_${identityHashCode(this)}';
     final boxFit = _getBoxFit();
-    const toggleKeyPrefix = 'toggle_play_';
-    const toggleDuration = Duration(milliseconds: 300);
-    Widget content = GestureDetector(
-      onTap: () => Debouncer.instance.throttle(
-        '$toggleKeyPrefix${widget.post.id}',
-        toggleDuration,
-        _togglePlayPause,
-      ),
-      onDoubleTap: () =>
-          _openFullMedia(heroTag), // Double-tap to open full for videos
-      child: ClipRRect(
-        borderRadius: BorderRadius.zero,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Hero(
-              tag: heroTag,
-              child:
-                  _initialized &&
-                      _videoController != null &&
-                      _videoController!.value.isInitialized
-                  ? FittedBox(
-                      fit: boxFit,
-                      child: SizedBox(
-                        width: _videoController!.value.size.width.toDouble(),
-                        height: _videoController!.value.size.height.toDouble(),
-                        child: VideoPlayer(_videoController!),
-                      ),
-                    )
-                  : Container(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
-                      child: widget.post.thumbnailUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: widget.post.thumbnailUrl!,
-                              fit: boxFit,
-                              width: double.infinity,
-                              height: double.infinity,
-                            )
-                          : const Center(
-                              child: Icon(Icons.play_circle_outline),
-                            ),
-                    ),
-            ),
-            if (!_initialized ||
-                (_videoController != null &&
-                    !VideoPlaybackManager.isPlaying(_videoController!)))
-              Center(
-                child: Icon(
-                  Icons.play_circle_fill,
-                  size: 64.0,
-                  color: Colors.white.withOpacity(
-                    0.8,
-                  ), // Subtle opacity for modern feel
-                ),
-              ),
-            if (_isInitializing)
-              const Center(
-                child: SizedBox(
-                  width: 36,
-                  height: 36,
-                  child: CircularProgressIndicator(color: Colors.white),
-                ),
-              ),
-            // view button placed above everything so it's tappable
-            _buildViewButton(heroTag),
-          ],
-        ),
-      ),
-    );
-    if (widget.useVisibilityDetector) {
-      return SizedBox(
-        height: height,
-        width: double.infinity,
-        child: VisibilityDetector(
+
+    // If post has no mediaUrl, return empty
+    if (widget.post.mediaUrl == null) return const SizedBox.shrink();
+
+    // For videos we still want to lazily init controller when visible
+    if (widget.post.mediaType == 'video') {
+      final content = _buildMediaContent(heroTag, boxFit);
+      if (widget.useVisibilityDetector) {
+        return VisibilityDetector(
           key: Key('post_media_${widget.post.id}_${identityHashCode(this)}'),
           onVisibilityChanged: (info) {
             if (_isDisposed || !mounted) return;
             final visiblePct = info.visibleFraction;
             final controller = _videoController;
-            if (visiblePct > 0.4 && !_initialized && !_isInitializing) {
+
+            // Initialize when sufficiently visible
+            if (visiblePct > 0.4 &&
+                !_initialized &&
+                !_isInitializing &&
+                !_hasError) {
               _ensureControllerInitialized();
             }
+
+            // Pause logic
             if (controller != null &&
                 !_isDisposed &&
                 mounted &&
@@ -327,16 +441,44 @@ class _PostMediaState extends State<PostMedia>
               }
             }
           },
+          child: GestureDetector(
+            onTap: () => Debouncer.instance.throttle(
+              'toggle_play_${widget.post.id}',
+              const Duration(milliseconds: 300),
+              _togglePlayPause,
+            ),
+            onDoubleTap: () => _openFullMedia(heroTag),
+            child: content,
+          ),
+        );
+      } else {
+        return GestureDetector(
+          onTap: () => Debouncer.instance.throttle(
+            'toggle_play_${widget.post.id}',
+            const Duration(milliseconds: 300),
+            _togglePlayPause,
+          ),
+          onDoubleTap: () => _openFullMedia(heroTag),
           child: content,
-        ),
-      );
+        );
+      }
     }
-    return SizedBox(height: height, width: double.infinity, child: content);
+
+    // For images: we can display immediately as _aspectRatio may already be set from server or stream.
+    if (widget.post.mediaType == 'image') {
+      return _buildMediaContent(heroTag, boxFit);
+    }
+
+    return const SizedBox.shrink();
   }
 
   @override
   void dispose() {
     _isDisposed = true;
+    if (_imageStream != null && _imageStreamListener != null) {
+      _imageStream!.removeListener(_imageStreamListener!);
+    }
+
     final controller = _videoController;
     _videoController = null;
     if (controller != null) {

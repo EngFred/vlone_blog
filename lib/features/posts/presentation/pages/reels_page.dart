@@ -39,11 +39,6 @@ class _ReelsPageState extends State<ReelsPage>
     super.initState();
     _pageController = PageController(initialPage: 0, viewportFraction: 1.0);
     WidgetsBinding.instance.addObserver(this);
-
-    // Initial status bar setting is now handled by VisibilityDetector in build.
-    // AppTheme.setStatusBarForReels();
-
-    // Removed: StartReelsRealtime() — now managed by MainPage
   }
 
   @override

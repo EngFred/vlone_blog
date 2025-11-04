@@ -8,6 +8,7 @@ import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/domain/errors/exceptions.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/helpers.dart';
+import 'package:vlone_blog_app/core/utils/media_dimensions_util.dart';
 import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
@@ -45,6 +46,9 @@ class PostsRemoteDataSource {
       AppLogger.info('Attempting to create post for user: $userId');
       String? mediaUrl;
       String? thumbnailUrl;
+      // 🌟 NEW DIMENSION VARIABLES
+      int? mediaWidth;
+      int? mediaHeight;
 
       if (mediaFile != null) {
         // Use a local variable that may be replaced by a compressed file.
@@ -55,6 +59,7 @@ class PostsRemoteDataSource {
           // threshold we want to fail fast and avoid expensive compression/IO.
           if (mediaType == 'video') {
             try {
+              // NOTE: Assuming getVideoDuration is available via VideoCompressor or Helpers
               final duration = await getVideoDuration(fileToUpload);
               if (duration > Constants.maxVideoDurationSeconds) {
                 AppLogger.warning(
@@ -135,6 +140,12 @@ class PostsRemoteDataSource {
           } catch (_) {}
         }
 
+        if (mediaType == 'image' || mediaType == 'video') {
+          final dimensions = await getMediaDimensions(fileToUpload, mediaType!);
+          mediaWidth = dimensions?.width;
+          mediaHeight = dimensions?.height;
+        }
+
         if (mediaType == 'video') {
           // Redundant safety check: confirm duration after any compression/trim step.
           try {
@@ -153,7 +164,7 @@ class PostsRemoteDataSource {
           }
         }
 
-        // --- NEW: notify uploading stage (UI will show "Uploading video..." and ignore percent) ---
+        // --- notify uploading stage (UI will show "Uploading video..." and ignore percent) ---
         try {
           MediaProgressNotifier.notifyUploading(0.0);
         } catch (_) {}
@@ -198,6 +209,8 @@ class PostsRemoteDataSource {
         'media_url': mediaUrl,
         'media_type': mediaType ?? 'none',
         'thumbnail_url': thumbnailUrl,
+        'media_width': mediaWidth,
+        'media_height': mediaHeight,
       };
 
       // Standard select works here as it's a single insert/fetch
@@ -260,7 +273,7 @@ class PostsRemoteDataSource {
         final tempPath = '${tempDir.path}/$fileName';
         await file.copy(tempPath);
 
-        // Schedule background upload via WorkManager
+        // Schedule background upload via Workmanager
         Workmanager().registerOneOffTask(
           'upload_post_media_$fileName',
           'upload_media',
@@ -664,11 +677,9 @@ class PostsRemoteDataSource {
                 return;
               }
 
-              if (flushTimer == null) {
-                flushTimer = Timer(_coalesceWindow, () {
-                  unawaited(flushIds());
-                });
-              }
+              flushTimer ??= Timer(_coalesceWindow, () {
+                unawaited(flushIds());
+              });
             } catch (e, st) {
               AppLogger.error(
                 'Error handling new post payload: $e',
@@ -694,8 +705,9 @@ class PostsRemoteDataSource {
         if (!(_newPostsController?.hasListener ?? false)) {
           await _postsInsertsChannel?.unsubscribe();
           _postsInsertsChannel = null;
-          if (!(_newPostsController?.isClosed ?? true))
+          if (!(_newPostsController?.isClosed ?? true)) {
             await _newPostsController?.close();
+          }
           _newPostsController = null;
         }
       } catch (e) {
@@ -739,16 +751,18 @@ class PostsRemoteDataSource {
                 'shares_count': newRec['shares_count'],
               };
 
-              if (!(_postsController?.isClosed ?? true))
+              if (!(_postsController?.isClosed ?? true)) {
                 _postsController!.add(Map<String, dynamic>.from(data));
+              }
             } catch (e, st) {
               AppLogger.error(
                 'Error handling post update payload: $e',
                 error: e,
                 stackTrace: st,
               );
-              if (!(_postsController?.isClosed ?? true))
+              if (!(_postsController?.isClosed ?? true)) {
                 _postsController!.addError(ServerException(e.toString()));
+              }
             }
           },
         )
@@ -759,8 +773,9 @@ class PostsRemoteDataSource {
         if (!(_postsController?.hasListener ?? false)) {
           await _postsUpdatesChannel?.unsubscribe();
           _postsUpdatesChannel = null;
-          if (!(_postsController?.isClosed ?? true))
+          if (!(_postsController?.isClosed ?? true)) {
             await _postsController?.close();
+          }
           _postsController = null;
           AppLogger.info('Posts updates stream cancelled and cleaned up');
         }

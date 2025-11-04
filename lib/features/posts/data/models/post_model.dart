@@ -20,6 +20,12 @@ class PostModel {
   final String? username;
   final String? avatarUrl;
 
+  final int? mediaWidth;
+  final int? mediaHeight;
+
+  // 🌟 NEW FIELD
+  final String uploadStatus;
+
   PostModel({
     required this.id,
     required this.userId,
@@ -39,6 +45,10 @@ class PostModel {
     this.isFavorited = false,
     this.username,
     this.avatarUrl,
+    this.mediaWidth,
+    this.mediaHeight,
+    // 🌟 NEW FIELD (default to 'none' for safety)
+    this.uploadStatus = 'none',
   });
 
   factory PostModel.fromMap(Map<String, dynamic> map) {
@@ -56,6 +66,15 @@ class PostModel {
       if (v is num) return v.toInt();
       if (v is String) return int.tryParse(v) ?? 0;
       return 0;
+    }
+
+    // Helper for null-safe integer parsing (returns null if non-existent or invalid)
+    int? safeNullableInt(dynamic v) {
+      if (v == null) return null;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v);
+      return null;
     }
 
     DateTime parseDate(dynamic v) {
@@ -92,6 +111,10 @@ class PostModel {
       isFavorited: map['is_favorited'] as bool? ?? false,
       username: profileSource?['username'] as String?,
       avatarUrl: profileSource?['profile_image_url'] as String?,
+      mediaWidth: safeNullableInt(map['media_width']),
+      mediaHeight: safeNullableInt(map['media_height']),
+      // 🌟 NEW FIELD (default to 'none' if not present)
+      uploadStatus: map['upload_status'] as String? ?? 'none',
     );
   }
 
@@ -115,6 +138,10 @@ class PostModel {
       isFavorited: isFavorited,
       username: username,
       avatarUrl: avatarUrl,
+      mediaWidth: mediaWidth,
+      mediaHeight: mediaHeight,
+      // 🌟 NEW FIELD
+      uploadStatus: uploadStatus,
     );
   }
 }

@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -98,7 +97,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     String? hintText,
     String? errorText,
   }) {
-    // ... (Your _getInputDecoration method is good, no changes needed)
     final theme = Theme.of(context);
     final isLight = theme.brightness == Brightness.light;
     final borderColor = isLight
@@ -159,9 +157,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
         },
         listener: (context, state) {
           if (state is EditProfileEditing) {
-            // Populate controllers *once* when data loads
-            _usernameController.text = state.initialUsername;
-            _bioController.text = state.initialBio;
+            if (_usernameController.text.isEmpty) {
+              _usernameController.text = state.initialUsername;
+            }
+            if (_bioController.text.isEmpty) {
+              _bioController.text = state.initialBio;
+            }
           } else if (state is EditProfileSuccess) {
             SnackbarUtils.showSuccess(context, 'Profile updated successfully!');
             final authState = context.read<AuthBloc>().state;
@@ -186,21 +187,25 @@ class _EditProfilePageState extends State<EditProfilePage> {
             SnackbarUtils.showError(context, state.message);
           }
         },
+        // 🌟🌟🌟 THE FIX IS HERE 🌟🌟🌟
         buildWhen: (prev, current) {
-          // Don't rebuild the UI on states that are handled by the listener
+          // Don't rebuild for success, that's handled by the listener.
           if (current is EditProfileSuccess) {
             return false;
           }
-          // Rebuild for all other state *type* changes (e.g., Initial -> Editing)
-          return prev.runtimeType != current.runtimeType ||
-              (current is EditProfileEditing &&
-                  (prev is EditProfileEditing &&
-                      (prev.isSubmitting != current.isSubmitting ||
-                          prev.selectedImage != current.selectedImage ||
-                          prev.initialImageUrl != current.initialImageUrl ||
-                          prev.usernameError != current.usernameError ||
-                          prev.bioError != current.bioError ||
-                          prev.generalError != current.generalError)));
+          // If the state types are different (e.g., Initial -> Editing),
+          // always rebuild.
+          if (prev.runtimeType != current.runtimeType) {
+            return true;
+          }
+          // If both are EditProfileEditing, let Equatable decide.
+          // This will correctly rebuild if *any* prop changes
+          // (usernameError, currentUsername, isSubmitting, etc.)
+          if (current is EditProfileEditing && prev is EditProfileEditing) {
+            return prev != current; // Relies on Equatable
+          }
+          // Default case
+          return true;
         },
         builder: (context, state) {
           if (state is EditProfileInitial) {
