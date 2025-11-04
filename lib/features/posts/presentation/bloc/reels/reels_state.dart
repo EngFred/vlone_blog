@@ -49,16 +49,18 @@ class ReelsLoaded extends ReelsState {
 }
 
 class ReelsLoadingMore extends ReelsState {
-  final List<PostEntity> currentPosts;
-  const ReelsLoadingMore({required this.currentPosts});
+  // RENAMED for consistency
+  final List<PostEntity> posts;
+  const ReelsLoadingMore({required this.posts});
   @override
-  List<Object?> get props => [currentPosts];
+  List<Object?> get props => [posts];
 }
 
 class ReelsLoadMoreError extends ReelsState {
   final String message;
-  final List<PostEntity> currentPosts;
-  const ReelsLoadMoreError(this.message, {required this.currentPosts});
+  // RENAMED for consistency
+  final List<PostEntity> posts;
+  const ReelsLoadMoreError(this.message, {required this.posts});
   @override
-  List<Object?> get props => [message, currentPosts];
+  List<Object?> get props => [message, posts];
 }

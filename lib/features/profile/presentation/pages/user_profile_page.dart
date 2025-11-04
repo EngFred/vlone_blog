@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+// Assuming necessary imports for your project structure
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
@@ -28,20 +29,20 @@ class UserProfilePage extends StatefulWidget {
 class _UserProfilePageState extends State<UserProfilePage> {
   String? _currentUserId;
   bool _isOwnProfile = false;
-  // Local list remains to hold and display the posts fetched by UserPostsBloc
-  final List<PostEntity> _userPosts = [];
-  bool _hasMoreUserPosts = true;
-  bool _isUserPostsLoading = false;
+
+  // --- REFACTORED: REMOVED DUPLICATE BLoC STATE ---
+  // final List<PostEntity> _userPosts = [];
+  // bool _hasMoreUserPosts = true;
+  // bool _isUserPostsLoading = false;
   bool _isLoadingMoreUserPosts = false;
-  String? _userPostsError;
-  String? _loadMoreError;
+  // String? _userPostsError;
+  // String? _loadMoreError;
+  // bool _hasLoadedOnce = false;
+
   bool? _isFollowing;
   bool _isProcessingFollow = false;
   final ScrollController _scrollController = ScrollController();
   static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
-
-  //guard to prevent triggering load-more before initial load completes
-  bool _hasLoadedOnce = false;
 
   @override
   void initState() {
@@ -52,25 +53,34 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   void _setupScrollListener() {
     _scrollController.addListener(() {
-      if (_scrollController.hasClients) {
-        Debouncer.instance.debounce(
-          'load_more_user_posts',
-          _loadMoreDebounce,
-          () {
-            // NEW: don't load more until initial load completed
-            if (!_hasLoadedOnce) return;
-            if (_scrollController.position.pixels >=
-                    _scrollController.position.maxScrollExtent - 200 &&
-                _hasMoreUserPosts &&
-                !_isLoadingMoreUserPosts) {
-              setState(() {
-                _isLoadingMoreUserPosts = true;
-              });
-              context.read<UserPostsBloc>().add(LoadMoreUserPostsEvent());
-            }
-          },
-        );
-      }
+      if (!_scrollController.hasClients) return;
+
+      Debouncer.instance.debounce('load_more_user_posts', _loadMoreDebounce, () {
+        final userPostsState = context.read<UserPostsBloc>().state;
+
+        final bool hasMore = (userPostsState is UserPostsLoaded)
+            ? userPostsState.hasMore
+            : (userPostsState
+                  is UserPostsLoadMoreError); // Allow retry on error
+
+        // Check if posts have been loaded at least once by checking the state type
+        final bool hasLoadedOnce =
+            userPostsState is UserPostsLoaded ||
+            userPostsState is UserPostsLoadingMore ||
+            userPostsState is UserPostsLoadMoreError;
+
+        // The local flag _isLoadingMoreUserPosts is still needed to debounce the BLoC dispatch
+        // while the BLoC is transitioning to a LoadingMore or Loaded state.
+        if (_scrollController.position.pixels >=
+                _scrollController.position.maxScrollExtent - 200 &&
+            hasMore &&
+            !_isLoadingMoreUserPosts &&
+            hasLoadedOnce) {
+          if (!mounted) return;
+          setState(() => _isLoadingMoreUserPosts = true);
+          context.read<UserPostsBloc>().add(const LoadMoreUserPostsEvent());
+        }
+      });
     });
   }
 
@@ -87,11 +97,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
           _currentUserId = sessionUserId;
           _isOwnProfile = sessionUserId == widget.userId;
         });
+
         // Request profile data (uses local ProfileBloc instance)
         context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
 
         // Start realtime listener on the local ProfileBloc instance
-        // Only for non-own profiles to avoid overlap with MainPage's global bloc
         if (!_isOwnProfile) {
           context.read<ProfileBloc>().add(
             StartProfileRealtimeEvent(widget.userId),
@@ -99,8 +109,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
         }
 
         // Request user posts (uses local UserPostsBloc instance)
-        // Ensure _currentUserId is set before dispatch
-        // Use RefreshUserPostsEvent to be consistent and reset pagination
         context.read<UserPostsBloc>().add(
           RefreshUserPostsEvent(
             profileUserId: widget.userId,
@@ -108,7 +116,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
           ),
         );
 
-        // NEW: Start UserPosts real-time if not own profile
+        // Start UserPosts real-time if not own profile
         if (!_isOwnProfile) {
           context.read<UserPostsBloc>().add(
             StartUserPostsRealtime(profileUserId: widget.userId),
@@ -126,7 +134,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
         AppLogger.info(
           'UserProfilePage: Initialized for userId: ${widget.userId}, currentUser: $sessionUserId',
         );
-        // Subscribe to real-time for this profile if not own
+
+        // Subscribe to general real-time for this profile if not own
         if (!_isOwnProfile) {
           final realtime = sl<RealtimeService>();
           await realtime.subscribeToProfile(widget.userId);
@@ -148,10 +157,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
       final realtime = sl<RealtimeService>();
       realtime.unsubscribeFromProfile(widget.userId);
     }
+
     // Stop realtime listener on the local ProfileBloc instance (cancels sub in bloc.close())
     if (!_isOwnProfile) {
-      context.read<ProfileBloc>().add(StopProfileRealtimeEvent());
-      // NEW: Stop UserPosts real-time
+      context.read<ProfileBloc>().add(const StopProfileRealtimeEvent());
       context.read<UserPostsBloc>().add(const StopUserPostsRealtime());
     }
     _scrollController.dispose();
@@ -173,6 +182,31 @@ class _UserProfilePageState extends State<UserProfilePage> {
         isFollowing: newFollowing,
       ),
     );
+  }
+
+  // New method to handle the RefreshIndicator logic
+  Future<void> _onRefreshProfile() async {
+    if (_currentUserId == null) return;
+
+    // 1. Refresh profile data
+    context.read<ProfileBloc>().add(GetProfileDataEvent(widget.userId));
+
+    // 2. Refresh posts
+    context.read<UserPostsBloc>().add(
+      RefreshUserPostsEvent(
+        profileUserId: widget.userId,
+        currentUserId: _currentUserId!,
+      ),
+    );
+
+    // 3. Reset local loading flags for scroll listener
+    if (mounted) {
+      setState(() {
+        _isLoadingMoreUserPosts = false;
+        // _hasLoadedOnce is implicitly reset by the BLoC transition to UserPostsLoading/Loaded
+        // but we rely on the BLoC state itself now, not a local guard.
+      });
+    }
   }
 
   @override
@@ -198,48 +232,18 @@ class _UserProfilePageState extends State<UserProfilePage> {
               }
             },
           ),
-          //Listen to UserPostsBloc
+          // Listen to UserPostsBloc for loading more status
           BlocListener<UserPostsBloc, UserPostsState>(
             listener: (context, state) {
-              // Since UserPostsBloc is local to this page, we only check for mounted
-              if (state is UserPostsLoaded) {
-                if (mounted) {
-                  setState(() {
-                    _userPosts.clear();
-                    _userPostsError = null;
-                    _userPosts.addAll(state.posts);
-                    _hasMoreUserPosts = state.hasMore;
-                    _isUserPostsLoading = false;
-                    _isLoadingMoreUserPosts = false;
-                    _loadMoreError = null;
-                    _hasLoadedOnce = true; // initial load completed
-                  });
-                  AppLogger.info(
-                    'UserProfilePage: Loaded ${_userPosts.length} posts for ${widget.userId}',
-                  );
-                }
-              } else if (state is UserPostsError) {
-                if (mounted) {
-                  setState(() {
-                    _userPostsError = state.message;
-                    _isUserPostsLoading = false;
-                    _isLoadingMoreUserPosts = false;
-                  });
-                }
-              } else if (state is UserPostsLoading) {
-                if (mounted) {
-                  setState(() {
-                    _isUserPostsLoading = true;
-                  });
-                }
-              } else if (state is UserPostsLoadMoreError) {
-                if (mounted) {
-                  setState(() {
-                    _loadMoreError = state.message;
-                    _isLoadingMoreUserPosts = false;
-                  });
+              if (!mounted || state.profileUserId != widget.userId) return;
+
+              // This listener primarily manages the local flag for scroll debounce
+              if (state is UserPostsLoaded || state is UserPostsLoadMoreError) {
+                if (_isLoadingMoreUserPosts) {
+                  setState(() => _isLoadingMoreUserPosts = false);
                 }
               }
+              // The main list/error state is handled by the BlocBuilder below.
             },
           ),
           // Listener for PostActionsBloc to handle post deletion
@@ -251,7 +255,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 context.read<UserPostsBloc>().add(
                   RemovePostFromUserPosts(state.postId),
                 );
-                // The UserPostsBloc's state update will remove it from the list.
               }
             },
           ),
@@ -275,6 +278,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               } else if (state is FollowersError) {
                 if (mounted) {
                   if (_isProcessingFollow && _isFollowing != null) {
+                    // Revert UI state if the action failed
                     setState(() {
                       _isFollowing = !_isFollowing!;
                       _isProcessingFollow = false;
@@ -287,97 +291,108 @@ class _UserProfilePageState extends State<UserProfilePage> {
           ),
         ],
         child: BlocBuilder<ProfileBloc, ProfileState>(
-          builder: (context, state) {
-            if (state is ProfileLoading || state is ProfileInitial) {
+          builder: (context, profileState) {
+            if (profileState is ProfileLoading ||
+                profileState is ProfileInitial) {
               return const Center(child: LoadingIndicator());
             }
-            if (state is ProfileError) {
+            if (profileState is ProfileError) {
               return CustomErrorWidget(
-                message: state.message,
+                message: profileState.message,
                 onRetry: () => context.read<ProfileBloc>().add(
                   GetProfileDataEvent(widget.userId),
                 ),
               );
             }
-            if (state is ProfileDataLoaded) {
+            if (profileState is ProfileDataLoaded) {
               // Check if wrong user and reload (safety check)
-              if (state.userId != widget.userId) {
+              if (profileState.userId != widget.userId) {
                 context.read<ProfileBloc>().add(
                   GetProfileDataEvent(widget.userId),
                 );
                 return const Center(child: LoadingIndicator());
               }
 
-              // Wrap RefreshIndicator and CustomScrollView in SafeArea so bottom nav / gesture area
-              // doesn't overlap content. Also add explicit bottom padding from MediaQuery.
               final bottomPadding = MediaQuery.of(context).padding.bottom;
 
               return SafeArea(
-                top: false, // keep the AppBar handling the top safe area
+                top: false,
                 bottom: true,
                 child: RefreshIndicator(
-                  onRefresh: () async {
-                    if (_currentUserId != null) {
-                      // Refresh posts on the local UserPostsBloc
-                      context.read<UserPostsBloc>().add(
-                        RefreshUserPostsEvent(
-                          profileUserId: widget.userId,
-                          currentUserId: _currentUserId!,
-                        ),
-                      );
-                      if (mounted) {
-                        setState(() {
-                          _userPosts.clear();
-                          _userPostsError = null;
-                          _hasMoreUserPosts = true;
-                          _hasLoadedOnce =
-                              false; // reset guard for manual refresh
-                        });
-                      }
-                    }
-                  },
+                  onRefresh: _onRefreshProfile,
                   child: CustomScrollView(
                     controller: _scrollController,
                     physics: const AlwaysScrollableScrollPhysics(),
-                    // Add bottom padding to ensure last item is above system nav bar
                     slivers: [
                       SliverToBoxAdapter(
                         child: ProfileHeader(
-                          profile: state.profile,
+                          profile: profileState.profile,
                           isOwnProfile: _isOwnProfile,
                           isFollowing: _isFollowing,
                           onFollowToggle: _onFollowToggle,
                           isProcessingFollow: _isProcessingFollow,
                         ),
                       ),
-                      SliverPadding(
-                        // Ensure posts list and footer respect bottom safe area + a little extra gap
-                        padding: EdgeInsets.only(bottom: bottomPadding + 16.0),
-                        sliver: ProfilePostsList(
-                          posts: _userPosts,
-                          userId: _currentUserId ?? '',
-                          isLoading: _isUserPostsLoading,
-                          error: _userPostsError,
-                          hasMore: _hasMoreUserPosts,
-                          isLoadingMore: _isLoadingMoreUserPosts,
-                          loadMoreError: _loadMoreError,
-                          onRetry: () {
-                            if (mounted && _currentUserId != null) {
-                              setState(() {
-                                _userPostsError = null;
-                                _isUserPostsLoading = true;
-                                _hasLoadedOnce = false;
-                              });
-                              // FIXED: Use Refresh for reset (vs. Get)
-                              context.read<UserPostsBloc>().add(
-                                RefreshUserPostsEvent(
-                                  profileUserId: widget.userId,
-                                  currentUserId: _currentUserId!,
-                                ),
-                              );
-                            }
-                          },
-                        ),
+                      // --- NESTED BLOCBUILDER FOR USER POSTS STATE ---
+                      BlocBuilder<UserPostsBloc, UserPostsState>(
+                        builder: (context, userPostsState) {
+                          // Filter state relevance to this profile
+                          if (userPostsState.profileUserId != widget.userId) {
+                            return const SliverToBoxAdapter(
+                              child: SizedBox.shrink(),
+                            );
+                          }
+
+                          // Extract data directly from BLoC state
+                          List<PostEntity> posts = [];
+                          bool isLoading = false;
+                          String? error;
+                          bool hasMore = false;
+                          String? loadMoreError;
+
+                          if (userPostsState is UserPostsLoading) {
+                            isLoading = true;
+                          } else if (userPostsState is UserPostsError) {
+                            error = userPostsState.message;
+                          } else if (userPostsState is UserPostsLoaded) {
+                            posts = userPostsState.posts;
+                            hasMore = userPostsState.hasMore;
+                          } else if (userPostsState is UserPostsLoadingMore) {
+                            posts = userPostsState.posts;
+                            hasMore = true; // Still expecting more data
+                          } else if (userPostsState is UserPostsLoadMoreError) {
+                            posts = userPostsState.posts;
+                            loadMoreError = userPostsState.message;
+                            hasMore = true; // Show retry button
+                          }
+
+                          return SliverPadding(
+                            padding: EdgeInsets.only(
+                              bottom: bottomPadding + 16.0,
+                            ),
+                            sliver: ProfilePostsList(
+                              posts: posts,
+                              userId: _currentUserId ?? '',
+                              isLoading: isLoading,
+                              error: error,
+                              hasMore: hasMore,
+                              isLoadingMore:
+                                  _isLoadingMoreUserPosts &&
+                                  userPostsState is UserPostsLoadingMore,
+                              loadMoreError: loadMoreError,
+                              onRetry: () {
+                                if (!mounted || _currentUserId == null) return;
+                                // FIXED: Use Refresh for reset (vs. Get)
+                                context.read<UserPostsBloc>().add(
+                                  RefreshUserPostsEvent(
+                                    profileUserId: widget.userId,
+                                    currentUserId: _currentUserId!,
+                                  ),
+                                );
+                              },
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),

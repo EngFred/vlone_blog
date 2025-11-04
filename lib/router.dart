@@ -23,10 +23,8 @@ import 'package:vlone_blog_app/features/profile/presentation/pages/edit_profile_
 import 'package:vlone_blog_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:vlone_blog_app/features/profile/presentation/pages/user_profile_page.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
-import 'package:vlone_blog_app/features/followers/presentation/pages/followers_page.dart';
-import 'package:vlone_blog_app/features/followers/presentation/pages/following_page.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
-import 'package:vlone_blog_app/features/users/presentation/pages/users_page.dart';
+import 'package:vlone_blog_app/features/users/presentation/pages/user_list_page.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:vlone_blog_app/features/settings/presentation/pages/settings_page.dart';
 
@@ -54,6 +52,7 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) =>
           SlideTransitionPage(key: state.pageKey, child: const SignupPage()),
     ),
+
     // --- Secondary Routes (Not in Main Navigation Shell) ---
     GoRoute(
       path: Constants.notificationsRoute,
@@ -66,10 +65,10 @@ final GoRouter appRouter = GoRouter(
       path: Constants.createPostRoute,
       pageBuilder: (context, state) => SlideTransitionPage(
         key: state.pageKey,
-        // PostActionsBloc is Global
         child: const CreatePostPage(),
       ),
     ),
+
     GoRoute(
       path: '${Constants.postDetailsRoute}/:postId',
       pageBuilder: (context, state) {
@@ -87,7 +86,6 @@ final GoRouter appRouter = GoRouter(
         }
         return SlideTransitionPage(
           key: state.pageKey,
-          // All BLoCs (PostActions, Likes, Comments, Favorites) are now global.
           child: PostDetailsPage(
             postId: postId,
             post: extraPost,
@@ -97,12 +95,12 @@ final GoRouter appRouter = GoRouter(
         );
       },
     ),
+
     GoRoute(
       path: '/media',
       pageBuilder: (context, state) {
         PostEntity? post;
         String? heroTag;
-        // 💡 FIX: Safely extract PostEntity and heroTag from state.extra
         final extra = state.extra;
         if (extra is Map<String, dynamic>) {
           post = extra['post'] as PostEntity?;
@@ -110,52 +108,60 @@ final GoRouter appRouter = GoRouter(
         } else if (extra is PostEntity) {
           post = extra;
         }
-        // Handle null post object safely before using it
+
         if (post == null) {
-          // --- MODIFIED: Use MaterialPage for the error state ---
           return MaterialPage(
             key: state.pageKey,
             child: const Scaffold(
-              body: Center(
-                child: Text(
-                  'Error: Media data not found.',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
+              body: Center(child: Text('Error: Media data not found.')),
             ),
           );
         }
-        // --- Replaced SlideTransitionPage with MaterialPage ---
-        // This allows the Hero animation to work correctly without a
-        // conflicting slide transition.
+
         return MaterialPage(
           key: state.pageKey,
           child: FullMediaPage(post: post, heroTag: heroTag),
         );
       },
     ),
+
+    // --- Replaced FollowersPage / FollowingPage with reusable UserListPage ---
     GoRoute(
       path: '${Constants.followersRoute}/:userId',
-      pageBuilder: (context, state) => SlideTransitionPage(
-        key: state.pageKey,
-        // Provide FollowersBloc for FollowersPage
-        child: BlocProvider<FollowersBloc>(
-          create: (_) => di.sl<FollowersBloc>(),
-          child: FollowersPage(userId: state.pathParameters['userId']!),
-        ),
-      ),
+      pageBuilder: (context, state) {
+        final userId = state.pathParameters['userId']!;
+        return SlideTransitionPage(
+          key: state.pageKey,
+          child: BlocProvider<FollowersBloc>(
+            create: (_) => di.sl<FollowersBloc>(),
+            child: UserListPage(
+              userId: userId,
+              mode: UserListMode.followers,
+              title: 'Followers',
+            ),
+          ),
+        );
+      },
     ),
+
     GoRoute(
       path: '${Constants.followingRoute}/:userId',
-      pageBuilder: (context, state) => SlideTransitionPage(
-        key: state.pageKey,
-        // Provide FollowersBloc for FollowingPage
-        child: BlocProvider<FollowersBloc>(
-          create: (_) => di.sl<FollowersBloc>(),
-          child: FollowingPage(userId: state.pathParameters['userId']!),
-        ),
-      ),
+      pageBuilder: (context, state) {
+        final userId = state.pathParameters['userId']!;
+        return SlideTransitionPage(
+          key: state.pageKey,
+          child: BlocProvider<FollowersBloc>(
+            create: (_) => di.sl<FollowersBloc>(),
+            child: UserListPage(
+              userId: userId,
+              mode: UserListMode.following,
+              title: 'Following',
+            ),
+          ),
+        );
+      },
     ),
+
     // --- Main Stateful Shell Route for Tab Navigation ---
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
@@ -183,6 +189,7 @@ final GoRouter appRouter = GoRouter(
             ),
           ],
         ),
+
         // Tab 2: Reels
         StatefulShellBranch(
           navigatorKey: _shellNavigatorReelsKey,
@@ -193,16 +200,22 @@ final GoRouter appRouter = GoRouter(
             ),
           ],
         ),
+
         // Tab 3: Users/Search
         StatefulShellBranch(
           navigatorKey: _shellNavigatorUsersKey,
           routes: [
             GoRoute(
               path: Constants.usersRoute,
-              builder: (context, state) => const UsersPage(),
+              builder: (context, state) => const UserListPage(
+                userId: null,
+                mode: UserListMode.users,
+                title: 'Discover People',
+              ),
             ),
           ],
         ),
+
         // Tab 4: My Profile
         StatefulShellBranch(
           navigatorKey: _shellNavigatorProfileKey,
@@ -211,19 +224,16 @@ final GoRouter appRouter = GoRouter(
               path: '${Constants.profileRoute}/me',
               builder: (context, state) => const ProfilePage(),
               routes: [
-                // Nested Edit Profile Route
                 GoRoute(
                   path: 'edit',
                   pageBuilder: (context, state) => SlideTransitionPage(
                     key: state.pageKey,
-                    // Provide EditProfileBloc locally to this page
                     child: BlocProvider<EditProfileBloc>(
                       create: (_) => di.sl<EditProfileBloc>(),
                       child: EditProfilePage(userId: 'me'),
                     ),
                   ),
                 ),
-                // Nested Settings Route (Added)
                 GoRoute(
                   path: 'settings',
                   pageBuilder: (context, state) => SlideTransitionPage(
@@ -237,6 +247,7 @@ final GoRouter appRouter = GoRouter(
         ),
       ],
     ),
+
     // --- Other User's Profile Page (outside shell) ---
     GoRoute(
       path: '${Constants.profileRoute}/:userId',
@@ -246,6 +257,7 @@ final GoRouter appRouter = GoRouter(
         final currentUserId = authState is AuthAuthenticated
             ? authState.user.id
             : null;
+
         if (currentUserId != null && currentUserId == userId) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             GoRouter.of(context).go('${Constants.profileRoute}/me');
@@ -257,11 +269,11 @@ final GoRouter appRouter = GoRouter(
             ),
           );
         }
+
         return SlideTransitionPage(
           key: state.pageKey,
           child: MultiBlocProvider(
             providers: [
-              // ONLY BLoCs required for profile data and posts
               BlocProvider<ProfileBloc>(
                 create: (context) => di.sl<ProfileBloc>(),
               ),
@@ -278,17 +290,20 @@ final GoRouter appRouter = GoRouter(
       },
     ),
   ],
+
   errorBuilder: (context, state) => Scaffold(
     body: Center(
       child: Text('Error: ${state.error?.message ?? "Page not found"}'),
     ),
   ),
+
   redirect: (context, state) async {
     final authState = context.read<AuthBloc>().state;
     final isLoggedIn = authState is AuthAuthenticated;
     final isAuthRoute =
         state.uri.path == Constants.loginRoute ||
         state.uri.path == Constants.signupRoute;
+
     if (!isLoggedIn && !isAuthRoute) {
       return Constants.loginRoute;
     }

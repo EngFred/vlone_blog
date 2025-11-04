@@ -14,7 +14,6 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
   final GetUserPostsUseCase getUserPostsUseCase;
   final RealtimeService realtimeService;
 
-  // Realtime subscriptions (filtered by profile id inside handlers)
   StreamSubscription<PostEntity>? _realtimeNewPostSub;
   StreamSubscription<Map<String, dynamic>>? _realtimePostUpdateSub;
   StreamSubscription<String>? _realtimePostDeletedSub;
@@ -47,7 +46,6 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     on<_RealtimeUserPostDeleted>(_onRealtimeUserPostDeleted);
   }
 
-  // ---- existing fetch handlers (unchanged) ----
   Future<void> _onGetUserPosts(
     GetUserPostsEvent event,
     Emitter<UserPostsState> emit,
@@ -68,13 +66,12 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
       return;
     }
 
-    final currentPostsSnapshot = state is UserPostsLoaded
-        ? (state as UserPostsLoaded).posts
-        : <PostEntity>[];
+    // Get posts from *any* state that has them
+    final currentPostsSnapshot = _getPostsFromState(state);
 
     emit(
       UserPostsLoadingMore(
-        currentPosts: currentPostsSnapshot,
+        posts: currentPostsSnapshot,
         profileUserId: _currentUserPostsProfileId!,
       ),
     );
@@ -135,7 +132,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
             emit(
               UserPostsLoadMoreError(
                 message,
-                currentPosts: currentPosts,
+                posts: currentPosts,
                 profileUserId: profileId,
               ),
             );
@@ -159,8 +156,9 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
           emit(
             UserPostsLoaded(
               updatedPosts,
-              hasMore: _hasMoreUserPosts,
               profileUserId: profileId,
+              hasMore: _hasMoreUserPosts,
+              isRealtimeActive: _isSubscribedToService,
             ),
           );
         },
@@ -170,16 +168,58 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     }
   }
 
+  // Helper to get posts from any state
+  List<PostEntity> _getPostsFromState(UserPostsState state) {
+    if (state is UserPostsLoaded) {
+      return state.posts;
+    } else if (state is UserPostsLoadingMore) {
+      return state.posts;
+    } else if (state is UserPostsLoadMoreError) {
+      return state.posts;
+    }
+    return [];
+  }
+
+  // Helper to emit the correct state class
+  void _emitUpdatedState(
+    Emitter<UserPostsState> emit,
+    List<PostEntity> updatedPosts,
+  ) {
+    final currentState = state;
+    if (currentState is UserPostsLoaded) {
+      emit(currentState.copyWith(posts: updatedPosts));
+    } else if (currentState is UserPostsLoadingMore) {
+      emit(
+        UserPostsLoadingMore(
+          posts: updatedPosts,
+          profileUserId: currentState.profileUserId!,
+        ),
+      );
+    } else if (currentState is UserPostsLoadMoreError) {
+      emit(
+        UserPostsLoadMoreError(
+          currentState.message,
+          posts: updatedPosts,
+          profileUserId: currentState.profileUserId!,
+        ),
+      );
+    }
+  }
+
   Future<void> _onRemovePostFromUserPosts(
     RemovePostFromUserPosts event,
     Emitter<UserPostsState> emit,
   ) async {
-    final currentState = state;
-    if (currentState is UserPostsLoaded) {
-      final updatedPosts = currentState.posts
-          .where((p) => p.id != event.postId)
-          .toList();
-      emit(currentState.copyWith(posts: updatedPosts));
+    final currentPosts = _getPostsFromState(state);
+    if (currentPosts.isEmpty) return;
+
+    final updatedPosts = currentPosts
+        .where((p) => p.id != event.postId)
+        .toList();
+
+    // Only emit if a change actually happened
+    if (updatedPosts.length < currentPosts.length) {
+      _emitUpdatedState(emit, updatedPosts);
     }
   }
 
@@ -195,102 +235,67 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     );
 
     final profileId = event.profileUserId;
+    _currentUserPostsProfileId = profileId; // Ensure this is set
 
-    // new posts (filter by post.author/user id)
     _realtimeNewPostSub = realtimeService.onNewPost.listen(
       (post) {
-        try {
-          if (post.userId == profileId) {
-            add(_RealtimeUserPostReceived(post));
-          }
-        } catch (e) {
-          AppLogger.error('UserPosts new post listener error: $e', error: e);
+        if (post.userId == _currentUserPostsProfileId) {
+          add(_RealtimeUserPostReceived(post));
         }
       },
-      onError: (err) {
-        AppLogger.error('UserPosts new post stream error: $err', error: err);
-      },
+      onError: (err) =>
+          AppLogger.error('UserPosts new post stream error: $err', error: err),
     );
 
-    // post updates (counts). The service provides update data map; we must check if the post exists locally or belongs to this profile.
     _realtimePostUpdateSub = realtimeService.onPostUpdate.listen(
       (updateData) {
-        try {
-          final postId = updateData['id']?.toString();
-          if (postId == null) return;
+        final postId = updateData['id']?.toString();
+        if (postId == null) return;
 
-          final currentState = state;
-          bool relevant = false;
+        // Check if the post is relevant before dispatching
+        final currentPosts = _getPostsFromState(state);
+        final post = currentPosts.firstWhere(
+          (p) => p.id == postId,
+          orElse: () => PostEntity.empty,
+        );
 
-          if (currentState is UserPostsLoaded) {
-            // Safely try to find the post in current list — avoid PostEntity.empty()
-            try {
-              final maybe = currentState.posts.firstWhere(
-                (p) => p.id == postId,
-              );
-              if (maybe.userId == profileId) {
-                relevant = true;
-              }
-            } catch (_) {
-              // not present in the list -> not relevant for this profile's currently loaded set
-            }
-          }
-
-          if (relevant) {
-            int? safeParseInt(dynamic v) =>
-                v is int ? v : int.tryParse(v?.toString() ?? '');
-            add(
-              _RealtimeUserPostUpdated(
-                postId: postId,
-                likesCount: safeParseInt(updateData['likes_count']),
-                commentsCount: safeParseInt(updateData['comments_count']),
-                favoritesCount: safeParseInt(updateData['favorites_count']),
-              ),
-            );
-          }
-        } catch (e) {
-          AppLogger.error('UserPosts post update listener error: $e', error: e);
-        }
-      },
-      onError: (err) {
-        AppLogger.error('UserPosts post update stream error: $err', error: err);
-      },
-    );
-
-    // post deletions
-    _realtimePostDeletedSub = realtimeService.onPostDeleted.listen(
-      (postId) {
-        try {
-          // If the post belongs to this profile in current state, trigger removal.
-          final currentState = state;
-          if (currentState is UserPostsLoaded &&
-              currentState.posts.any((p) => p.id == postId)) {
-            add(_RealtimeUserPostDeleted(postId));
-          }
-        } catch (e) {
-          AppLogger.error(
-            'UserPosts post deleted listener error: $e',
-            error: e,
+        if (post.id.isNotEmpty && post.userId == _currentUserPostsProfileId) {
+          int? safeParseInt(dynamic v) =>
+              v is int ? v : int.tryParse(v?.toString() ?? '');
+          add(
+            _RealtimeUserPostUpdated(
+              postId: postId,
+              likesCount: safeParseInt(updateData['likes_count']),
+              commentsCount: safeParseInt(updateData['comments_count']),
+              favoritesCount: safeParseInt(updateData['favorites_count']),
+            ),
           );
         }
       },
-      onError: (err) {
-        AppLogger.error(
-          'UserPosts post deleted stream error: $err',
-          error: err,
-        );
+      onError: (err) => AppLogger.error(
+        'UserPosts post update stream error: $err',
+        error: err,
+      ),
+    );
+
+    _realtimePostDeletedSub = realtimeService.onPostDeleted.listen(
+      (postId) {
+        // Check if the post is in our current state before dispatching
+        final currentPosts = _getPostsFromState(state);
+        if (currentPosts.any((p) => p.id == postId)) {
+          add(_RealtimeUserPostDeleted(postId));
+        }
       },
+      onError: (err) => AppLogger.error(
+        'UserPosts post deleted stream error: $err',
+        error: err,
+      ),
     );
 
     _isSubscribedToService = true;
 
-    // If already loaded state, re-emit with realtime active flag if your state supports it
     if (state is UserPostsLoaded) {
-      emit(
-        (state as UserPostsLoaded).copyWith(
-          isRealtimeActive: _isSubscribedToService,
-        ),
-      );
+      emit((state as UserPostsLoaded).copyWith(isRealtimeActive: true));
     }
   }
 
@@ -307,13 +312,10 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     _realtimePostUpdateSub = null;
     _realtimePostDeletedSub = null;
     _isSubscribedToService = false;
+    _currentUserPostsProfileId = null; // Clear profile ID on stop
 
     if (state is UserPostsLoaded) {
-      emit(
-        (state as UserPostsLoaded).copyWith(
-          isRealtimeActive: _isSubscribedToService,
-        ),
-      );
+      emit((state as UserPostsLoaded).copyWith(isRealtimeActive: false));
     }
   }
 
@@ -321,12 +323,11 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     _RealtimeUserPostReceived event,
     Emitter<UserPostsState> emit,
   ) async {
-    final currentState = state;
-    // If the post is already present, ignore
-    if (currentState is UserPostsLoaded &&
-        !currentState.posts.any((p) => p.id == event.post.id)) {
-      final updatedPosts = [event.post, ...currentState.posts];
-      emit(currentState.copyWith(posts: updatedPosts));
+    final currentPosts = _getPostsFromState(state);
+
+    if (!currentPosts.any((p) => p.id == event.post.id)) {
+      final updatedPosts = [event.post, ...currentPosts];
+      _emitUpdatedState(emit, updatedPosts);
       AppLogger.info('New post added to user posts realtime: ${event.post.id}');
     }
   }
@@ -335,10 +336,10 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     _RealtimeUserPostUpdated event,
     Emitter<UserPostsState> emit,
   ) async {
-    final currentState = state;
-    if (currentState is! UserPostsLoaded) return;
+    final currentPosts = _getPostsFromState(state);
+    if (currentPosts.isEmpty) return;
 
-    final updatedPosts = currentState.posts.map((post) {
+    final updatedPosts = currentPosts.map((post) {
       if (post.id == event.postId) {
         return post.copyWith(
           likesCount: event.likesCount ?? post.likesCount,
@@ -349,21 +350,15 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
       return post;
     }).toList();
 
-    emit(currentState.copyWith(posts: updatedPosts));
+    _emitUpdatedState(emit, updatedPosts);
   }
 
   Future<void> _onRealtimeUserPostDeleted(
     _RealtimeUserPostDeleted event,
     Emitter<UserPostsState> emit,
   ) async {
-    final currentState = state;
-    if (currentState is UserPostsLoaded) {
-      final updatedPosts = currentState.posts
-          .where((p) => p.id != event.postId)
-          .toList();
-      emit(currentState.copyWith(posts: updatedPosts));
-      AppLogger.info('User post removed realtime: ${event.postId}');
-    }
+    // This just points to the robust handler
+    add(RemovePostFromUserPosts(event.postId));
   }
 
   @override

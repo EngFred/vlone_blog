@@ -24,7 +24,9 @@ class StartProfileRealtimeEvent extends ProfileEvent {
   List<Object?> get props => [userId];
 }
 
-class StopProfileRealtimeEvent extends ProfileEvent {}
+class StopProfileRealtimeEvent extends ProfileEvent {
+  const StopProfileRealtimeEvent();
+}
 
 class _RealtimeProfileUpdatedEvent extends ProfileEvent {
   final Map<String, dynamic> updateData;

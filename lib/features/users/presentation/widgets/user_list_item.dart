@@ -1,14 +1,13 @@
-// lib/features/users/presentation/widgets/user_list_item.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/features/users/domain/entities/user_list_entity.dart';
 
-class UserListItem extends StatefulWidget {
+class UserListItem extends StatelessWidget {
   final UserListEntity user;
   final String currentUserId;
-  final Function(String, bool) onFollowToggle;
+  final void Function(String, bool) onFollowToggle;
   final bool isLoading;
 
   const UserListItem({
@@ -19,55 +18,46 @@ class UserListItem extends StatefulWidget {
     this.isLoading = false,
   });
 
-  @override
-  State<UserListItem> createState() => _UserListItemState();
-}
-
-class _UserListItemState extends State<UserListItem> {
   static const Duration _debounceDuration = Duration(milliseconds: 400);
 
   void _handleFollowTap() {
-    final key = 'user_follow_${widget.user.id}';
+    final key = 'user_follow_${user.id}';
     Debouncer.instance.debounce(key, _debounceDuration, () {
-      widget.onFollowToggle(widget.user.id, !widget.user.isFollowing);
+      onFollowToggle(user.id, !user.isFollowing);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme; // Access color scheme here
-    final isFollowing = widget.user.isFollowing;
-    final isSelf = widget.user.id == widget.currentUserId;
+    final colorScheme = theme.colorScheme;
+    final isFollowing = user.isFollowing;
+    final isSelf = user.id == currentUserId;
 
-    // Determine the border color based on the current theme brightness
-    // This is safer than using theme.dividerColor which might be less defined in M3
     final borderColor = theme.brightness == Brightness.light
         ? Colors.grey[300]
         : theme.dividerColor;
 
     return InkWell(
-      onTap: () => context.push('${Constants.profileRoute}/${widget.user.id}'),
+      onTap: () => context.push('${Constants.profileRoute}/${user.id}'),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
         padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 8.0),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          // Use a subtle background color derived from the surface for distinction
           color: colorScheme.surfaceContainer,
         ),
         child: Row(
           children: [
             CircleAvatar(
               radius: 26,
-              backgroundImage: widget.user.profileImageUrl != null
-                  ? NetworkImage(widget.user.profileImageUrl!)
+              backgroundImage: user.profileImageUrl != null
+                  ? NetworkImage(user.profileImageUrl!)
                   : null,
-              child: widget.user.profileImageUrl == null
+              child: user.profileImageUrl == null
                   ? Icon(
                       Icons.person,
                       size: 28,
-                      // FIX 1: Set explicit color for the fallback icon
                       color: colorScheme.onSurfaceVariant.withOpacity(0.8),
                     )
                   : null,
@@ -78,18 +68,16 @@ class _UserListItemState extends State<UserListItem> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    widget.user.username,
+                    user.username,
                     style: theme.textTheme.titleMedium?.copyWith(
-                      // FIX 2: Set explicit color for the username text
                       color: colorScheme.onSurface,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    widget.user.bio ?? 'No bio available',
+                    user.bio ?? 'No bio available',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      // The bio text color is already theme-aware, which is good.
                       color: colorScheme.onSurface.withOpacity(0.6),
                     ),
                     maxLines: 1,
@@ -99,14 +87,12 @@ class _UserListItemState extends State<UserListItem> {
               ),
             ),
             const SizedBox(width: 12),
-
             if (!isSelf)
-              // Responsive follow button container
               SizedBox(
                 height: 38,
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 250),
-                  child: widget.isLoading
+                  child: isLoading
                       ? SizedBox(
                           width: 86,
                           child: Center(
@@ -116,7 +102,6 @@ class _UserListItemState extends State<UserListItem> {
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.4,
                                 valueColor: AlwaysStoppedAnimation<Color>(
-                                  // This is fine, using primary and onPrimary correctly
                                   isFollowing
                                       ? colorScheme.primary
                                       : colorScheme.onPrimary,
@@ -126,7 +111,6 @@ class _UserListItemState extends State<UserListItem> {
                           ),
                         )
                       : ConstrainedBox(
-                          // allow the button to size to its content, but cap width
                           constraints: const BoxConstraints(
                             minWidth: 64,
                             maxWidth: 140,
@@ -139,19 +123,13 @@ class _UserListItemState extends State<UserListItem> {
                                 borderRadius: BorderRadius.circular(18.0),
                               ),
                               backgroundColor: isFollowing
-                                  ? colorScheme
-                                        .surface // Unfollow button background is surface
-                                  : colorScheme
-                                        .primary, // Follow button background is primary
+                                  ? colorScheme.surface
+                                  : colorScheme.primary,
                               foregroundColor: isFollowing
-                                  ? colorScheme
-                                        .onSurface // Unfollow button text/icon is onSurface
-                                  : colorScheme
-                                        .onPrimary, // Follow button text/icon is onPrimary
+                                  ? colorScheme.onSurface
+                                  : colorScheme.onPrimary,
                               side: isFollowing
-                                  ? BorderSide(
-                                      color: borderColor!,
-                                    ) // Use the calculated border color
+                                  ? BorderSide(color: borderColor!)
                                   : BorderSide.none,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 10.0,
@@ -162,7 +140,6 @@ class _UserListItemState extends State<UserListItem> {
                               isFollowing ? Icons.check : Icons.person_add,
                               size: 16,
                             ),
-                            // Use FittedBox so the label scales down instead of being cut off
                             label: FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(

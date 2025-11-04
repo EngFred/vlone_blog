@@ -1,8 +1,11 @@
 part of 'user_posts_bloc.dart';
 
 abstract class UserPostsState extends Equatable {
+  /// The ID of the profile these posts belong to.
+  /// This is crucial for the UI to know if the state is for the correct user.
   final String? profileUserId;
-  const UserPostsState({this.profileUserId});
+
+  const UserPostsState({required this.profileUserId});
 
   @override
   List<Object?> get props => [profileUserId];
@@ -13,15 +16,15 @@ class UserPostsInitial extends UserPostsState {
 }
 
 class UserPostsLoading extends UserPostsState {
-  const UserPostsLoading({super.profileUserId});
+  const UserPostsLoading({required super.profileUserId});
 }
 
 class UserPostsError extends UserPostsState {
   final String message;
-  const UserPostsError(this.message, {super.profileUserId});
+  const UserPostsError(this.message, {required super.profileUserId});
 
   @override
-  List<Object?> get props => [message, profileUserId];
+  List<Object?> get props => [profileUserId, message];
 }
 
 class UserPostsLoaded extends UserPostsState {
@@ -31,46 +34,53 @@ class UserPostsLoaded extends UserPostsState {
 
   const UserPostsLoaded(
     this.posts, {
+    required super.profileUserId,
     this.hasMore = true,
     this.isRealtimeActive = false,
-    super.profileUserId,
   });
 
   @override
-  List<Object?> get props => [posts, hasMore, isRealtimeActive, profileUserId];
+  List<Object?> get props => [profileUserId, posts, hasMore, isRealtimeActive];
 
   UserPostsLoaded copyWith({
     List<PostEntity>? posts,
     bool? hasMore,
     bool? isRealtimeActive,
-    String? profileUserId,
+    String? profileUserId, // Though this shouldn't typically change
   }) {
     return UserPostsLoaded(
       posts ?? this.posts,
+      profileUserId: profileUserId ?? this.profileUserId,
       hasMore: hasMore ?? this.hasMore,
       isRealtimeActive: isRealtimeActive ?? this.isRealtimeActive,
-      profileUserId: profileUserId ?? this.profileUserId,
     );
   }
 }
 
 class UserPostsLoadingMore extends UserPostsState {
-  final List<PostEntity> currentPosts;
-  const UserPostsLoadingMore({required this.currentPosts, super.profileUserId});
+  // RENAMED for consistency
+  final List<PostEntity> posts;
+
+  const UserPostsLoadingMore({
+    required this.posts,
+    required super.profileUserId,
+  });
 
   @override
-  List<Object?> get props => [currentPosts, profileUserId];
+  List<Object?> get props => [profileUserId, posts];
 }
 
 class UserPostsLoadMoreError extends UserPostsState {
   final String message;
-  final List<PostEntity> currentPosts;
+  // RENAMED for consistency
+  final List<PostEntity> posts;
+
   const UserPostsLoadMoreError(
     this.message, {
-    required this.currentPosts,
-    super.profileUserId,
+    required this.posts,
+    required super.profileUserId,
   });
 
   @override
-  List<Object?> get props => [message, currentPosts, profileUserId];
+  List<Object?> get props => [profileUserId, message, posts];
 }

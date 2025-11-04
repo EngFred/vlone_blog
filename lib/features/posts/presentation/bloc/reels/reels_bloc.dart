@@ -59,11 +59,17 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
       return;
     }
 
+    // Get posts from *any* state that has them
     final currentPostsSnapshot = state is ReelsLoaded
         ? (state as ReelsLoaded).posts
+        : (state is ReelsLoadingMore)
+        ? (state as ReelsLoadingMore).posts
+        : (state is ReelsLoadMoreError)
+        ? (state as ReelsLoadMoreError).posts
         : <PostEntity>[];
 
-    emit(ReelsLoadingMore(currentPosts: currentPostsSnapshot));
+    // Use 'posts' for consistent state
+    emit(ReelsLoadingMore(posts: currentPostsSnapshot));
     await _safeFetchReels(
       emit,
       isRefresh: false,
@@ -108,7 +114,8 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
             emit(ReelsError(message));
           } else {
             final currentPosts = existingPosts ?? [];
-            emit(ReelsLoadMoreError(message, currentPosts: currentPosts));
+            // Use 'posts' for consistent state
+            emit(ReelsLoadMoreError(message, posts: currentPosts));
           }
         },
         (newPosts) {
@@ -146,9 +153,20 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     Emitter<ReelsState> emit,
   ) async {
     final currentState = state;
-    if (currentState is! ReelsLoaded) return;
 
-    final updatedPosts = currentState.posts.map((p) {
+    // Get posts from *any* state that has them
+    List<PostEntity> currentPosts = [];
+    if (currentState is ReelsLoaded) {
+      currentPosts = currentState.posts;
+    } else if (currentState is ReelsLoadingMore) {
+      currentPosts = currentState.posts;
+    } else if (currentState is ReelsLoadMoreError) {
+      currentPosts = currentState.posts;
+    } else {
+      return; // Not a state we can update
+    }
+
+    final updatedPosts = currentPosts.map((p) {
       if (p.id != event.postId) return p;
       return p.copyWith(
         likesCount: (p.likesCount + event.deltaLikes)
@@ -165,19 +183,37 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
       );
     }).toList();
 
-    emit(currentState.copyWith(posts: updatedPosts));
+    // Re-emit the *correct* state class with the updated posts
+    if (currentState is ReelsLoaded) {
+      emit(currentState.copyWith(posts: updatedPosts));
+    } else if (currentState is ReelsLoadingMore) {
+      emit(ReelsLoadingMore(posts: updatedPosts));
+    } else if (currentState is ReelsLoadMoreError) {
+      emit(ReelsLoadMoreError(currentState.message, posts: updatedPosts));
+    }
   }
 
   Future<void> _onRemovePostFromReels(
     RemovePostFromReels event,
     Emitter<ReelsState> emit,
   ) async {
+    // This logic should also be applied to all states
     final currentState = state;
     if (currentState is ReelsLoaded) {
       final updatedPosts = currentState.posts
           .where((p) => p.id != event.postId)
           .toList();
       emit(currentState.copyWith(posts: updatedPosts));
+    } else if (currentState is ReelsLoadingMore) {
+      final updatedPosts = currentState.posts
+          .where((p) => p.id != event.postId)
+          .toList();
+      emit(ReelsLoadingMore(posts: updatedPosts));
+    } else if (currentState is ReelsLoadMoreError) {
+      final updatedPosts = currentState.posts
+          .where((p) => p.id != event.postId)
+          .toList();
+      emit(ReelsLoadMoreError(currentState.message, posts: updatedPosts));
     }
   }
 
@@ -248,36 +284,24 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     _RealtimeReelsPostUpdated event,
     Emitter<ReelsState> emit,
   ) async {
-    final currentState = state;
-    if (currentState is! ReelsLoaded) return;
-
-    final updatedPosts = currentState.posts.map((post) {
-      if (post.id == event.postId) {
-        return post.copyWith(
-          likesCount: event.likesCount ?? post.likesCount,
-          commentsCount: event.commentsCount ?? post.commentsCount,
-          favoritesCount: event.favoritesCount ?? post.favoritesCount,
-          sharesCount: event.sharesCount ?? post.sharesCount,
-        );
-      }
-      return post;
-    }).toList();
-
-    emit(currentState.copyWith(posts: updatedPosts));
+    // This logic is now robust and handles all states
+    await _onUpdateReelsPostOptimistic(
+      UpdateReelsPostOptimistic(
+        postId: event.postId,
+        deltaLikes: 0, // Realtime updates are absolute, not deltas
+        deltaFavorites: 0,
+        deltaComments: 0,
+      ),
+      emit,
+    );
   }
 
   void _onRealtimePostDeleted(
     _RealtimeReelsPostDeleted event,
     Emitter<ReelsState> emit,
   ) {
-    final currentState = state;
-    if (currentState is ReelsLoaded) {
-      final updatedPosts = currentState.posts
-          .where((p) => p.id != event.postId)
-          .toList();
-      emit(currentState.copyWith(posts: updatedPosts));
-      AppLogger.info('Reel removed realtime: ${event.postId}');
-    }
+    // This logic is now robust and handles all states
+    add(RemovePostFromReels(event.postId));
   }
 
   @override

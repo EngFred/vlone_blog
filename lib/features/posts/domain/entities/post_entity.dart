@@ -47,6 +47,10 @@ class PostEntity extends Equatable {
     this.mediaHeight,
   });
 
+  /// --- FIX: Define the missing 'empty' static getter ---
+  static final empty = PostEntity(id: '', userId: '', createdAt: DateTime(0));
+  // ---------------------------------------------------
+
   PostEntity copyWith({
     String? id,
     String? userId,

@@ -27,17 +27,18 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   String? _currentUserId;
-  final List<PostEntity> _userPosts = [];
-  bool _hasMoreUserPosts = true;
-  bool _isUserPostsLoading = true;
+  // --- REFACTORED: REMOVED DUPLICATE BLoC STATE ---
+  // final List<PostEntity> _userPosts = [];
+  // bool _hasMoreUserPosts = true;
+  // bool _isUserPostsLoading = true;
   bool _isLoadingMoreUserPosts = false;
-  String? _userPostsError;
-  String? _loadMoreError;
+  // String? _userPostsError;
+  // String? _loadMoreError;
   final ScrollController _scrollController = ScrollController();
   static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
-  bool _hasLoadedOnce = false;
+  // bool _hasLoadedOnce = false;
 
-  // New flags to track listener state locally
+  // New flags to track listener state locally (Kept as mirrors for fallback logic)
   bool _isProfileRealtimeActive = false;
   bool _isUserPostsRealtimeActive = false;
 
@@ -66,17 +67,16 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
 
-    if (_userPosts.isEmpty && _isUserPostsLoading == false) {
-      setState(() {
-        _isUserPostsLoading = true;
-      });
-    }
+    // --- REFACTORED: REMOVED LOCAL STATE RESETS ---
+    // if (_userPosts.isEmpty && _isUserPostsLoading == false) {
+    //   setState(() { _isUserPostsLoading = true; });
+    // }
+    // _userPosts.clear();
+    // _userPostsError = null;
+    // _loadMoreError = null;
+    // _hasMoreUserPosts = true;
+    // _hasLoadedOnce = false;
 
-    _userPosts.clear();
-    _userPostsError = null;
-    _loadMoreError = null;
-    _hasMoreUserPosts = true;
-    _hasLoadedOnce = false;
     // Reset local realtime tracking flags
     _isProfileRealtimeActive = false;
     _isUserPostsRealtimeActive = false;
@@ -94,7 +94,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // +++ NEW: Fallback mechanism to ensure Realtime starts +++
+  // Fallback mechanism to ensure Realtime starts
   void _ensureProfileRealtimeActive(ProfileState state) {
     if (state is ProfileDataLoaded &&
         !_isProfileRealtimeActive &&
@@ -120,13 +120,11 @@ class _ProfilePageState extends State<ProfilePage> {
       );
     }
   }
-  // +++ END NEW +++
 
-  // New method to handle the RefreshIndicator logic
   Future<void> _onRefreshProfile() async {
     if (_currentUserId == null) return;
 
-    // 1. Dispatch event to refresh the Profile (the fix for the user request)
+    // 1. Dispatch event to refresh the Profile
     context.read<ProfileBloc>().add(GetProfileDataEvent(_currentUserId!));
 
     // 2. Dispatch event to refresh the User Posts
@@ -137,37 +135,44 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
 
-    // 3. Reset local state for the post list to show a fresh loading indicator
-    if (!mounted) return;
-    setState(() {
-      _userPosts.clear();
-      _userPostsError = null;
-      _hasMoreUserPosts = true;
-      _isUserPostsLoading = true;
-      _hasLoadedOnce = false;
-      // Realtime active flags are not reset here, as they are either already
-      // active or will be checked again upon the subsequent 'Loaded' state.
-    });
+    // --- REFACTORED: REMOVED LOCAL STATE RESETS ---
+    // if (!mounted) return;
+    // setState(() {
+    //   _userPosts.clear();
+    //   _userPostsError = null;
+    //   _hasMoreUserPosts = true;
+    //   _isUserPostsLoading = true;
+    //   _hasLoadedOnce = false;
+    // });
   }
 
   void _setupScrollListener() {
     _scrollController.addListener(() {
       if (!_scrollController.hasClients) return;
-      Debouncer.instance.debounce(
-        'load_more_user_posts',
-        _loadMoreDebounce,
-        () {
-          if (!_hasLoadedOnce) return;
-          if (_scrollController.position.pixels >=
-                  _scrollController.position.maxScrollExtent - 200 &&
-              _hasMoreUserPosts &&
-              !_isLoadingMoreUserPosts) {
-            if (!mounted) return;
-            setState(() => _isLoadingMoreUserPosts = true);
-            context.read<UserPostsBloc>().add(LoadMoreUserPostsEvent());
-          }
-        },
-      );
+      Debouncer.instance.debounce('load_more_user_posts', _loadMoreDebounce, () {
+        final userPostsState = context.read<UserPostsBloc>().state;
+
+        final bool hasMore = (userPostsState is UserPostsLoaded)
+            ? userPostsState.hasMore
+            : (userPostsState
+                  is UserPostsLoadMoreError); // Allow retry on error
+
+        // We check if posts have been loaded at least once by checking the state type
+        final bool hasLoadedOnce =
+            userPostsState is UserPostsLoaded ||
+            userPostsState is UserPostsLoadingMore ||
+            userPostsState is UserPostsLoadMoreError;
+
+        if (_scrollController.position.pixels >=
+                _scrollController.position.maxScrollExtent - 200 &&
+            hasMore &&
+            !_isLoadingMoreUserPosts &&
+            hasLoadedOnce) {
+          if (!mounted) return;
+          setState(() => _isLoadingMoreUserPosts = true);
+          context.read<UserPostsBloc>().add(const LoadMoreUserPostsEvent());
+        }
+      });
     });
   }
 
@@ -178,6 +183,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _showLogoutConfirmationDialog() {
+    // (Function body is unchanged)
     showCustomDialog(
       context: context,
       title: 'Logout Confirmation',
@@ -351,88 +357,56 @@ class _ProfilePageState extends State<ProfilePage> {
                           AppLogger.info(
                             'Profile updated via real-time stream: ${state.profile.username}',
                           );
-                          // +++ NEW: Check for fallback +++
                           _ensureProfileRealtimeActive(state);
-                          // +++ END NEW +++
                         }
                       }
                     },
                   ),
                   BlocListener<UserPostsBloc, UserPostsState>(
                     listener: (context, state) {
-                      if (state is UserPostsLoaded) {
-                        // Update local flag from BLoC state
-                        _isUserPostsRealtimeActive = state.isRealtimeActive;
+                      // --- REFACTORED: Listener streamlined to only handle UI loading flags ---
+                      if (state.profileUserId != null &&
+                          state.profileUserId != _currentUserId) {
+                        // Ignore state for foreign profile
+                        AppLogger.info(
+                          'ProfilePage: UserPostsBloc state is for foreign profile (${state.profileUserId}). Triggering refresh for $_currentUserId.',
+                        );
+                        context.read<UserPostsBloc>().add(
+                          RefreshUserPostsEvent(
+                            profileUserId: _currentUserId!,
+                            currentUserId: _currentUserId!,
+                          ),
+                        );
+                        return;
+                      }
 
-                        if (state.profileUserId != null &&
-                            state.profileUserId != _currentUserId) {
-                          AppLogger.info(
-                            'ProfilePage: UserPostsBloc state is for foreign profile (${state.profileUserId}). Triggering refresh for $_currentUserId.',
-                          );
-                          context.read<UserPostsBloc>().add(
-                            RefreshUserPostsEvent(
-                              profileUserId: _currentUserId!,
-                              currentUserId: _currentUserId!,
-                            ),
-                          );
-                          return;
-                        }
-                        if (!mounted) return;
+                      if (!mounted) return;
+
+                      // Update Realtime status and stop loading indicators
+                      if (state is UserPostsLoaded) {
+                        _isUserPostsRealtimeActive = state.isRealtimeActive;
                         setState(() {
-                          _userPosts.clear();
-                          _userPostsError = null;
-                          _userPosts.addAll(state.posts);
-                          _hasMoreUserPosts = state.hasMore;
-                          _isUserPostsLoading = false;
                           _isLoadingMoreUserPosts = false;
-                          _loadMoreError = null;
-                          _hasLoadedOnce = true;
                         });
                         AppLogger.info(
-                          'ProfilePage: Loaded ${_userPosts.length} posts for $_currentUserId',
+                          'ProfilePage: UserPosts Loaded. Realtime Active: ${_isUserPostsRealtimeActive}',
                         );
-                        // +++ NEW: Check for fallback +++
                         _ensureUserPostsRealtimeActive(state);
-                        // +++ END NEW +++
-                      } else if (state is UserPostsError) {
-                        if (state.profileUserId != null &&
-                            state.profileUserId != _currentUserId) {
-                          return;
-                        }
-                        if (!mounted) return;
-                        setState(() {
-                          _userPostsError = state.message;
-                          _isUserPostsLoading = false;
-                          _isLoadingMoreUserPosts = false;
-                        });
-                      } else if (state is UserPostsLoading) {
-                        if (state.profileUserId != null &&
-                            state.profileUserId != _currentUserId) {
-                          return;
-                        }
-                        if (!mounted) return;
-                        setState(() => _isUserPostsLoading = true);
                       } else if (state is UserPostsLoadMoreError) {
-                        if (state.profileUserId != null &&
-                            state.profileUserId != _currentUserId) {
-                          return;
-                        }
-                        if (!mounted) return;
                         setState(() {
-                          _loadMoreError = state.message;
                           _isLoadingMoreUserPosts = false;
                         });
                       }
+                      // Loading state is handled by the BlocBuilder (to show the initial spinner).
+                      // We no longer need to manually copy lists or set hasMore/errors here.
                     },
                   ),
                   BlocListener<PostActionsBloc, PostActionsState>(
                     listenWhen: (previous, current) =>
-                        current is PostCreatedSuccess ||
-                        current is PostDeletedSuccess,
+                        current
+                            is PostDeletedSuccess, // Only listen for deletion
                     listener: (context, state) {
-                      if (state is PostCreatedSuccess) {
-                        // real time updates will hanlde this anyway
-                      } else if (state is PostDeletedSuccess) {
+                      if (state is PostDeletedSuccess) {
                         context.read<UserPostsBloc>().add(
                           RemovePostFromUserPosts(state.postId),
                         );
@@ -441,8 +415,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ],
                 child: BlocBuilder<ProfileBloc, ProfileState>(
-                  builder: (context, state) {
-                    if (state is ProfileLoading || state is ProfileInitial) {
+                  builder: (context, profileState) {
+                    if (profileState is ProfileLoading ||
+                        profileState is ProfileInitial) {
                       return const Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -460,46 +435,79 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       );
                     }
-                    if (state is ProfileError) {
+                    if (profileState is ProfileError) {
                       return CustomErrorWidget(
-                        message: state.message,
-                        onRetry: () =>
-                            _onRefreshProfile(), // Use new refresh method on retry
+                        message: profileState.message,
+                        onRetry: _onRefreshProfile,
                       );
                     }
-                    if (state is ProfileDataLoaded) {
+                    if (profileState is ProfileDataLoaded) {
+                      // Use a nested BlocBuilder to access UserPostsState
                       return RefreshIndicator(
-                        onRefresh: _onRefreshProfile, // Use the new method
+                        onRefresh: _onRefreshProfile,
                         child: CustomScrollView(
                           controller: _scrollController,
                           physics: const AlwaysScrollableScrollPhysics(),
                           slivers: [
                             SliverToBoxAdapter(
                               child: ProfileHeader(
-                                profile: state.profile,
+                                profile: profileState.profile,
                                 isOwnProfile: true,
                               ),
                             ),
-                            ProfilePostsList(
-                              posts: _userPosts,
-                              userId: _currentUserId!,
-                              isLoading: _isUserPostsLoading,
-                              error: _userPostsError,
-                              hasMore: _hasMoreUserPosts,
-                              isLoadingMore: _isLoadingMoreUserPosts,
-                              loadMoreError: _loadMoreError,
-                              onRetry: () {
-                                if (!mounted || _currentUserId == null) return;
-                                setState(() {
-                                  _userPostsError = null;
-                                  _isUserPostsLoading = true;
-                                  _hasLoadedOnce = false;
-                                });
-                                context.read<UserPostsBloc>().add(
-                                  RefreshUserPostsEvent(
-                                    profileUserId: _currentUserId!,
-                                    currentUserId: _currentUserId!,
-                                  ),
+                            BlocBuilder<UserPostsBloc, UserPostsState>(
+                              builder: (context, userPostsState) {
+                                // --- REFACTORED: Extract data directly from BLoC state ---
+                                List<PostEntity> posts = [];
+                                bool isLoading = false;
+                                String? error;
+                                bool hasMore = false;
+                                String? loadMoreError;
+
+                                if (userPostsState is UserPostsLoading &&
+                                    userPostsState.profileUserId ==
+                                        _currentUserId) {
+                                  isLoading = true;
+                                } else if (userPostsState is UserPostsError &&
+                                    userPostsState.profileUserId ==
+                                        _currentUserId) {
+                                  error = userPostsState.message;
+                                } else if (userPostsState is UserPostsLoaded) {
+                                  posts = userPostsState.posts;
+                                  hasMore = userPostsState.hasMore;
+                                } else if (userPostsState
+                                    is UserPostsLoadingMore) {
+                                  posts = userPostsState.posts;
+                                  hasMore = true; // Still expecting more data
+                                } else if (userPostsState
+                                    is UserPostsLoadMoreError) {
+                                  posts = userPostsState.posts;
+                                  loadMoreError = userPostsState.message;
+                                  hasMore = true; // Show retry button
+                                }
+
+                                return ProfilePostsList(
+                                  posts: posts,
+                                  userId: _currentUserId!,
+                                  isLoading: isLoading,
+                                  error: error,
+                                  hasMore: hasMore,
+                                  isLoadingMore:
+                                      _isLoadingMoreUserPosts &&
+                                      userPostsState
+                                          is UserPostsLoadingMore, // Only show if BLoC is loading more
+                                  loadMoreError: loadMoreError,
+                                  onRetry: () {
+                                    if (!mounted || _currentUserId == null)
+                                      return;
+                                    // No local state reset needed, just trigger refresh
+                                    context.read<UserPostsBloc>().add(
+                                      RefreshUserPostsEvent(
+                                        profileUserId: _currentUserId!,
+                                        currentUserId: _currentUserId!,
+                                      ),
+                                    );
+                                  },
                                 );
                               },
                             ),

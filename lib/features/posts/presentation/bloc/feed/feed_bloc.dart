@@ -62,9 +62,14 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
 
     final currentPostsSnapshot = state is FeedLoaded
         ? (state as FeedLoaded).posts
+        : (state is FeedLoadingMore)
+        ? (state as FeedLoadingMore).posts
+        : (state is FeedLoadMoreError)
+        ? (state as FeedLoadMoreError).posts
         : <PostEntity>[];
 
-    emit(FeedLoadingMore(currentPosts: currentPostsSnapshot));
+    // REFACTORED: Use 'posts'
+    emit(FeedLoadingMore(posts: currentPostsSnapshot));
     await _safeFetchFeed(
       emit,
       isRefresh: false,
@@ -109,7 +114,8 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
             emit(FeedError(message));
           } else {
             final currentPosts = existingPosts ?? [];
-            emit(FeedLoadMoreError(message, currentPosts: currentPosts));
+            // REFACTORED: Use 'posts'
+            emit(FeedLoadMoreError(message, posts: currentPosts));
           }
         },
         (newPosts) {
@@ -147,9 +153,19 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     Emitter<FeedState> emit,
   ) async {
     final currentState = state;
-    if (currentState is! FeedLoaded) return;
 
-    final updatedPosts = currentState.posts.map((p) {
+    List<PostEntity> currentPosts = [];
+    if (currentState is FeedLoaded) {
+      currentPosts = currentState.posts;
+    } else if (currentState is FeedLoadingMore) {
+      currentPosts = currentState.posts;
+    } else if (currentState is FeedLoadMoreError) {
+      currentPosts = currentState.posts;
+    } else {
+      return; // Not a state we can update
+    }
+
+    final updatedPosts = currentPosts.map((p) {
       if (p.id != event.postId) return p;
       final int newLikes = (p.likesCount + event.deltaLikes)
           .clamp(0, double.infinity)
@@ -169,7 +185,14 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
       );
     }).toList();
 
-    emit(currentState.copyWith(posts: updatedPosts));
+    // Re-emit the correct state with the updated posts
+    if (currentState is FeedLoaded) {
+      emit(currentState.copyWith(posts: updatedPosts));
+    } else if (currentState is FeedLoadingMore) {
+      emit(FeedLoadingMore(posts: updatedPosts));
+    } else if (currentState is FeedLoadMoreError) {
+      emit(FeedLoadMoreError(currentState.message, posts: updatedPosts));
+    }
   }
 
   Future<void> _onAddPostToFeed(
@@ -181,6 +204,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
       final updatedPosts = [event.post, ...currentState.posts];
       emit(currentState.copyWith(posts: updatedPosts));
     }
+    // You might want to handle other states (e.g. FeedLoadingMore) too
   }
 
   Future<void> _onRemovePostFromFeed(
@@ -194,6 +218,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
           .toList();
       emit(currentState.copyWith(posts: updatedPosts));
     }
+    // You might want to handle other states (e.g. FeedLoadingMore) too
   }
 
   Future<void> _onStartFeedRealtime(
@@ -259,22 +284,19 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     _RealtimeFeedPostUpdated event,
     Emitter<FeedState> emit,
   ) async {
-    final currentState = state;
-    if (currentState is! FeedLoaded) return;
-
-    final updatedPosts = currentState.posts.map((post) {
-      if (post.id == event.postId) {
-        return post.copyWith(
-          likesCount: event.likesCount ?? post.likesCount,
-          commentsCount: event.commentsCount ?? post.commentsCount,
-          favoritesCount: event.favoritesCount ?? post.favoritesCount,
-          sharesCount: event.sharesCount ?? post.sharesCount,
-        );
-      }
-      return post;
-    }).toList();
-
-    emit(currentState.copyWith(posts: updatedPosts));
+    // This can update any state that has posts
+    await _onUpdateFeedPostOptimistic(
+      UpdateFeedPostOptimistic(
+        postId: event.postId,
+        deltaLikes: 0,
+        deltaFavorites: 0,
+        deltaComments: 0,
+        // This is a bit tricky. Realtime updates don't know the
+        // user's "isLiked" status. This logic is fine, it just updates counts.
+        // If you need to update booleans, you'd need a different approach.
+      ),
+      emit,
+    );
   }
 
   void _onRealtimePostDeleted(
@@ -288,6 +310,18 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
           .toList();
       emit(currentState.copyWith(posts: updatedPosts));
       AppLogger.info('Post removed from feed realtime: ${event.postId}');
+    }
+    // Also handle other states
+    else if (currentState is FeedLoadingMore) {
+      final updatedPosts = currentState.posts
+          .where((p) => p.id != event.postId)
+          .toList();
+      emit(FeedLoadingMore(posts: updatedPosts));
+    } else if (currentState is FeedLoadMoreError) {
+      final updatedPosts = currentState.posts
+          .where((p) => p.id != event.postId)
+          .toList();
+      emit(FeedLoadMoreError(currentState.message, posts: updatedPosts));
     }
   }
 

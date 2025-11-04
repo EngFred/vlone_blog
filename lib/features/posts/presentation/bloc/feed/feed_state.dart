@@ -49,17 +49,18 @@ class FeedLoaded extends FeedState {
 }
 
 class FeedLoadingMore extends FeedState {
-  // We include current posts so the UI can still show them
-  final List<PostEntity> currentPosts;
-  const FeedLoadingMore({required this.currentPosts});
+  // RENAMED from currentPosts to posts for consistency
+  final List<PostEntity> posts;
+  const FeedLoadingMore({required this.posts});
   @override
-  List<Object?> get props => [currentPosts];
+  List<Object?> get props => [posts];
 }
 
 class FeedLoadMoreError extends FeedState {
   final String message;
-  final List<PostEntity> currentPosts;
-  const FeedLoadMoreError(this.message, {required this.currentPosts});
+  // RENAMED from currentPosts to posts for consistency
+  final List<PostEntity> posts;
+  const FeedLoadMoreError(this.message, {required this.posts});
   @override
-  List<Object?> get props => [message, currentPosts];
+  List<Object?> get props => [message, posts];
 }

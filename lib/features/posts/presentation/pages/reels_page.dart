@@ -7,8 +7,6 @@ import 'package:vlone_blog_app/core/presentation/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/reels/reels_bloc.dart';
-import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
-import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/reel_item.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -22,15 +20,19 @@ class ReelsPage extends StatefulWidget {
 
 class _ReelsPageState extends State<ReelsPage>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
-  final List<PostEntity> _posts = [];
-  bool _hasLoadedOnce = false;
+  // --- REFACTORED STATE ---
+  // All local state duplicating the BLoC is REMOVED.
+  // -REMOVED: final List<PostEntity> _posts = [];
+  // -REMOVED: bool _hasLoadedOnce = false;
+  // -REMOVED: bool _hasMoreReels = true;
+  // -REMOVED: bool _isRealtimeActive = false;
+
   late PageController _pageController;
   int _currentPage = 0;
   bool _isPageChanging = false;
-  bool _hasMoreReels = true;
   bool _isLoadingMore = false;
   bool _isPageVisible = true;
-  bool _isRealtimeActive = false;
+  // --- END REFACTORED STATE ---
 
   @override
   bool get wantKeepAlive => true;
@@ -52,28 +54,8 @@ class _ReelsPageState extends State<ReelsPage>
     }
   }
 
-  void _updatePosts(List<PostEntity> newPosts) {
-    if (!mounted) return;
-    final oldIds = _posts.map((p) => p.id).toSet();
-    final newIds = newPosts.map((p) => p.id).toSet();
-
-    final shouldJumpToStart =
-        newIds.isNotEmpty && !oldIds.contains(newIds.first);
-
-    AppLogger.info(
-      'Updating reels list. Old: ${oldIds.length}, New: ${newIds.length}',
-    );
-    setState(() {
-      _posts
-        ..clear()
-        ..addAll(newPosts);
-    });
-
-    if (_posts.isNotEmpty && _pageController.hasClients && shouldJumpToStart) {
-      _pageController.jumpToPage(0);
-      _currentPage = 0;
-    }
-  }
+  // --- REMOVED `_updatePosts` method ---
+  // This complex logic is no longer needed. The BLoC state is the truth.
 
   void _onPageChanged(int index) {
     if (_isPageChanging) return;
@@ -86,9 +68,25 @@ class _ReelsPageState extends State<ReelsPage>
       if (mounted) setState(() => _isPageChanging = false);
     });
 
-    if (!_hasLoadedOnce) return;
+    // Get the *current* state directly from the BLoC
+    final currentState = context.read<ReelsBloc>().state;
 
-    if (index >= _posts.length - 2 && _hasMoreReels && !_isLoadingMore) {
+    // Determine if we can load more from the BLoC state
+    List<PostEntity> currentPosts = [];
+    bool hasMoreReels = false;
+
+    if (currentState is ReelsLoaded) {
+      currentPosts = currentState.posts;
+      hasMoreReels = currentState.hasMore;
+    } else if (currentState is ReelsLoadingMore) {
+      currentPosts = currentState.posts;
+      hasMoreReels = true; // Assume true if we're loading
+    } else if (currentState is ReelsLoadMoreError) {
+      currentPosts = currentState.posts;
+      hasMoreReels = true; // Assume true to allow retry
+    }
+
+    if (index >= currentPosts.length - 2 && hasMoreReels && !_isLoadingMore) {
       final currentUserId = context.read<AuthBloc>().cachedUser?.id;
       if (currentUserId != null) {
         setState(() => _isLoadingMore = true);
@@ -97,11 +95,14 @@ class _ReelsPageState extends State<ReelsPage>
     }
   }
 
-  // Fallback mechanism +++
+  // Fallback mechanism
   void _ensureRealtimeActive(ReelsState state) {
     final currentUserId = context.read<AuthBloc>().cachedUser?.id;
 
-    if (state is ReelsLoaded && !_isRealtimeActive && currentUserId != null) {
+    // Read realtime status *from the BLoC state*
+    if (state is ReelsLoaded &&
+        !state.isRealtimeActive &&
+        currentUserId != null) {
       AppLogger.warning(
         'ReelsPage: Realtime was not active after load. Starting as fallback.',
       );
@@ -110,6 +111,7 @@ class _ReelsPageState extends State<ReelsPage>
   }
 
   Widget _buildLoadingReel() {
+    // ... (This widget is fine, no changes needed)
     return Container(
       color: Colors.black,
       child: Stack(
@@ -161,6 +163,7 @@ class _ReelsPageState extends State<ReelsPage>
     super.build(context);
     final currentUserId = context.select((AuthBloc b) => b.cachedUser?.id);
     if (currentUserId == null) {
+      // ... (Initial loading widget is fine, no changes needed)
       return Scaffold(
         backgroundColor: Colors.black,
         body: Center(
@@ -194,19 +197,19 @@ class _ReelsPageState extends State<ReelsPage>
             );
             VideoPlaybackManager.pause();
             setState(() => _isPageVisible = false);
-            // Restore default status bar when leaving the page (e.g., changing tabs)
             AppTheme.restoreDefaultStatusBar(context);
           } else if (visibleFraction > 0 && !_isPageVisible) {
             AppLogger.info(
               'ReelsPage visible - resuming video and setting status bar',
             );
             setState(() => _isPageVisible = true);
-            // Re-apply Reels status bar style when returning to the page
             AppTheme.setStatusBarForReels();
           }
         },
         child: MultiBlocListener(
           listeners: [
+            // This listener now only manages local UI state (_isLoadingMore)
+            // and the realtime fallback.
             BlocListener<ReelsBloc, ReelsState>(
               listener: (context, state) {
                 if (state is ReelsLoaded) {
@@ -214,17 +217,10 @@ class _ReelsPageState extends State<ReelsPage>
                     'Reels loaded with ${state.posts.length} posts',
                   );
                   if (mounted) {
-                    _updatePosts(state.posts);
-                    _hasMoreReels = state.hasMore;
-                    // +++ UPDATE: Capture the state from the BLoC +++
-                    _isRealtimeActive = state.isRealtimeActive;
-                    // +++ END UPDATE +++
-                    _hasLoadedOnce = true;
-                    _isLoadingMore = false;
-
-                    // +++ NEW: Fallback check after successful load +++
+                    setState(() {
+                      _isLoadingMore = false;
+                    });
                     _ensureRealtimeActive(state);
-                    // +++ END NEW +++
                   }
                 } else if (state is ReelsLoadMoreError) {
                   AppLogger.error('Load more reels error: ${state.message}');
@@ -232,80 +228,9 @@ class _ReelsPageState extends State<ReelsPage>
                 }
               },
             ),
-            BlocListener<LikesBloc, LikesState>(
-              listener: (context, state) {
-                if (state is LikeSuccess) {
-                  final idx = _posts.indexWhere((p) => p.id == state.postId);
-                  if (idx != -1 && mounted) {
-                    final old = _posts[idx];
-                    final updated = old.copyWith(isLiked: state.isLiked);
-                    setState(() => _posts[idx] = updated);
-                  }
-                } else if (state is LikeError && state.shouldRevert) {
-                  AppLogger.error('Like error in ReelsPage: ${state.message}');
-                  final idx = _posts.indexWhere((p) => p.id == state.postId);
-                  if (idx != -1 && mounted) {
-                    final old = _posts[idx];
-                    final revertedCount = (old.likesCount - state.delta)
-                        .clamp(0, double.infinity)
-                        .toInt();
-                    final updated = old.copyWith(
-                      isLiked: state.previousState,
-                      likesCount: revertedCount,
-                    );
-                    setState(() => _posts[idx] = updated);
-                  }
-                  context.read<ReelsBloc>().add(
-                    UpdateReelsPostOptimistic(
-                      postId: state.postId,
-                      deltaLikes: -state.delta,
-                      deltaFavorites: 0,
-                      isLiked: state.previousState,
-                      isFavorited: null,
-                    ),
-                  );
-                }
-              },
-            ),
-            BlocListener<FavoritesBloc, FavoritesState>(
-              listener: (context, state) {
-                if (state is FavoriteSuccess) {
-                  final idx = _posts.indexWhere((p) => p.id == state.postId);
-                  if (idx != -1 && mounted) {
-                    final old = _posts[idx];
-                    final updated = old.copyWith(
-                      isFavorited: state.isFavorited,
-                    );
-                    setState(() => _posts[idx] = updated);
-                  }
-                } else if (state is FavoriteError && state.shouldRevert) {
-                  AppLogger.error(
-                    'Favorite error in ReelsPage: ${state.message}',
-                  );
-                  final idx = _posts.indexWhere((p) => p.id == state.postId);
-                  if (idx != -1 && mounted) {
-                    final old = _posts[idx];
-                    final revertedCount = (old.favoritesCount - state.delta)
-                        .clamp(0, double.infinity)
-                        .toInt();
-                    final updated = old.copyWith(
-                      isFavorited: state.previousState,
-                      favoritesCount: revertedCount,
-                    );
-                    setState(() => _posts[idx] = updated);
-                  }
-                  context.read<ReelsBloc>().add(
-                    UpdateReelsPostOptimistic(
-                      postId: state.postId,
-                      deltaLikes: 0,
-                      deltaFavorites: -state.delta,
-                      isLiked: null,
-                      isFavorited: state.previousState,
-                    ),
-                  );
-                }
-              },
-            ),
+            // --- REMOVED LikesBloc and FavoritesBloc Listeners ---
+            // The BLoC state is now the single source of truth,
+            // so manual state syncing is no longer needed.
           ],
           child: RefreshIndicator(
             backgroundColor: Colors.black,
@@ -320,42 +245,9 @@ class _ReelsPageState extends State<ReelsPage>
             },
             child: Builder(
               builder: (context) {
+                // --- SINGLE SOURCE OF TRUTH ---
                 final reelsState = context.watch<ReelsBloc>().state;
-
-                if (_hasLoadedOnce) {
-                  if (_posts.isEmpty) {
-                    return EmptyStateWidget(
-                      message: 'No reels yet',
-                      icon: Icons.video_library_outlined,
-                      actionText: 'Refresh',
-                      onRetry: () => context.read<ReelsBloc>().add(
-                        GetReelsEvent(currentUserId),
-                      ),
-                    );
-                  }
-                  return PageView.builder(
-                    controller: _pageController,
-                    scrollDirection: Axis.vertical,
-                    itemCount: _posts.length + (_hasMoreReels ? 1 : 0),
-                    onPageChanged: _onPageChanged,
-                    physics: const PageScrollPhysics(),
-                    itemBuilder: (context, index) {
-                      if (_hasMoreReels && index == _posts.length) {
-                        return _buildLoadingReel();
-                      }
-                      final post = _posts[index];
-                      final isCurrentPage = index == _currentPage;
-                      return ReelItem(
-                        key: ValueKey(post.id),
-                        post: post,
-                        userId: currentUserId,
-                        isActive: isCurrentPage && _isPageVisible,
-                        isPrevious: index == _currentPage - 1,
-                        isNext: index == _currentPage + 1,
-                      );
-                    },
-                  );
-                }
+                // --- END ---
 
                 if (reelsState is ReelsLoading || reelsState is ReelsInitial) {
                   return const Center(child: LoadingIndicator(size: 32));
@@ -368,6 +260,58 @@ class _ReelsPageState extends State<ReelsPage>
                     ),
                   );
                 }
+
+                // --- UNIFIED STATE HANDLING ---
+                // All these states contain a list of posts.
+                if (reelsState is ReelsLoaded ||
+                    reelsState is ReelsLoadingMore ||
+                    reelsState is ReelsLoadMoreError) {
+                  // Extract data directly from the state
+                  final List<PostEntity> posts = (reelsState as dynamic).posts;
+
+                  final bool hasMoreReels = (reelsState is ReelsLoaded)
+                      ? reelsState.hasMore
+                      : true; // Always allow loading/retry
+
+                  if (posts.isEmpty && reelsState is ReelsLoaded) {
+                    return EmptyStateWidget(
+                      message: 'No reels yet',
+                      icon: Icons.video_library_outlined,
+                      actionText: 'Refresh',
+                      onRetry: () => context.read<ReelsBloc>().add(
+                        GetReelsEvent(currentUserId),
+                      ),
+                    );
+                  }
+
+                  return PageView.builder(
+                    controller: _pageController,
+                    scrollDirection: Axis.vertical,
+                    itemCount: posts.length + (hasMoreReels ? 1 : 0),
+                    onPageChanged: _onPageChanged,
+                    physics: const PageScrollPhysics(),
+                    itemBuilder: (context, index) {
+                      if (hasMoreReels && index == posts.length) {
+                        return _buildLoadingReel();
+                      }
+                      // Get the post *directly from the BLoC's list*
+                      final post = posts[index];
+                      final isCurrentPage = index == _currentPage;
+
+                      return ReelItem(
+                        key: ValueKey(post.id),
+                        post: post, // Pass the post from the BLoC state
+                        userId: currentUserId,
+                        isActive: isCurrentPage && _isPageVisible,
+                        isPrevious: index == _currentPage - 1,
+                        isNext: index == _currentPage + 1,
+                      );
+                    },
+                  );
+                }
+                // --- END UNIFIED STATE HANDLING ---
+
+                // Fallback
                 return const Center(child: LoadingIndicator(size: 32));
               },
             ),
@@ -383,10 +327,6 @@ class _ReelsPageState extends State<ReelsPage>
     WidgetsBinding.instance.removeObserver(this);
     VideoPlaybackManager.pause();
     _pageController.dispose();
-    // Removed: StopReelsRealtime() — now managed by MainPage
-
-    // Status bar restoration is handled by VisibilityDetector when the page becomes invisible.
-
     super.dispose();
   }
 }
