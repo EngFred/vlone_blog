@@ -56,7 +56,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
           add(
             ProcessingChanged(
               processing: true,
-              message: progress.message ?? 'Scheduling upload...',
+              message: progress.message ?? 'Uploading...',
               percent: null,
             ),
           );
@@ -205,7 +205,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
 
     emit(const PostActionLoading());
     emit(
-      form.copyWith(isProcessing: true, processingMessage: 'Creating post...'),
+      form.copyWith(isProcessing: true, processingMessage: 'Preparing post...'),
     );
 
     final result = await createPostUseCase(

@@ -1,13 +1,20 @@
+import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:video_player/video_player.dart';
+import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
 import 'package:go_router/go_router.dart';
 
+/// Full replacement of PostMedia
+/// - **Strictly relies** on server-provided mediaWidth/mediaHeight being available and correct.
+/// - Uses AspectRatio based *only* on server-provided dimensions.
+/// - If dimensions are missing, it defaults to an error state immediately.
 class PostMedia extends StatefulWidget {
   final PostEntity post;
   final double? height;
@@ -36,11 +43,8 @@ class _PostMediaState extends State<PostMedia>
   bool _isDisposed = false;
   bool _isOpeningFull = false;
 
+  // Aspect ratio is now nullable and relies ONLY on server dimensions.
   double? _aspectRatio;
-
-  // Trackers for image stream cleanup
-  ImageStream? _imageStream;
-  ImageStreamListener? _imageStreamListener;
 
   @override
   bool get wantKeepAlive => true;
@@ -49,60 +53,37 @@ class _PostMediaState extends State<PostMedia>
   void initState() {
     super.initState();
 
-    // 1) Prefer server-provided dimensions (immediate)
+    // **STRICT RELIANCE APPLIED**: Calculate aspect ratio from dimensions or set error.
     try {
       final w = widget.post.mediaWidth;
       final h = widget.post.mediaHeight;
+      // Strict check for valid positive dimensions
       if (w != null && h != null && w > 0 && h > 0) {
         _aspectRatio = w.toDouble() / h.toDouble();
+      } else {
+        // If the assumption fails (dimensions are null or <= 0),
+        // we set _aspectRatio to null and immediately flag an error.
+        _aspectRatio = null;
+        _hasError = true;
+        AppLogger.error(
+          'PostMedia: Required media dimensions missing or invalid for post ID: ${widget.post.id}',
+        );
       }
-    } catch (_) {
-      // ignore and continue to fallback
+    } catch (e) {
+      // In case of any casting error, set error.
+      _aspectRatio = null;
+      _hasError = true;
+      AppLogger.error('PostMedia: Error calculating aspect ratio: $e');
     }
 
-    // 2) If we don't have server dims and it's an image, attempt to load image dimensions (async)
-    if (_aspectRatio == null && widget.post.mediaType == 'image') {
-      // Check for mediaUrl presence implicitly handled inside _loadImageAspectRatio
-      _loadImageAspectRatio();
+    // If it's a video and autoPlay is requested, start initializing the controller
+    if (widget.post.mediaType == 'video' && widget.autoPlay) {
+      // Delay to let build finish in some cases
+      unawaited(Future.microtask(() => _ensureControllerInitialized()));
     }
   }
 
-  void _loadImageAspectRatio() {
-    if (widget.post.mediaUrl == null) {
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-        });
-      }
-      return;
-    }
-
-    final imageProvider = CachedNetworkImageProvider(widget.post.mediaUrl!);
-
-    _imageStreamListener = ImageStreamListener(
-      (ImageInfo info, bool synchronousCall) {
-        if (mounted && _aspectRatio == null) {
-          final newAspectRatio =
-              info.image.width.toDouble() / info.image.height.toDouble();
-          setState(() {
-            _aspectRatio = newAspectRatio;
-          });
-        }
-        _imageStream?.removeListener(_imageStreamListener!);
-      },
-      onError: (dynamic exception, StackTrace? stackTrace) {
-        if (mounted) {
-          setState(() {
-            _hasError = true;
-          });
-        }
-        _imageStream?.removeListener(_imageStreamListener!);
-      },
-    );
-
-    _imageStream = imageProvider.resolve(const ImageConfiguration());
-    _imageStream!.addListener(_imageStreamListener!);
-  }
+  // _loadImageAspectRatio method is REMOVED (from previous iteration).
 
   Future<void> _ensureControllerInitialized() async {
     if (_isDisposed || !mounted) return;
@@ -135,32 +116,31 @@ class _PostMediaState extends State<PostMedia>
       }
 
       _videoController = controller;
-      _initialized = true;
 
-      // If we don't already have an aspect ratio, set from video controller
-      if (widget.post.mediaType == 'video' &&
-          _aspectRatio == null &&
-          controller.value.isInitialized) {
-        setState(() {
-          _aspectRatio = controller.value.aspectRatio;
-        });
+      // Set initial initialized flag based on controller state
+      if (controller.value.isInitialized) {
+        _initialized = true;
       } else {
-        // If controller isn't initialized yet, listen for initialization
-        if (widget.post.mediaType == 'video' &&
-            !controller.value.isInitialized) {
-          controller.addListener(() {
-            if (!mounted) return;
-            if (_aspectRatio == null && controller.value.isInitialized) {
-              setState(() {
-                _aspectRatio = controller.value.aspectRatio;
-              });
-            }
-            // when playing state changes, rebuild to update play button overlay etc
+        // Listen for initialization
+        void listener() {
+          if (!mounted) return;
+          if (!_initialized && controller.value.isInitialized) {
+            _initialized = true;
+            // still trigger rebuild for play/pause overlay changes
+            setState(() {});
+          } else {
+            // rebuild for play/pause overlay changes
             if (mounted) setState(() {});
-          });
+          }
         }
+
+        controller.addListener(listener);
+
+        // remove listener when disposed/cleanup
+        // We don't remove it here; _videoManager.releaseController will handle cleanup
       }
     } catch (e) {
+      AppLogger.info('PostMedia: video init failed: $e');
       _hasError = true;
     } finally {
       if (mounted && !_isDisposed) {
@@ -176,9 +156,7 @@ class _PostMediaState extends State<PostMedia>
   void _togglePlayPause() {
     if (_isDisposed || !mounted) return;
     if (_isInitializing) return;
-    if (_videoController == null ||
-        !_initialized ||
-        !_videoController!.value.isInitialized) {
+    if (_videoController == null || !_videoController!.value.isInitialized) {
       _ensureControllerInitialized().then((_) {
         if (_videoController != null &&
             mounted &&
@@ -296,7 +274,10 @@ class _PostMediaState extends State<PostMedia>
             ),
             const SizedBox(height: 8),
             Text(
-              'Media failed to load',
+              // Updated text to reflect strict dimension requirement
+              _aspectRatio == null
+                  ? 'Missing Dimensions/Media'
+                  : 'Media failed to load',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 color: Theme.of(context).colorScheme.onErrorContainer,
               ),
@@ -326,13 +307,9 @@ class _PostMediaState extends State<PostMedia>
           _initialized &&
                   _videoController != null &&
                   _videoController!.value.isInitialized
-              ? FittedBox(
-                  fit: boxFit,
-                  child: SizedBox(
-                    width: _videoController!.value.size.width.toDouble(),
-                    height: _videoController!.value.size.height.toDouble(),
-                    child: VideoPlayer(_videoController!),
-                  ),
+              ? AspectRatio(
+                  aspectRatio: _videoController!.value.aspectRatio,
+                  child: VideoPlayer(_videoController!),
                 )
               : (widget.post.thumbnailUrl != null
                     ? CachedNetworkImage(
@@ -376,12 +353,18 @@ class _PostMediaState extends State<PostMedia>
   }
 
   Widget _buildMediaContent(String heroTag, BoxFit boxFit) {
-    if (_hasError) {
-      final fallback = _aspectRatio ?? 1.0;
-      return AspectRatio(aspectRatio: fallback, child: _buildErrorContent());
+    // **STRICT CHECK:** If _aspectRatio is null (meaning dimensions were missing in initState),
+    // or if a runtime error has occurred, show the error content.
+    if (_aspectRatio == null || _hasError) {
+      // Use a reasonable fallback for the error display container if dimensions are missing entirely
+      const double fallbackErrorRatio = 16.0 / 9.0;
+      return AspectRatio(
+        aspectRatio: _aspectRatio ?? fallbackErrorRatio,
+        child: _buildErrorContent(),
+      );
     }
 
-    final effectiveAspect = _aspectRatio ?? 1.0;
+    final effectiveAspect = _aspectRatio!;
 
     return AspectRatio(
       aspectRatio: effectiveAspect,
@@ -418,8 +401,6 @@ class _PostMediaState extends State<PostMedia>
     if (mediaType == 'none' ||
         mediaType == null ||
         widget.post.mediaUrl == null) {
-      // Since the post only exists *after* the worker runs, this shouldn't happen often.
-      // We will default to a blank space (SizedBox.shrink) for safety, but you could show an error here if desired.
       return const SizedBox.shrink();
     }
 
@@ -438,7 +419,9 @@ class _PostMediaState extends State<PostMedia>
             if (visiblePct > 0.4 &&
                 !_initialized &&
                 !_isInitializing &&
-                !_hasError) {
+                !_hasError &&
+                _aspectRatio != null) {
+              // Added check for valid dimensions
               _ensureControllerInitialized();
             }
 
@@ -456,23 +439,33 @@ class _PostMediaState extends State<PostMedia>
             }
           },
           child: GestureDetector(
-            onTap: () => Debouncer.instance.throttle(
-              'toggle_play_${widget.post.id}',
-              const Duration(milliseconds: 300),
-              _togglePlayPause,
-            ),
-            onDoubleTap: () => _openFullMedia(heroTag),
+            // Only allow interaction if we have a valid aspect ratio (dimensions)
+            onTap: _aspectRatio != null
+                ? () => Debouncer.instance.throttle(
+                    'toggle_play_${widget.post.id}',
+                    const Duration(milliseconds: 300),
+                    _togglePlayPause,
+                  )
+                : null,
+            onDoubleTap: _aspectRatio != null
+                ? () => _openFullMedia(heroTag)
+                : null,
             child: content,
           ),
         );
       } else {
         return GestureDetector(
-          onTap: () => Debouncer.instance.throttle(
-            'toggle_play_${widget.post.id}',
-            const Duration(milliseconds: 300),
-            _togglePlayPause,
-          ),
-          onDoubleTap: () => _openFullMedia(heroTag),
+          // Only allow interaction if we have a valid aspect ratio (dimensions)
+          onTap: _aspectRatio != null
+              ? () => Debouncer.instance.throttle(
+                  'toggle_play_${widget.post.id}',
+                  const Duration(milliseconds: 300),
+                  _togglePlayPause,
+                )
+              : null,
+          onDoubleTap: _aspectRatio != null
+              ? () => _openFullMedia(heroTag)
+              : null,
           child: content,
         );
       }
@@ -489,18 +482,19 @@ class _PostMediaState extends State<PostMedia>
   @override
   void dispose() {
     _isDisposed = true;
-    if (_imageStream != null && _imageStreamListener != null) {
-      _imageStream!.removeListener(_imageStreamListener!);
-    }
 
     final controller = _videoController;
     _videoController = null;
     if (controller != null) {
-      if (VideoPlaybackManager.isPlaying(controller) &&
-          (controller.value.isInitialized)) {
-        VideoPlaybackManager.pause(invokeCallback: false);
-      }
-      _videoManager.releaseController(widget.post.id);
+      try {
+        if (VideoPlaybackManager.isPlaying(controller) &&
+            (controller.value.isInitialized)) {
+          VideoPlaybackManager.pause(invokeCallback: false);
+        }
+      } catch (_) {}
+      try {
+        _videoManager.releaseController(widget.post.id);
+      } catch (_) {}
     }
     super.dispose();
   }

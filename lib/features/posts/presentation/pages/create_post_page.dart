@@ -261,7 +261,9 @@ class _CreatePostPageState extends State<CreatePostPage> {
                 if (form.isProcessing)
                   SavingLoadingOverlay(
                     message: form.processingMessage,
-                    percent: form.processingPercent,
+                    percent: form.processingMessage.contains('Compressing')
+                        ? form.processingPercent
+                        : null,
                   ),
 
                 // *** FIX 3: Apply system bottom padding here to lift the footer ***

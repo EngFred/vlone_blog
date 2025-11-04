@@ -1,4 +1,3 @@
-// core/utils/media_progress_notifier.dart
 import 'dart:async';
 
 /// Simple notifier used to publish media processing stages & percentage

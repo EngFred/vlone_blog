@@ -34,7 +34,7 @@ class PostsRemoteDataSource {
   PostsRemoteDataSource(this.client);
 
   // =========================================================================
-  // 1. `createPost` (Called by the UI) - UPDATED TO HANDLE FULL PROCESS
+  // 1. `createPost` (Called by the UI) - UPDATED WITH STRICT SIZE LIMITS
   // =========================================================================
   Future<void> createPost({
     required String userId,
@@ -43,7 +43,6 @@ class PostsRemoteDataSource {
     String? mediaType,
   }) async {
     AppLogger.info('Creating post for user: $userId');
-    MediaProgressNotifier.notifyUploading(0.0); // Notify UI it's starting
 
     File? fileToProcess = mediaFile;
     String? mediaFileExt = mediaFile?.path.split('.').last;
@@ -52,15 +51,38 @@ class PostsRemoteDataSource {
       // --- 1. Pre-processing (Compression, Validation) ---
       int? mediaWidth;
       int? mediaHeight;
+
       if (fileToProcess != null && mediaType != null) {
+        // --- Initial Size Check (Fail Fast) ---
+        final initialBytes = await fileToProcess.length();
+        final maxSize = mediaType == 'video'
+            ? Constants.maxVideoSizeBytes
+            : Constants.maxImageSizeBytes;
+
+        AppLogger.info(
+          'Initial file size: $initialBytes bytes, Max allowed: $maxSize bytes',
+        );
+
+        // CRITICAL: Check if file is too large even before compression
+        if (initialBytes > maxSize) {
+          AppLogger.warning(
+            'File exceeds maximum size limit before compression: $initialBytes bytes',
+          );
+          // Still attempt compression - it might reduce the size enough
+        }
+
         // --- Duration Check (Fail Fast) ---
         if (mediaType == 'video') {
           try {
             final duration = await getVideoDuration(fileToProcess);
             if (duration > Constants.maxVideoDurationSeconds) {
-              AppLogger.error('Video duration exceeds limit.');
-              MediaProgressNotifier.notifyError('Video duration exceeds limit');
-              throw ServerException('Video duration exceeds limit');
+              AppLogger.error(
+                'Video duration exceeds limit: $duration seconds',
+              );
+              MediaProgressNotifier.notifyError(
+                'Video duration exceeds 1 minute limit',
+              );
+              throw ServerException('Video duration exceeds 1 minute limit');
             }
           } catch (e) {
             AppLogger.warning('getVideoDuration probe failed: $e');
@@ -70,26 +92,33 @@ class PostsRemoteDataSource {
         // --- Compression ---
         bool shouldAttemptCompression = true;
         try {
-          final bytes = await fileToProcess.length();
+          // **OPTIMIZATION**: Re-use 'initialBytes' instead of reading file length again
           final threshold = mediaType == 'video'
               ? VideoCompressor.defaultMinSizeBytes
               : ImageCompressor.defaultMaxSizeBytes;
-          shouldAttemptCompression = bytes > threshold;
+          shouldAttemptCompression = initialBytes > threshold;
         } catch (e) {
           AppLogger.warning('Failed to stat file size: $e');
         }
 
         if (shouldAttemptCompression) {
+          MediaProgressNotifier.notifyCompressing(0.0);
           File? compressedFile;
           if (mediaType == 'video') {
             compressedFile = await VideoCompressor.compressIfNeeded(
               fileToProcess,
+              onProgress: (percent) =>
+                  MediaProgressNotifier.notifyCompressing(percent),
             );
           } else if (mediaType == 'image') {
             compressedFile = await ImageCompressor.compressIfNeeded(
               fileToProcess,
+              onProgress: (percent) =>
+                  MediaProgressNotifier.notifyCompressing(percent),
             );
           }
+
+          // CRITICAL: Update file reference if compression was successful
           if (compressedFile != null &&
               compressedFile.path != fileToProcess.path) {
             AppLogger.info('Using compressed file at ${compressedFile.path}');
@@ -97,10 +126,42 @@ class PostsRemoteDataSource {
           }
         }
 
-        // --- Get Dimensions ---
+        // --- Final Size Validation (STRICT ENFORCEMENT) ---
+        final finalBytes = await fileToProcess.length();
+        AppLogger.info('Final file size after compression: $finalBytes bytes');
+
+        if (finalBytes > maxSize) {
+          AppLogger.error(
+            'Media file too large after compression: $finalBytes bytes (max: $maxSize)',
+          );
+
+          final String mbSize = (finalBytes / (1024 * 1024)).toStringAsFixed(1);
+          final String maxMbSize = (maxSize / (1024 * 1024)).toStringAsFixed(0);
+
+          final String errorMessage = mediaType == 'video'
+              ? 'Video must be less than ${maxMbSize}MB. Your file is ${mbSize}MB.'
+              : 'Image must be less than ${maxMbSize}MB. Your file is ${mbSize}MB.';
+
+          MediaProgressNotifier.notifyError(errorMessage);
+          throw ServerException(errorMessage);
+        }
+
+        // --- Get Dimensions (MANDATORY) ---
         final dimensions = await getMediaDimensions(fileToProcess, mediaType);
-        mediaWidth = dimensions?.width;
-        mediaHeight = dimensions?.height;
+        if (dimensions == null ||
+            dimensions.width <= 0 ||
+            dimensions.height <= 0) {
+          // CRITICAL: Media dimensions are required for proper UI rendering
+          AppLogger.error('Failed to get media dimensions for post creation');
+          MediaProgressNotifier.notifyError('Failed to read media dimensions');
+          throw ServerException(
+            'Could not read media dimensions. The file may be corrupted or unsupported.',
+          );
+        }
+
+        mediaWidth = dimensions.width;
+        mediaHeight = dimensions.height;
+        AppLogger.info('Media dimensions: ${mediaWidth}x${mediaHeight}');
       }
 
       // --- 2. Upload Media ---
@@ -109,6 +170,9 @@ class PostsRemoteDataSource {
 
       if (fileToProcess != null && mediaType != null) {
         AppLogger.info('Uploading media...');
+        MediaProgressNotifier.notifyUploading(0.0);
+
+        // This function is not defined in the prompt, assuming it exists
         final urls = await _uploadMediaAndGetUrls(
           userId: userId,
           mediaFile: fileToProcess,
@@ -143,14 +207,17 @@ class PostsRemoteDataSource {
       }
     } catch (e, st) {
       AppLogger.error('Post creation failed: $e', error: e, stackTrace: st);
-      MediaProgressNotifier.notifyError('Post creation failed');
-      throw ServerException('Post creation failed: $e');
+
+      // Re-throw with more specific error messages when possible
+      if (e is ServerException) {
+        MediaProgressNotifier.notifyError(e.message); // Show specific error
+        rethrow; // Preserve original server exception
+      } else {
+        MediaProgressNotifier.notifyError('Post creation failed');
+        throw ServerException('Post creation failed: ${e.toString()}');
+      }
     }
   }
-
-  // =========================================================================
-  // PRIVATE HELPERS
-  // =========================================================================
 
   /// [Private Helper] Uploads media and returns the public URLs.
   Future<Map<String, String?>> _uploadMediaAndGetUrls({
@@ -347,18 +414,30 @@ class PostsRemoteDataSource {
   }) async {
     try {
       final response = await _callRpcWithRetry(
-        'get_posts_with_user_status',
+        'get_user_posts_with_status',
         params: {
+          'p_profile_user_id': profileUserId, // ← CHANGED from p_post_user_id
           'p_current_user_id': currentUserId,
-          'p_post_user_id': profileUserId,
           'page_size': pageSize,
           if (lastCreatedAt != null)
             'last_created_at': lastCreatedAt.toIso8601String(),
           if (lastId != null) 'last_id': lastId,
         },
       );
+
       final rows = _normalizeRpcList(response);
       if (rows.isEmpty) return [];
+
+      // Debug logging to verify dimensions
+      if (rows.isNotEmpty) {
+        final firstPost = rows.first as Map<String, dynamic>;
+        AppLogger.info(
+          'UserPosts RPC - First post dimensions: '
+          'media_width=${firstPost['media_width']}, '
+          'media_height=${firstPost['media_height']}',
+        );
+      }
+
       return rows
           .map((map) => PostModel.fromMap(map as Map<String, dynamic>))
           .toList();
