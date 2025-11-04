@@ -23,10 +23,9 @@ class PostActionError extends PostActionsState {
 }
 
 class PostCreatedSuccess extends PostActionsState {
-  final PostEntity post;
-  const PostCreatedSuccess(this.post);
+  const PostCreatedSuccess();
   @override
-  List<Object?> get props => [post];
+  List<Object> get props => [];
 }
 
 class PostDeletedSuccess extends PostActionsState {
@@ -146,11 +145,4 @@ class PostFormState extends PostActionsState {
     warningThreshold,
     isPostButtonEnabled,
   ];
-}
-
-//New state for when the post is successfully scheduled
-class PostCreationScheduledSuccess extends PostActionsState {
-  const PostCreationScheduledSuccess();
-  @override
-  List<Object> get props => [];
 }

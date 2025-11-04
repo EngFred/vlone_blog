@@ -6,66 +6,16 @@ import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/service/secure_storage.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
-import 'package:vlone_blog_app/features/posts/data/datasources/posts_remote_datasource.dart';
 import 'package:vlone_blog_app/features/settings/presentation/bloc/settings_bloc.dart';
 import 'core/presentation/theme/app_theme.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
-import 'package:workmanager/workmanager.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:vlone_blog_app/features/comments/presentation/bloc/comments_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 import 'router.dart';
-
-@pragma('vm:entry-point')
-void backgroundCallbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    AppLogger.info('Background task started: $task');
-
-    // 🌟 THIS IS THE NEW WORKER LOGIC 🌟
-    if (task == 'create_new_post_task') {
-      // 1. Initialize Supabase *in this background isolate*
-      // This uses your existing SecureStorage class, which is correct.
-      await Supabase.initialize(
-        url: Constants.supabaseUrl,
-        anonKey: Constants.supabaseAnonKey,
-        authOptions: FlutterAuthClientOptions(localStorage: SecureStorage()),
-      );
-      final client = Supabase.instance.client;
-
-      // 2. Instantiate the data source
-      // We pass the newly initialized client to it.
-      final dataSource = PostsRemoteDataSource(client);
-
-      AppLogger.info('Executing background post creation...');
-      try {
-        // 3. Delegate all logic to the data source
-        // This function will contain the compress, upload, and insert logic
-        final success = await dataSource.executeCreatePostFromWorker(inputData);
-        return success; // Returns true (success) or false (retryable failure)
-      } catch (e, st) {
-        AppLogger.error(
-          'Background task: create_new_post_task unhandled failure: $e',
-          error: e,
-          stackTrace: st,
-        );
-        return false; // Task failed, Workmanager will retry
-      }
-    }
-
-    // This is your old, obsolete task.
-    // We'll log it as a warning and return true so it doesn't retry.
-    if (task == 'upload_post_media_task') {
-      AppLogger.warning('Obsolete task executed: $task. Ignoring.');
-      return true; // Acknowledge task, do not retry
-    }
-
-    AppLogger.warning('Background task: No handler for task $task');
-    return Future.value(true); // Acknowledge task was seen
-  });
-}
 
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -80,11 +30,8 @@ void main() async {
   di.initCoreServices();
   await di.initAuth(supabaseClient: Supabase.instance.client);
   await di.initRealtime();
-  // Parallelize Workmanager and other feature inits
+  // Parallelize other feature inits (removed Workmanager)
   await Future.wait([
-    Workmanager().initialize(
-      backgroundCallbackDispatcher,
-    ), // 🌟 This is now correct
     di.initPosts(),
     di.initLikes(),
     di.initFavorites(),

@@ -13,7 +13,6 @@ class PostsRepositoryImpl implements PostsRepository {
   PostsRepositoryImpl(this.remoteDataSource);
 
   @override
-  // 🎯 FIX: Changed return type from PostEntity to Unit
   Future<Either<Failure, Unit>> createPost({
     required String userId,
     String? content,
@@ -21,14 +20,12 @@ class PostsRepositoryImpl implements PostsRepository {
     String? mediaType,
   }) async {
     try {
-      // 🎯 FIX: Await the void-returning function, no need to capture a result
       await remoteDataSource.createPost(
         userId: userId,
         content: content,
         mediaFile: mediaFile,
         mediaType: mediaType,
       );
-      // 🎯 FIX: Return Right(unit) to signify successful scheduling
       return const Right(unit);
     } on ServerException catch (e) {
       AppLogger.error(

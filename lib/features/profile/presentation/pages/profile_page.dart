@@ -382,14 +382,14 @@ class _ProfilePageState extends State<ProfilePage> {
                         current is PostDeletedSuccess,
                     listener: (context, state) {
                       if (state is PostCreatedSuccess) {
-                        if (state.post.userId == _currentUserId) {
-                          final exists = _userPosts.any(
-                            (p) => p.id == state.post.id,
-                          );
-                          if (!exists && mounted) {
-                            setState(() => _userPosts.insert(0, state.post));
-                          }
-                        }
+                        // if (state.post.userId == _currentUserId) {
+                        //   final exists = _userPosts.any(
+                        //     (p) => p.id == state.post.id,
+                        //   );
+                        //   if (!exists && mounted) {
+                        //     setState(() => _userPosts.insert(0, state.post));
+                        //   }
+                        // }
                       } else if (state is PostDeletedSuccess) {
                         context.read<UserPostsBloc>().add(
                           RemovePostFromUserPosts(state.postId),

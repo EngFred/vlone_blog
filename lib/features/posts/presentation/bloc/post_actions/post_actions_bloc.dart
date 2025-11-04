@@ -56,7 +56,6 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
           add(
             ProcessingChanged(
               processing: true,
-              // 🎯 IMPROVED MESSAGE: Reflects that the work is starting/scheduled
               message: progress.message ?? 'Scheduling upload...',
               percent: null,
             ),
@@ -204,14 +203,9 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
       return;
     }
 
-    // 🎯 FIX: Emit PostActionLoading AND set isProcessing before calling the Use Case
     emit(const PostActionLoading());
-    // Use form state to show processing message before the async call
     emit(
-      form.copyWith(
-        isProcessing: true,
-        processingMessage: 'Scheduling post...',
-      ),
+      form.copyWith(isProcessing: true, processingMessage: 'Creating post...'),
     );
 
     final result = await createPostUseCase(
@@ -233,12 +227,9 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
           form.copyWith(isProcessing: false, mediaFile: null, mediaType: null),
         );
       },
-      // 🎯 FIX: Success returns Unit (_), not PostEntity (post)
       (_) {
-        AppLogger.info('Post creation scheduled successfully. Worker started.');
-        // 🎯 FIX: Emit the new success state for scheduling
-        emit(const PostCreationScheduledSuccess());
-        // 🎯 FIX: Reset form immediately after scheduling so the user can leave the page
+        AppLogger.info('Post created successfully.');
+        emit(const PostCreatedSuccess());
         emit(const PostFormState());
       },
     );
