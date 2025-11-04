@@ -30,6 +30,7 @@ class _ReelsPageState extends State<ReelsPage>
   bool _hasMoreReels = true;
   bool _isLoadingMore = false;
   bool _isPageVisible = true;
+  bool _isRealtimeActive = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -93,6 +94,18 @@ class _ReelsPageState extends State<ReelsPage>
         setState(() => _isLoadingMore = true);
         context.read<ReelsBloc>().add(const LoadMoreReelsEvent());
       }
+    }
+  }
+
+  // Fallback mechanism +++
+  void _ensureRealtimeActive(ReelsState state) {
+    final currentUserId = context.read<AuthBloc>().cachedUser?.id;
+
+    if (state is ReelsLoaded && !_isRealtimeActive && currentUserId != null) {
+      AppLogger.warning(
+        'ReelsPage: Realtime was not active after load. Starting as fallback.',
+      );
+      context.read<ReelsBloc>().add(const StartReelsRealtime());
     }
   }
 
@@ -203,8 +216,15 @@ class _ReelsPageState extends State<ReelsPage>
                   if (mounted) {
                     _updatePosts(state.posts);
                     _hasMoreReels = state.hasMore;
+                    // +++ UPDATE: Capture the state from the BLoC +++
+                    _isRealtimeActive = state.isRealtimeActive;
+                    // +++ END UPDATE +++
                     _hasLoadedOnce = true;
                     _isLoadingMore = false;
+
+                    // +++ NEW: Fallback check after successful load +++
+                    _ensureRealtimeActive(state);
+                    // +++ END NEW +++
                   }
                 } else if (state is ReelsLoadMoreError) {
                   AppLogger.error('Load more reels error: ${state.message}');
@@ -366,7 +386,6 @@ class _ReelsPageState extends State<ReelsPage>
     // Removed: StopReelsRealtime() — now managed by MainPage
 
     // Status bar restoration is handled by VisibilityDetector when the page becomes invisible.
-    // Explicitly calling restore here is often too late or unnecessary.
 
     super.dispose();
   }

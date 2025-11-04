@@ -34,6 +34,11 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     GetProfileDataEvent event,
     Emitter<ProfileState> emit,
   ) async {
+    // Check and save current realtime status before transition to loading
+    final bool wasRealtimeActive = (state is ProfileDataLoaded)
+        ? (state as ProfileDataLoaded).isRealtimeActive
+        : false;
+
     emit(ProfileLoading());
     final result = await getProfileUseCase(event.userId);
     result.fold(
@@ -43,7 +48,14 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         emit(ProfileError(friendlyMessage));
       },
       (profile) {
-        emit(ProfileDataLoaded(profile: profile, userId: event.userId));
+        // Load the data, preserving the realtime status
+        emit(
+          ProfileDataLoaded(
+            profile: profile,
+            userId: event.userId,
+            isRealtimeActive: wasRealtimeActive,
+          ),
+        );
       },
     );
   }
@@ -56,6 +68,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       'ProfileBloc: subscribing to RealtimeService profile updates',
     );
 
+    // Cancel existing subscription before starting a new one (idempotency)
     await _profileUpdatesSub?.cancel();
 
     _profileUpdatesSub = realtimeService.onProfileUpdate.listen(
@@ -74,6 +87,14 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         error: err,
       ),
     );
+
+    // Update state to reflect active listener, only if already loaded
+    if (state is ProfileDataLoaded) {
+      emit((state as ProfileDataLoaded).copyWith(isRealtimeActive: true));
+      AppLogger.info('ProfileBloc: isRealtimeActive set to true.');
+    } else {
+      AppLogger.warning('ProfileBloc: Realtime started but state not loaded.');
+    }
   }
 
   Future<void> _onStopProfileRealtime(
@@ -83,6 +104,11 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     AppLogger.info('ProfileBloc: stopping profile realtime subscription');
     await _profileUpdatesSub?.cancel();
     _profileUpdatesSub = null;
+
+    // Update state to reflect inactive listener, only if already loaded
+    if (state is ProfileDataLoaded) {
+      emit((state as ProfileDataLoaded).copyWith(isRealtimeActive: false));
+    }
   }
 
   void _onRealtimeProfileUpdated(
@@ -102,8 +128,12 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
         // Apply only if matches current profile (prevents overwrite)
         if (updateUserId == currentState.profile.id) {
+          // Use copyWith to ensure the isRealtimeActive flag is preserved
           emit(
-            ProfileDataLoaded(profile: updatedProfile, userId: updateUserId!),
+            currentState.copyWith(
+              profile: updatedProfile,
+              userId: updateUserId,
+            ),
           );
           AppLogger.info(
             'Profile updated in real-time for user: ${updatedProfile.id}',

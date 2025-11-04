@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/loading_overlay.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
@@ -61,10 +60,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
       listener: (context, state) {
         // Listen for the PostCreatedSuccess state
         if (state is PostCreatedSuccess) {
-          SnackbarUtils.showSuccess(
-            context,
-            'Post created! It will appear on the feed shortly.',
-          );
+          SnackbarUtils.showSuccess(context, 'Post created!');
           // Immediately pop the page once created
           if (context.mounted) context.pop();
         } else if (state is PostActionError) {

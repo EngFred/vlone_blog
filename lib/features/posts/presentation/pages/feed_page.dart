@@ -82,6 +82,16 @@ class _FeedPageState extends State<FeedPage>
     });
   }
 
+  // Fallback mechanism to ensure Realtime starts
+  void _ensureRealtimeActive(FeedState state) {
+    if (state is FeedLoaded && !_isRealtimeActive && _userId != null) {
+      AppLogger.warning(
+        'FeedPage: Realtime was not active after load. Starting as fallback.',
+      );
+      context.read<FeedBloc>().add(const StartFeedRealtime());
+    }
+  }
+
   Future<void> _onRefresh() async {
     final authState = context.read<AuthBloc>().state;
     final userId = _extractUserId(authState);
@@ -169,7 +179,7 @@ class _FeedPageState extends State<FeedPage>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              LoadingIndicator(size: 32),
+              const LoadingIndicator(size: 32),
               const SizedBox(height: 16),
               Text(
                 'Loading your feed...',
@@ -206,6 +216,10 @@ class _FeedPageState extends State<FeedPage>
                 _hasLoadedOnce = true;
                 _loadMoreError = null;
                 _isLoadingMore = false;
+
+                // +++ NEW: Fallback check after successful load +++
+                _ensureRealtimeActive(state);
+                // +++ END NEW +++
               } else if (state is FeedLoadingMore) {
                 _isLoadingMore = true;
               } else if (state is FeedLoadMoreError) {
@@ -265,17 +279,14 @@ class _FeedPageState extends State<FeedPage>
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        // <--- CORRECTED HERE
         onPressed: () => context.push(Constants.createPostRoute),
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Theme.of(context).colorScheme.onPrimary,
         elevation: 8,
-        // The 'label' property is used for the text
         label: const Text(
           'Create',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
-        // Keep the custom shape
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );

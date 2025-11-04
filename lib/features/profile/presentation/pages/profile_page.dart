@@ -37,6 +37,10 @@ class _ProfilePageState extends State<ProfilePage> {
   static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
   bool _hasLoadedOnce = false;
 
+  // New flags to track listener state locally
+  bool _isProfileRealtimeActive = false;
+  bool _isUserPostsRealtimeActive = false;
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +77,9 @@ class _ProfilePageState extends State<ProfilePage> {
     _loadMoreError = null;
     _hasMoreUserPosts = true;
     _hasLoadedOnce = false;
+    // Reset local realtime tracking flags
+    _isProfileRealtimeActive = false;
+    _isUserPostsRealtimeActive = false;
 
     context.read<ProfileBloc>().add(GetProfileDataEvent(_currentUserId!));
     context.read<UserPostsBloc>().add(
@@ -86,6 +93,34 @@ class _ProfilePageState extends State<ProfilePage> {
       'ProfilePage: Initialized for current user: $_currentUserId',
     );
   }
+
+  // +++ NEW: Fallback mechanism to ensure Realtime starts +++
+  void _ensureProfileRealtimeActive(ProfileState state) {
+    if (state is ProfileDataLoaded &&
+        !_isProfileRealtimeActive &&
+        _currentUserId != null) {
+      AppLogger.warning(
+        'ProfilePage: Profile Realtime was not active after load. Starting as fallback.',
+      );
+      context.read<ProfileBloc>().add(
+        StartProfileRealtimeEvent(_currentUserId!),
+      );
+    }
+  }
+
+  void _ensureUserPostsRealtimeActive(UserPostsState state) {
+    if (state is UserPostsLoaded &&
+        !_isUserPostsRealtimeActive &&
+        _currentUserId != null) {
+      AppLogger.warning(
+        'ProfilePage: UserPosts Realtime was not active after load. Starting as fallback.',
+      );
+      context.read<UserPostsBloc>().add(
+        StartUserPostsRealtime(profileUserId: _currentUserId!),
+      );
+    }
+  }
+  // +++ END NEW +++
 
   // New method to handle the RefreshIndicator logic
   Future<void> _onRefreshProfile() async {
@@ -110,6 +145,8 @@ class _ProfilePageState extends State<ProfilePage> {
       _hasMoreUserPosts = true;
       _isUserPostsLoading = true;
       _hasLoadedOnce = false;
+      // Realtime active flags are not reset here, as they are either already
+      // active or will be checked again upon the subsequent 'Loaded' state.
     });
   }
 
@@ -302,6 +339,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   BlocListener<ProfileBloc, ProfileState>(
                     listener: (context, state) {
                       if (state is ProfileDataLoaded) {
+                        // Update local flag from BLoC state
+                        _isProfileRealtimeActive = state.isRealtimeActive;
+
                         if (state.userId != _currentUserId) {
                           AppLogger.info(
                             'ProfilePage: ProfileBloc updated to foreign user (${state.userId}). Re-initializing.',
@@ -311,6 +351,9 @@ class _ProfilePageState extends State<ProfilePage> {
                           AppLogger.info(
                             'Profile updated via real-time stream: ${state.profile.username}',
                           );
+                          // +++ NEW: Check for fallback +++
+                          _ensureProfileRealtimeActive(state);
+                          // +++ END NEW +++
                         }
                       }
                     },
@@ -318,6 +361,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   BlocListener<UserPostsBloc, UserPostsState>(
                     listener: (context, state) {
                       if (state is UserPostsLoaded) {
+                        // Update local flag from BLoC state
+                        _isUserPostsRealtimeActive = state.isRealtimeActive;
+
                         if (state.profileUserId != null &&
                             state.profileUserId != _currentUserId) {
                           AppLogger.info(
@@ -345,6 +391,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         AppLogger.info(
                           'ProfilePage: Loaded ${_userPosts.length} posts for $_currentUserId',
                         );
+                        // +++ NEW: Check for fallback +++
+                        _ensureUserPostsRealtimeActive(state);
+                        // +++ END NEW +++
                       } else if (state is UserPostsError) {
                         if (state.profileUserId != null &&
                             state.profileUserId != _currentUserId) {
