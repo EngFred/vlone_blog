@@ -217,9 +217,8 @@ class _FeedPageState extends State<FeedPage>
                 _loadMoreError = null;
                 _isLoadingMore = false;
 
-                // +++ NEW: Fallback check after successful load +++
+                // Fallback check after successful load +++
                 _ensureRealtimeActive(state);
-                // +++ END NEW +++
               } else if (state is FeedLoadingMore) {
                 _isLoadingMore = true;
               } else if (state is FeedLoadMoreError) {
