@@ -23,7 +23,6 @@ class PostModel {
   final int? mediaWidth;
   final int? mediaHeight;
 
-  // 🌟 NEW FIELD
   final String uploadStatus;
 
   PostModel({
@@ -140,7 +139,6 @@ class PostModel {
       avatarUrl: avatarUrl,
       mediaWidth: mediaWidth,
       mediaHeight: mediaHeight,
-      // 🌟 NEW FIELD
       uploadStatus: uploadStatus,
     );
   }

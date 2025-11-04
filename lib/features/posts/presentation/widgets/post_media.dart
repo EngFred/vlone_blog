@@ -1,4 +1,3 @@
-// lib/features/posts/presentation/widgets/post_media.dart
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -62,7 +61,11 @@ class _PostMediaState extends State<PostMedia>
     }
 
     // 2) If we don't have server dims and it's an image, attempt to load image dimensions (async)
-    if (_aspectRatio == null && widget.post.mediaType == 'image') {
+    if (_aspectRatio == null &&
+        widget.post.mediaType == 'image' &&
+        // 🌟 Only load if media is already 'completed'
+        (widget.post.uploadStatus == 'completed' ||
+            widget.post.uploadStatus == 'none')) {
       _loadImageAspectRatio();
     }
     // For video: we'll set aspect ratio after controller initialization if available
@@ -109,6 +112,14 @@ class _PostMediaState extends State<PostMedia>
     if (_isDisposed || !mounted) return;
     if (_videoController != null && _initialized) return;
     if (_isInitializing) return;
+
+    // Safety check: Don't try to init if mediaUrl isn't there
+    if (widget.post.mediaUrl == null) {
+      setState(() {
+        _hasError = true;
+      });
+      return;
+    }
 
     _isInitializing = true;
     _hasError = false;
@@ -300,6 +311,49 @@ class _PostMediaState extends State<PostMedia>
     );
   }
 
+  /// Builds a placeholder to show during upload processing or failure.
+  Widget _buildUploadStatusWidget({
+    bool isProcessing = false,
+    bool isError = false,
+    String message = '',
+  }) {
+    // Use the calculated aspect ratio to prevent layout jumps
+    final effectiveAspect = _aspectRatio ?? 1.0;
+
+    return AspectRatio(
+      aspectRatio: effectiveAspect,
+      child: Container(
+        width: double.infinity,
+        color: isError
+            ? Theme.of(context).colorScheme.errorContainer
+            : Theme.of(context).colorScheme.surfaceVariant,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (isProcessing) const CircularProgressIndicator(),
+              if (isError)
+                Icon(
+                  Icons.error_outline,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: isError
+                      ? Theme.of(context).colorScheme.onErrorContainer
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMediaStack(String heroTag, BoxFit boxFit) {
     return Stack(
       fit: StackFit.expand,
@@ -360,7 +414,8 @@ class _PostMediaState extends State<PostMedia>
               child: CircularProgressIndicator(color: Colors.white),
             ),
           ),
-        _buildViewButton(heroTag),
+        // Don't show 'View' button if it's still processing
+        if (!_isInitializing) _buildViewButton(heroTag),
       ],
     );
   }
@@ -406,11 +461,39 @@ class _PostMediaState extends State<PostMedia>
     final heroTag = 'media_${widget.post.id}_${identityHashCode(this)}';
     final boxFit = _getBoxFit();
 
-    // If post has no mediaUrl, return empty
-    if (widget.post.mediaUrl == null) return const SizedBox.shrink();
+    // 🌟 NEW: Get upload status and media type
+    final uploadStatus = widget.post.uploadStatus;
+    final mediaType = widget.post.mediaType;
 
+    // If no media type (text-only post), render nothing.
+    if (mediaType == 'none' || mediaType == null) {
+      return const SizedBox.shrink();
+    }
+
+    // 1. Handle non-completed upload statuses FIRST
+    if (uploadStatus == 'processing' || uploadStatus == 'pending_retry') {
+      return _buildUploadStatusWidget(
+        isProcessing: true,
+        message: 'Processing...',
+      );
+    }
+    if (uploadStatus == 'failed') {
+      return _buildUploadStatusWidget(
+        isProcessing: false,
+        isError: true,
+        message: 'Upload Failed',
+      );
+    }
+
+    // 2. If status is 'completed' or 'none', proceed with media display logic.
+    // If post has no mediaUrl (e.g. legacy error), return empty
+    if (widget.post.mediaUrl == null) {
+      return const SizedBox.shrink();
+    }
+
+    // 3. Proceed with existing video/image logic
     // For videos we still want to lazily init controller when visible
-    if (widget.post.mediaType == 'video') {
+    if (mediaType == 'video') {
       final content = _buildMediaContent(heroTag, boxFit);
       if (widget.useVisibilityDetector) {
         return VisibilityDetector(
@@ -465,7 +548,7 @@ class _PostMediaState extends State<PostMedia>
     }
 
     // For images: we can display immediately as _aspectRatio may already be set from server or stream.
-    if (widget.post.mediaType == 'image') {
+    if (mediaType == 'image') {
       return _buildMediaContent(heroTag, boxFit);
     }
 
