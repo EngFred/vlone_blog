@@ -23,35 +23,31 @@ class MediaPreview extends StatelessWidget {
     required this.onEdit,
   });
 
-  Widget _buildActionChip({
+  Widget _buildActionButton({
     required BuildContext context,
     required IconData icon,
+    required String label,
     required VoidCallback onPressed,
     required Color backgroundColor,
-    required Color iconColor,
+    required Color foregroundColor,
     String? tooltip,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: IconButton(
+    // A pill-shaped button with icon + label. Looks modern and "pro" while
+    // remaining compact. Uses translucent background to sit nicely over media.
+    return Tooltip(
+      message: tooltip ?? label,
+      child: ElevatedButton.icon(
         onPressed: onPressed,
-        icon: Icon(icon, color: iconColor, size: 20),
-        tooltip: tooltip,
-        style: IconButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.all(8),
+        icon: Icon(icon, size: 18),
+        label: Text(label, style: const TextStyle(fontSize: 13)),
+        style: ElevatedButton.styleFrom(
+          elevation: 6,
+          shadowColor: Colors.black.withOpacity(0.35),
+          backgroundColor: backgroundColor,
+          foregroundColor: foregroundColor,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          shape: const StadiumBorder(),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -60,19 +56,17 @@ class MediaPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final floatingControlBgColor = theme.colorScheme.surface.withOpacity(0.9);
+    final floatingControlBgColor = theme.colorScheme.surface.withOpacity(0.85);
     final floatingControlIconColor = theme.colorScheme.onSurface;
 
-    // Changed: Use FittedBox with BoxFit.contain for full-screen immersive preview without constraints or distortions
+    // Use FittedBox with BoxFit.contain for full-screen immersive preview
     return FittedBox(
       fit: BoxFit.contain,
       child: SizedBox(
-        // Use screen width to anchor scaling, height adapts via fit
         width: MediaQuery.of(context).size.width,
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // Media Content: Removed ClipRRect, boxShadow, and decoration for clean full-screen look
             if (mediaType == 'image')
               Image.file(file, fit: BoxFit.contain)
             else if (videoController != null &&
@@ -92,7 +86,6 @@ class MediaPreview extends StatelessWidget {
                 ),
                 child: const Center(
                   child: Column(
-                    // FIX: Issue 2 - Better loading UI for video init
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       LoadingIndicator(),
@@ -110,19 +103,19 @@ class MediaPreview extends StatelessWidget {
                   opacity: isPlaying ? 0.0 : 1.0,
                   duration: const Duration(milliseconds: 200),
                   child: Container(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withOpacity(0.28),
                     child: Center(
                       child: GestureDetector(
                         onTap: onPlayPause,
                         child: Container(
-                          padding: const EdgeInsets.all(20),
+                          padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
                             color: floatingControlBgColor,
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.4),
-                                blurRadius: 15,
+                                color: Colors.black.withOpacity(0.42),
+                                blurRadius: 18,
                                 spreadRadius: 2,
                               ),
                             ],
@@ -130,7 +123,7 @@ class MediaPreview extends StatelessWidget {
                           child: Icon(
                             Icons.play_arrow_rounded,
                             color: floatingControlIconColor,
-                            size: 40,
+                            size: 42,
                           ),
                         ),
                       ),
@@ -139,29 +132,33 @@ class MediaPreview extends StatelessWidget {
                 ),
               ),
 
-            // Action Buttons
+            // Action Buttons (improved UI)
             Positioned(
-              top: 12,
-              right: 12,
+              top: 14,
+              right: 14,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildActionChip(
+                  // Edit: neutral translucent pill
+                  _buildActionButton(
                     context: context,
                     icon: Icons.edit_rounded,
+                    label: 'Edit',
                     onPressed: onEdit,
-                    backgroundColor: floatingControlBgColor,
-                    iconColor: floatingControlIconColor,
-                    tooltip: 'Edit',
+                    backgroundColor: theme.colorScheme.surface.withOpacity(0.9),
+                    foregroundColor: theme.colorScheme.onSurface,
+                    tooltip: 'Edit media',
                   ),
                   const SizedBox(width: 8),
-                  _buildActionChip(
+                  // Remove: primary destructive pill but slightly elevated
+                  _buildActionButton(
                     context: context,
-                    icon: Icons.delete_rounded,
+                    icon: Icons.delete_outline_rounded,
+                    label: 'Remove',
                     onPressed: onRemove,
-                    backgroundColor: Colors.red.withOpacity(0.9),
-                    iconColor: Colors.white,
-                    tooltip: 'Remove',
+                    backgroundColor: Colors.redAccent.withOpacity(0.95),
+                    foregroundColor: Colors.white,
+                    tooltip: 'Remove media',
                   ),
                 ],
               ),
@@ -174,11 +171,11 @@ class MediaPreview extends StatelessWidget {
                 left: 12,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                    horizontal: 10,
+                    vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.7),
+                    color: Colors.black.withOpacity(0.68),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -186,7 +183,7 @@ class MediaPreview extends StatelessWidget {
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
