@@ -50,7 +50,6 @@ class _PostMediaState extends State<PostMedia>
   void initState() {
     super.initState();
 
-    // ... (Your existing initState logic is perfect) ...
     try {
       final w = widget.post.mediaWidth;
       final h = widget.post.mediaHeight;
@@ -105,7 +104,6 @@ class _PostMediaState extends State<PostMedia>
 
       _videoController = controller;
 
-      // MODIFIED: Set the initial volume based on the mute state
       await _videoController!.setVolume(_isMuted ? 0.0 : 1.0);
 
       if (controller.value.isInitialized) {
@@ -186,12 +184,12 @@ class _PostMediaState extends State<PostMedia>
     if (mounted) setState(() {});
   }
 
-  BoxFit _getBoxFit() {
-    return widget.autoPlay ? BoxFit.cover : BoxFit.contain;
-  }
+  // REMOVED: _getBoxFit() function is gone.
+  // BoxFit _getBoxFit() {
+  //   return widget.autoPlay ? BoxFit.cover : BoxFit.contain;
+  // }
 
   void _openFullMedia(String heroTag) async {
-    // ... (This function is unchanged) ...
     if (_isOpeningFull) return;
     if (widget.post.mediaType == 'video') {
       _videoManager.holdForNavigation(
@@ -286,15 +284,15 @@ class _PostMediaState extends State<PostMedia>
     );
   }
 
-  // MODIFIED: Added the mute button to the stack
-  Widget _buildMediaStack(String heroTag, BoxFit boxFit) {
+  // MODIFIED: Removed boxFit parameter, hardcoded BoxFit.cover
+  Widget _buildMediaStack(String heroTag) {
     return Stack(
       fit: StackFit.expand,
       children: [
         if (widget.post.mediaType == 'image')
           CachedNetworkImage(
             imageUrl: widget.post.mediaUrl!,
-            fit: boxFit,
+            fit: BoxFit.cover, // MODIFIED: Always cover
             placeholder: (context, url) =>
                 const Center(child: CircularProgressIndicator()),
             errorWidget: (context, url, error) => Container(
@@ -307,7 +305,7 @@ class _PostMediaState extends State<PostMedia>
                   _videoController != null &&
                   _videoController!.value.isInitialized
               ? FittedBox(
-                  fit: boxFit,
+                  fit: BoxFit.cover, // MODIFIED: Always cover
                   clipBehavior: Clip.hardEdge,
                   child: SizedBox(
                     width: _videoController!.value.size.width,
@@ -318,7 +316,7 @@ class _PostMediaState extends State<PostMedia>
               : (widget.post.thumbnailUrl != null
                     ? CachedNetworkImage(
                         imageUrl: widget.post.thumbnailUrl!,
-                        fit: boxFit,
+                        fit: BoxFit.cover, // MODIFIED: Always cover
                         width: double.infinity,
                         height: double.infinity,
                       )
@@ -383,7 +381,8 @@ class _PostMediaState extends State<PostMedia>
     );
   }
 
-  Widget _buildMediaContent(String heroTag, BoxFit boxFit) {
+  // MODIFIED: Removed boxFit parameter
+  Widget _buildMediaContent(String heroTag) {
     // ... (This function is unchanged) ...
     if (_aspectRatio == null || _hasError) {
       const double fallbackErrorRatio = 16.0 / 9.0;
@@ -401,7 +400,7 @@ class _PostMediaState extends State<PostMedia>
         tag: heroTag,
         child: ClipRRect(
           borderRadius: BorderRadius.zero,
-          child: _buildMediaStack(heroTag, boxFit),
+          child: _buildMediaStack(heroTag), // MODIFIED: No boxFit
         ),
       ),
     );
@@ -410,9 +409,9 @@ class _PostMediaState extends State<PostMedia>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    // ... (heroTag, boxFit, mediaType definitions are unchanged) ...
+    // ... (heroTag, mediaType definitions are unchanged) ...
     final heroTag = 'media_${widget.post.id}_${identityHashCode(this)}';
-    final boxFit = _getBoxFit();
+    // final boxFit = _getBoxFit(); // REMOVED
     final mediaType = widget.post.mediaType;
 
     if (mediaType == 'none' ||
@@ -421,7 +420,7 @@ class _PostMediaState extends State<PostMedia>
       return const SizedBox.shrink();
     }
 
-    final mediaContent = _buildMediaContent(heroTag, boxFit);
+    final mediaContent = _buildMediaContent(heroTag); // MODIFIED: No boxFit
 
     // ... (Gesture definitions are unchanged) ...
     VoidCallback? onTap;
