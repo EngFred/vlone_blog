@@ -1,15 +1,17 @@
-import 'dart:async';
+// --- PostMedia.dart ---
+// Full replacement of PostMedia
+import 'dart:async'; // Added unawaited
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:visibility_detector/visibility_detector.dart';
+import 'package:go_router/go_router.dart'; // Assuming this for context.push
 import 'package:video_player/video_player.dart';
-import 'package:vlone_blog_app/core/utils/app_logger.dart';
-import 'package:vlone_blog_app/core/utils/debouncer.dart';
+import 'package:visibility_detector/visibility_detector.dart';
+
+import 'package:vlone_blog_app/core/utils/app_logger.dart'; // Stub
+import 'package:vlone_blog_app/core/utils/debouncer.dart'; // Stub
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
-import 'package:go_router/go_router.dart';
 
 /// Full replacement of PostMedia
 /// - **Strictly relies** on server-provided mediaWidth/mediaHeight being available and correct.
@@ -83,8 +85,6 @@ class _PostMediaState extends State<PostMedia>
     }
   }
 
-  // _loadImageAspectRatio method is REMOVED (from previous iteration).
-
   Future<void> _ensureControllerInitialized() async {
     if (_isDisposed || !mounted) return;
     if (_videoController != null && _initialized) return;
@@ -135,9 +135,6 @@ class _PostMediaState extends State<PostMedia>
         }
 
         controller.addListener(listener);
-
-        // remove listener when disposed/cleanup
-        // We don't remove it here; _videoManager.releaseController will handle cleanup
       }
     } catch (e) {
       AppLogger.info('PostMedia: video init failed: $e');
@@ -307,9 +304,17 @@ class _PostMediaState extends State<PostMedia>
           _initialized &&
                   _videoController != null &&
                   _videoController!.value.isInitialized
-              ? AspectRatio(
-                  aspectRatio: _videoController!.value.aspectRatio,
-                  child: VideoPlayer(_videoController!),
+              // **OPTIMIZATION**: Replaced a competing AspectRatio with FittedBox.
+              // This correctly scales the video to 'cover' or 'contain'
+              // inside the parent AspectRatio, matching the image behavior.
+              ? FittedBox(
+                  fit: boxFit,
+                  clipBehavior: Clip.hardEdge,
+                  child: SizedBox(
+                    width: _videoController!.value.size.width,
+                    height: _videoController!.value.size.height,
+                    child: VideoPlayer(_videoController!),
+                  ),
                 )
               : (widget.post.thumbnailUrl != null
                     ? CachedNetworkImage(
@@ -368,22 +373,14 @@ class _PostMediaState extends State<PostMedia>
 
     return AspectRatio(
       aspectRatio: effectiveAspect,
-      child: GestureDetector(
-        onTap: widget.post.mediaType == 'image'
-            ? () => _openFullMedia(heroTag)
-            : null,
-        onDoubleTap: widget.post.mediaType == 'video'
-            ? () => _openFullMedia(heroTag)
-            : null,
-        onLongPress: () {
-          // keep existing behavior: treat tap/double-tap for video play/pause via Debouncer
-        },
-        child: Hero(
-          tag: heroTag,
-          child: ClipRRect(
-            borderRadius: BorderRadius.zero,
-            child: _buildMediaStack(heroTag, boxFit),
-          ),
+      // **BUG FIX**: The GestureDetector was REMOVED from here.
+      // All gestures are now handled in the main `build` method
+      // to prevent nesting and conflicts.
+      child: Hero(
+        tag: heroTag,
+        child: ClipRRect(
+          borderRadius: BorderRadius.zero,
+          child: _buildMediaStack(heroTag, boxFit),
         ),
       ),
     );
@@ -404,79 +401,72 @@ class _PostMediaState extends State<PostMedia>
       return const SizedBox.shrink();
     }
 
-    // 3. Proceed with existing video/image logic (all posts here are considered "completed")
-    if (mediaType == 'video') {
-      final content = _buildMediaContent(heroTag, boxFit);
-      if (widget.useVisibilityDetector) {
-        return VisibilityDetector(
-          key: Key('post_media_${widget.post.id}_${identityHashCode(this)}'),
-          onVisibilityChanged: (info) {
-            if (_isDisposed || !mounted) return;
-            final visiblePct = info.visibleFraction;
-            final controller = _videoController;
+    // 2. Build the core media content
+    final mediaContent = _buildMediaContent(heroTag, boxFit);
 
-            // Initialize when sufficiently visible
-            if (visiblePct > 0.4 &&
-                !_initialized &&
-                !_isInitializing &&
-                !_hasError &&
-                _aspectRatio != null) {
-              // Added check for valid dimensions
-              _ensureControllerInitialized();
-            }
+    // 3. Define gesture callbacks based on media type
+    VoidCallback? onTap;
+    VoidCallback? onDoubleTap;
 
-            // Pause logic
-            if (controller != null &&
-                !_isDisposed &&
-                mounted &&
-                visiblePct < 0.2 &&
-                VideoPlaybackManager.isPlaying(controller) &&
-                controller.value.isInitialized) {
-              if (!_isOpeningFull && !VideoPlaybackManager.pauseSuppressed) {
-                VideoPlaybackManager.pause();
-                if (mounted) setState(() {});
-              }
-            }
-          },
-          child: GestureDetector(
-            // Only allow interaction if we have a valid aspect ratio (dimensions)
-            onTap: _aspectRatio != null
-                ? () => Debouncer.instance.throttle(
-                    'toggle_play_${widget.post.id}',
-                    const Duration(milliseconds: 300),
-                    _togglePlayPause,
-                  )
-                : null,
-            onDoubleTap: _aspectRatio != null
-                ? () => _openFullMedia(heroTag)
-                : null,
-            child: content,
-          ),
+    // Only allow gestures if media dimensions are valid
+    if (_aspectRatio != null) {
+      if (mediaType == 'image') {
+        onTap = () => _openFullMedia(heroTag);
+      } else if (mediaType == 'video') {
+        onTap = () => Debouncer.instance.throttle(
+          'toggle_play_${widget.post.id}',
+          const Duration(milliseconds: 300),
+          _togglePlayPause,
         );
-      } else {
-        return GestureDetector(
-          // Only allow interaction if we have a valid aspect ratio (dimensions)
-          onTap: _aspectRatio != null
-              ? () => Debouncer.instance.throttle(
-                  'toggle_play_${widget.post.id}',
-                  const Duration(milliseconds: 300),
-                  _togglePlayPause,
-                )
-              : null,
-          onDoubleTap: _aspectRatio != null
-              ? () => _openFullMedia(heroTag)
-              : null,
-          child: content,
-        );
+        onDoubleTap = () => _openFullMedia(heroTag);
       }
     }
 
-    // For images: display immediately.
-    if (mediaType == 'image') {
-      return _buildMediaContent(heroTag, boxFit);
+    // 4. Wrap content in a single GestureDetector
+    final gestureWrapper = GestureDetector(
+      onTap: onTap,
+      onDoubleTap: onDoubleTap,
+      child: mediaContent,
+    );
+
+    // 5. If it's a video, optionally wrap in VisibilityDetector
+    if (mediaType == 'video' && widget.useVisibilityDetector) {
+      return VisibilityDetector(
+        key: Key('post_media_${widget.post.id}_${identityHashCode(this)}'),
+        onVisibilityChanged: (info) {
+          if (_isDisposed || !mounted) return;
+          final visiblePct = info.visibleFraction;
+          final controller = _videoController;
+
+          // Initialize when sufficiently visible
+          if (visiblePct > 0.4 &&
+              !_initialized &&
+              !_isInitializing &&
+              !_hasError &&
+              _aspectRatio != null) {
+            // Added check for valid dimensions
+            _ensureControllerInitialized();
+          }
+
+          // Pause logic
+          if (controller != null &&
+              !_isDisposed &&
+              mounted &&
+              visiblePct < 0.2 &&
+              VideoPlaybackManager.isPlaying(controller) &&
+              controller.value.isInitialized) {
+            if (!_isOpeningFull && !VideoPlaybackManager.pauseSuppressed) {
+              VideoPlaybackManager.pause();
+              if (mounted) setState(() {});
+            }
+          }
+        },
+        child: gestureWrapper,
+      );
     }
 
-    return const SizedBox.shrink();
+    // 6. For images, just return the gesture wrapper
+    return gestureWrapper;
   }
 
   @override

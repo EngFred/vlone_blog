@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/debounced_inkwell.dart';
+import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bloc.dart';
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/widgets/comments_overlay.dart';
 
-class PostActions extends StatelessWidget {
+class PostActions extends StatefulWidget {
   final PostEntity post;
   final String userId;
   final VoidCallback? onCommentTap;
@@ -24,22 +25,43 @@ class PostActions extends StatelessWidget {
     this.showCommentsCount = true,
   });
 
+  @override
+  State<PostActions> createState() => _PostActionsState();
+}
+
+class _PostActionsState extends State<PostActions> {
   static const Duration _defaultDebounce = Duration(milliseconds: 500);
   static const double _kActionIconSize = 26.0;
 
-  // Update _share to use PostActionsBloc
-  void _share(BuildContext context) {
-    context.read<PostActionsBloc>().add(SharePostEvent(post.id));
+  // This state holds the most current version of the post,
+  // including optimistic updates.
+  late PostEntity _currentPost;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPost = widget.post;
   }
 
-  // UPDATED: Replaced navigation with bottom sheet overlay
+  // This is crucial to sync the state if the parent list rebuilds
+  // with new data (e.g., from a pull-to-refresh).
+  @override
+  void didUpdateWidget(covariant PostActions oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.post != oldWidget.post) {
+      _currentPost = widget.post;
+    }
+  }
+
+  void _share(BuildContext context) {
+    context.read<PostActionsBloc>().add(SharePostEvent(_currentPost.id));
+  }
+
   void _handleComment(BuildContext context) {
-    if (onCommentTap != null) {
-      onCommentTap!();
+    if (widget.onCommentTap != null) {
+      widget.onCommentTap!();
     } else {
-      // OLD: context.push('${Constants.postDetailsRoute}/${post.id}', extra: post);
-      // NEW: Show the bottom sheet overlay
-      CommentsOverlay.show(context, post, userId);
+      CommentsOverlay.show(context, _currentPost, widget.userId);
     }
   }
 
@@ -49,16 +71,12 @@ class PostActions extends StatelessWidget {
     required VoidCallback onTap,
     required String actionKey,
   }) {
-    // UI/UX: Helper function for consistent action button styling
     return DebouncedInkWell(
       actionKey: actionKey,
       duration: _defaultDebounce,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16.0), // Rounded for modern touch
-      padding: const EdgeInsets.symmetric(
-        horizontal: 8.0, // Increased horizontal padding
-        vertical: 4.0,
-      ),
+      borderRadius: BorderRadius.circular(16.0),
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -66,7 +84,6 @@ class PostActions extends StatelessWidget {
           if (count != null)
             Padding(
               padding: const EdgeInsets.only(left: 6.0),
-              // UI/UX: Use titleSmall for more distinct and readable count text
               child: Text(count),
             ),
         ],
@@ -76,151 +93,281 @@ class PostActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseLikesCount = post.likesCount;
-    final baseFavoritesCount = post.favoritesCount;
-    final baseCommentsCount = post.commentsCount;
+    // We now read counts from the local state `_currentPost`
+    final baseLikesCount = _currentPost.likesCount;
+    final baseFavoritesCount = _currentPost.favoritesCount;
+    final baseCommentsCount = _currentPost.commentsCount;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              // ==================== LIKE BUTTON ====================
-              BlocBuilder<LikesBloc, LikesState>(
-                buildWhen: (prev, curr) {
-                  if (curr is LikesInitial) return true;
-                  if (curr is LikeUpdated && curr.postId == post.id) {
-                    return true;
-                  }
-                  if (curr is LikeError &&
-                      curr.postId == post.id &&
-                      curr.shouldRevert) {
-                    return true;
-                  }
-                  return false;
-                },
-                builder: (context, state) {
-                  bool isLiked = post.isLiked;
-                  if (state is LikeUpdated && state.postId == post.id) {
-                    isLiked = state.isLiked;
-                  } else if (state is LikeError &&
-                      state.postId == post.id &&
-                      state.shouldRevert) {
-                    isLiked = state.previousState;
-                  }
-
-                  return _buildActionItem(
-                    actionKey: 'like_${post.id}',
-                    count: baseLikesCount.toString(),
-                    onTap: () {
-                      context.read<LikesBloc>().add(
-                        LikePostEvent(
-                          postId: post.id,
-                          userId: userId,
-                          isLiked: !isLiked,
-                          previousState: isLiked,
-                        ),
-                      );
-
-                      final int delta = (!isLiked) ? 1 : -1;
-                      context.read<PostActionsBloc>().add(
-                        OptimisticPostUpdate(
-                          post: post,
-                          deltaLikes: delta,
-                          deltaFavorites: 0,
-                          isLiked: !isLiked,
-                        ),
-                      );
-                    },
-                    icon: Icon(
-                      isLiked ? Icons.favorite : Icons.favorite_border,
-                      size: _kActionIconSize,
-                      color: isLiked ? Colors.red.shade600 : null,
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(width: 16), // UI/UX: Reduced space
-              // ==================== COMMENT BUTTON ====================
-              _buildActionItem(
-                actionKey: 'comment_nav_${post.id}',
-                count: showCommentsCount ? baseCommentsCount.toString() : null,
-                onTap: () => _handleComment(context),
-                icon: const Icon(
-                  Icons.chat_bubble_outline,
-                  size: _kActionIconSize,
-                ),
-              ),
-              const SizedBox(width: 16), // UI/UX: Reduced space
-              // ==================== SHARE BUTTON ====================
-              _buildActionItem(
-                actionKey: 'share_${post.id}',
-                count: 'Share', // UI/UX: Label instead of count
-                onTap: () => _share(context),
-                icon: const Icon(Icons.send_outlined, size: _kActionIconSize),
-              ),
-            ],
-          ),
-
-          // ==================== FAVORITE BUTTON (BLOC) ====================
-          BlocBuilder<FavoritesBloc, FavoritesState>(
-            buildWhen: (prev, curr) {
-              if (curr is FavoritesInitial) return true;
-              if (curr is FavoriteUpdated && curr.postId == post.id) {
-                return true;
-              }
-              if (curr is FavoriteError &&
-                  curr.postId == post.id &&
-                  curr.shouldRevert) {
-                return true;
-              }
-              return false;
-            },
-            builder: (context, state) {
-              bool isFavorited = post.isFavorited;
-              if (state is FavoriteUpdated && state.postId == post.id) {
-                isFavorited = state.isFavorited;
-              } else if (state is FavoriteError &&
-                  state.postId == post.id &&
-                  state.shouldRevert) {
-                isFavorited = state.previousState;
-              }
-
-              return _buildActionItem(
-                actionKey: 'favorite_${post.id}',
-                count: baseFavoritesCount.toString(),
-                onTap: () {
-                  context.read<FavoritesBloc>().add(
-                    FavoritePostEvent(
-                      postId: post.id,
-                      userId: userId,
-                      isFavorited: !isFavorited,
-                      previousState: isFavorited,
-                    ),
-                  );
-
-                  final int deltaFav = (!isFavorited) ? 1 : -1;
-                  context.read<PostActionsBloc>().add(
-                    OptimisticPostUpdate(
-                      post: post,
-                      deltaFavorites: deltaFav,
-                      isFavorited: !isFavorited,
-                    ),
-                  );
-                },
-                icon: Icon(
-                  isFavorited ? Icons.bookmark : Icons.bookmark_border,
-                  size: _kActionIconSize,
-                  color: isFavorited
-                      ? Theme.of(context).colorScheme.primary
-                      : null,
+    // This MultiBlocListener now lives here, localizing the rebuild.
+    return MultiBlocListener(
+      listeners: [
+        // ==================== LIKE LISTENERS (Errors / Realtime) ====================
+        BlocListener<LikesBloc, LikesState>(
+          listenWhen: (prev, curr) {
+            if (curr is LikeError &&
+                curr.postId == _currentPost.id &&
+                curr.shouldRevert) {
+              return true;
+            }
+            if (curr is LikeUpdated &&
+                curr.postId == _currentPost.id &&
+                curr.delta == 0 &&
+                curr.isLiked != _currentPost.isLiked) {
+              return true;
+            }
+            return false;
+          },
+          listener: (context, state) {
+            if (state is LikeUpdated) {
+              AppLogger.info(
+                'PostActions received REALTIME LikeUpdated for post: ${_currentPost.id}. Syncing boolean.',
+              );
+              // Dispatch to PostActionsBloc to get a new PostEntity
+              context.read<PostActionsBloc>().add(
+                OptimisticPostUpdate(
+                  post: _currentPost,
+                  deltaLikes: 0,
+                  deltaFavorites: 0,
+                  isLiked: state.isLiked,
                 ),
               );
-            },
-          ),
-        ],
+            } else if (state is LikeError) {
+              AppLogger.info(
+                'PostActions received LikeError for post: ${_currentPost.id}. Reverting count and boolean.',
+              );
+              // Dispatch to PostActionsBloc to get a new PostEntity
+              context.read<PostActionsBloc>().add(
+                OptimisticPostUpdate(
+                  post: _currentPost,
+                  deltaLikes: -state.delta,
+                  deltaFavorites: 0,
+                  isLiked: state.previousState,
+                ),
+              );
+            }
+          },
+        ),
+        // ==================== FAVORITE LISTENERS (Errors / Realtime) ====================
+        BlocListener<FavoritesBloc, FavoritesState>(
+          listenWhen: (prev, curr) {
+            if (curr is FavoriteError &&
+                curr.postId == _currentPost.id &&
+                curr.shouldRevert) {
+              return true;
+            }
+            if (curr is FavoriteUpdated &&
+                curr.postId == _currentPost.id &&
+                curr.delta == 0 &&
+                curr.isFavorited != _currentPost.isFavorited) {
+              return true;
+            }
+            return false;
+          },
+          listener: (context, state) {
+            if (state is FavoriteUpdated) {
+              AppLogger.info(
+                'PostActions received REALTIME FavoriteUpdated for post: ${_currentPost.id}. Syncing boolean.',
+              );
+              context.read<PostActionsBloc>().add(
+                OptimisticPostUpdate(
+                  post: _currentPost,
+                  deltaLikes: 0,
+                  deltaFavorites: 0,
+                  isFavorited: state.isFavorited,
+                ),
+              );
+            } else if (state is FavoriteError) {
+              AppLogger.info(
+                'PostActions received FavoriteError for post: ${_currentPost.id}. Reverting count and boolean.',
+              );
+              context.read<PostActionsBloc>().add(
+                OptimisticPostUpdate(
+                  post: _currentPost,
+                  deltaLikes: 0,
+                  deltaFavorites: -state.delta,
+                  isFavorited: state.previousState,
+                ),
+              );
+            }
+          },
+        ),
+        // ==================== OPTIMISTIC UPDATE LISTENER ====================
+        BlocListener<PostActionsBloc, PostActionsState>(
+          listenWhen: (prev, curr) =>
+              curr is PostOptimisticallyUpdated &&
+              curr.post.id == _currentPost.id,
+          listener: (context, state) {
+            if (state is PostOptimisticallyUpdated) {
+              AppLogger.info(
+                'PostActions (PostActionsBloc) received PostOptimisticallyUpdated for post: ${state.post.id}. Updating local state.',
+              );
+              // This is the key: We call setState INSIDE PostActions
+              setState(() {
+                _currentPost = state.post;
+              });
+            }
+          },
+        ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                // ==================== LIKE BUTTON ====================
+                BlocBuilder<LikesBloc, LikesState>(
+                  buildWhen: (prev, curr) {
+                    // This buildWhen is still good, but we now also depend
+                    // on the local _currentPost state for the count.
+                    if (curr is LikesInitial) return true;
+                    if (curr is LikeUpdated && curr.postId == _currentPost.id) {
+                      return true;
+                    }
+                    if (curr is LikeError &&
+                        curr.postId == _currentPost.id &&
+                        curr.shouldRevert) {
+                      return true;
+                    }
+                    return false;
+                  },
+                  builder: (context, state) {
+                    // Use _currentPost.isLiked as the source of truth
+                    bool isLiked = _currentPost.isLiked;
+
+                    // The BlocBuilder *only* handles icon state
+                    // in case the optimistic listener is slower.
+                    if (state is LikeUpdated &&
+                        state.postId == _currentPost.id) {
+                      isLiked = state.isLiked;
+                    } else if (state is LikeError &&
+                        state.postId == _currentPost.id &&
+                        state.shouldRevert) {
+                      isLiked = state.previousState;
+                    }
+
+                    return _buildActionItem(
+                      actionKey: 'like_${_currentPost.id}',
+                      // Count comes from local state
+                      count: baseLikesCount.toString(),
+                      onTap: () {
+                        context.read<LikesBloc>().add(
+                          LikePostEvent(
+                            postId: _currentPost.id,
+                            userId: widget.userId,
+                            isLiked: !isLiked,
+                            previousState: isLiked,
+                          ),
+                        );
+
+                        final int delta = (!isLiked) ? 1 : -1;
+                        // We dispatch using _currentPost
+                        context.read<PostActionsBloc>().add(
+                          OptimisticPostUpdate(
+                            post: _currentPost,
+                            deltaLikes: delta,
+                            deltaFavorites: 0,
+                            isLiked: !isLiked,
+                          ),
+                        );
+                      },
+                      icon: Icon(
+                        isLiked ? Icons.favorite : Icons.favorite_border,
+                        size: _kActionIconSize,
+                        color: isLiked ? Colors.red.shade600 : null,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 16),
+                // ==================== COMMENT BUTTON ====================
+                _buildActionItem(
+                  actionKey: 'comment_nav_${_currentPost.id}',
+                  // Count comes from local state
+                  count: widget.showCommentsCount
+                      ? baseCommentsCount.toString()
+                      : null,
+                  onTap: () => _handleComment(context),
+                  icon: const Icon(
+                    Icons.chat_bubble_outline,
+                    size: _kActionIconSize,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // ==================== SHARE BUTTON ====================
+                _buildActionItem(
+                  actionKey: 'share_${_currentPost.id}',
+                  count: 'Share',
+                  onTap: () => _share(context),
+                  icon: const Icon(Icons.send_outlined, size: _kActionIconSize),
+                ),
+              ],
+            ),
+
+            // ==================== FAVORITE BUTTON (BLOC) ====================
+            BlocBuilder<FavoritesBloc, FavoritesState>(
+              buildWhen: (prev, curr) {
+                if (curr is FavoritesInitial) return true;
+                if (curr is FavoriteUpdated && curr.postId == _currentPost.id) {
+                  return true;
+                }
+                if (curr is FavoriteError &&
+                    curr.postId == _currentPost.id &&
+                    curr.shouldRevert) {
+                  return true;
+                }
+                return false;
+              },
+              builder: (context, state) {
+                // Use _currentPost.isFavorited as the source of truth
+                bool isFavorited = _currentPost.isFavorited;
+
+                if (state is FavoriteUpdated &&
+                    state.postId == _currentPost.id) {
+                  isFavorited = state.isFavorited;
+                } else if (state is FavoriteError &&
+                    state.postId == _currentPost.id &&
+                    state.shouldRevert) {
+                  isFavorited = state.previousState;
+                }
+
+                return _buildActionItem(
+                  actionKey: 'favorite_${_currentPost.id}',
+                  // Count comes from local state
+                  count: baseFavoritesCount.toString(),
+                  onTap: () {
+                    context.read<FavoritesBloc>().add(
+                      FavoritePostEvent(
+                        postId: _currentPost.id,
+                        userId: widget.userId,
+                        isFavorited: !isFavorited,
+                        previousState: isFavorited,
+                      ),
+                    );
+
+                    final int deltaFav = (!isFavorited) ? 1 : -1;
+                    // We dispatch using _currentPost
+                    context.read<PostActionsBloc>().add(
+                      OptimisticPostUpdate(
+                        post: _currentPost,
+                        deltaFavorites: deltaFav,
+                        isFavorited: !isFavorited,
+                      ),
+                    );
+                  },
+                  icon: Icon(
+                    isFavorited ? Icons.bookmark : Icons.bookmark_border,
+                    size: _kActionIconSize,
+                    color: isFavorited
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

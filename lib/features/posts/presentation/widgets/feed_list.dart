@@ -80,8 +80,8 @@ class FeedList extends StatelessWidget {
       child: const Center(
         child: Column(
           children: [
-            LoadingIndicator(size: 20),
-            SizedBox(height: 12),
+            LoadingIndicator(size: 20), // <-- Made const
+            SizedBox(height: 12), // <-- Made const
             Text(
               'Loading more posts...',
               style: TextStyle(fontSize: 14, color: Colors.grey),
