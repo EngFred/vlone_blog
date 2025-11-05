@@ -1,3 +1,4 @@
+// post_actions_event.dart
 part of 'post_actions_bloc.dart';
 
 abstract class PostActionsEvent extends Equatable {
@@ -16,7 +17,9 @@ class CreatePostEvent extends PostActionsEvent {
   final String userId;
   final String? content;
   final File? mediaFile;
-  final String? mediaType;
+
+  // 🎯 FIX: This type MUST be MediaType? to match the state and use case.
+  final MediaType? mediaType;
 
   const CreatePostEvent({
     required this.userId,
@@ -92,7 +95,7 @@ class ContentChanged extends PostActionsEvent {
 
 class MediaSelected extends PostActionsEvent {
   final File? file;
-  final String? type;
+  final MediaType? type;
   const MediaSelected(this.file, this.type);
   @override
   List<Object?> get props => [file?.path, type];

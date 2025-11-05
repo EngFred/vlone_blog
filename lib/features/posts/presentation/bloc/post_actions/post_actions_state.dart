@@ -75,7 +75,7 @@ class PostDeleteError extends PostActionsState {
 class PostFormState extends PostActionsState {
   final String content;
   final File? mediaFile;
-  final String? mediaType;
+  final MediaType? mediaType;
   final bool isProcessing;
   final String processingMessage;
   final double? processingPercent;
@@ -99,10 +99,12 @@ class PostFormState extends PostActionsState {
 
   bool get isOverLimit => currentCharCount > maxCharacterLimit;
   bool get isNearLimit => currentCharCount >= warningThreshold;
+
+  // Minor cleanup: Check for null
   String get computedUploadMessage {
-    if (mediaFile == null) return 'Uploading post...';
-    if (mediaType == 'video') return 'Uploading video...';
-    if (mediaType == 'image') return 'Uploading image...';
+    if (mediaFile == null || mediaType == null) return 'Uploading post...';
+    if (mediaType == MediaType.video) return 'Uploading video...';
+    if (mediaType == MediaType.image) return 'Uploading image...';
     return 'Uploading...';
   }
 
@@ -110,11 +112,12 @@ class PostFormState extends PostActionsState {
   static const Object _noChange = Object();
 
   /// copyWith supports explicit clearing by passing null for nullable fields.
-  /// To keep backward-compatible call sites you can pass values as before.
   PostFormState copyWith({
     String? content,
-    Object? mediaFile = _noChange, // pass null explicitly to clear
-    Object? mediaType = _noChange, // pass null explicitly to clear
+    // Note: Object? is used here to enable the "no change" sentinel logic.
+    // This is what forces the cast in the BLOC.
+    Object? mediaFile = _noChange,
+    Object? mediaType = _noChange,
     bool? isProcessing,
     String? processingMessage,
     double? processingPercent,
@@ -126,9 +129,11 @@ class PostFormState extends PostActionsState {
     final File? computedMediaFile = identical(mediaFile, _noChange)
         ? this.mediaFile
         : mediaFile as File?;
-    final String? computedMediaType = identical(mediaType, _noChange)
+
+    // Cast to MediaType? is correct here to assign to the final MediaType? field
+    final MediaType? computedMediaType = identical(mediaType, _noChange)
         ? this.mediaType
-        : mediaType as String?;
+        : mediaType as MediaType?;
 
     return PostFormState(
       content: content ?? this.content,

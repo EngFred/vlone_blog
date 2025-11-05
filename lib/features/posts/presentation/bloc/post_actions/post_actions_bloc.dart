@@ -5,12 +5,14 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
+import 'package:vlone_blog_app/features/posts/domain/entities/media_file_type.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/create_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/delete_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/get_post_usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/usecases/share_post_usecase.dart';
 import 'package:vlone_blog_app/core/utils/media_progress_notifier.dart';
+
 part 'post_actions_event.dart';
 part 'post_actions_state.dart';
 
@@ -37,14 +39,14 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
 
     // UI/form handlers
     on<ContentChanged>(_onContentChanged);
+    // 🔄 UPDATED: Handler for MediaSelected event
     on<MediaSelected>(_onMediaSelected);
     on<ProcessingChanged>(_onProcessingChanged);
-    on<ResetForm>(_onResetForm); // FIX: Issue 3 - Handler for reset event
+    on<ResetForm>(_onResetForm);
 
     // Subscribe to MediaProgressNotifier to keep processing status in bloc
     _mediaProgressSub = MediaProgressNotifier.stream.listen((progress) {
       // Map notifier progress to ProcessingChanged events
-      // Assuming progress has postId if needed; add filter if concurrent
       switch (progress.stage) {
         case MediaProcessingStage.compressing:
           add(
@@ -110,7 +112,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
     emit(const PostFormState());
   }
 
-  // ---------- Other Event handlers (unchanged except for comments) ----------
+  // ---------- Other Event handlers (updated where needed) ----------
 
   Future<void> _onContentChanged(
     ContentChanged event,
@@ -133,6 +135,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
     emit(newForm);
   }
 
+  // 🔄 UPDATED: Handler now receives MediaType
   Future<void> _onMediaSelected(
     MediaSelected event,
     Emitter<PostActionsState> emit,
@@ -147,7 +150,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
 
     final newForm = prev.copyWith(
       mediaFile: event.file,
-      mediaType: event.type,
+      mediaType: event.type, // 🔄 UPDATED: Using enum
       isPostButtonEnabled: isEnabled,
     );
 
@@ -178,6 +181,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
     }
   }
 
+  // 🔄 UPDATED: Handler now uses MediaType in the use case parameters
   Future<void> _onCreatePost(
     CreatePostEvent event,
     Emitter<PostActionsState> emit,
@@ -192,6 +196,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
         event.content ??
         (form.content.trim().isEmpty ? null : form.content.trim());
     final mediaFileToUse = event.mediaFile ?? form.mediaFile;
+
     final mediaTypeToUse = event.mediaType ?? form.mediaType;
 
     // Final validation
@@ -224,7 +229,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
         userId: event.userId,
         content: contentToUse,
         mediaFile: mediaFileToUse,
-        mediaType: mediaTypeToUse,
+        mediaType: mediaTypeToUse, // This now correctly passes MediaType?
       ),
     );
 
@@ -235,7 +240,11 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
         emit(PostActionError(friendlyMessage));
         // Reset processing and re-emit form state on failure
         emit(
-          form.copyWith(isProcessing: false, mediaFile: null, mediaType: null),
+          form.copyWith(
+            isProcessing: false,
+            mediaFile: null,
+            mediaType: MediaType.none,
+          ), // Reset mediaType
         );
       },
       (_) {

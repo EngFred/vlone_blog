@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:dartz/dartz.dart';
 import 'package:vlone_blog_app/core/domain/errors/failure.dart';
+import 'package:vlone_blog_app/features/posts/domain/entities/media_file_type.dart'; // 💡 NEW IMPORT
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 
 abstract class PostsRepository {
@@ -10,7 +11,8 @@ abstract class PostsRepository {
     required String userId,
     String? content,
     File? mediaFile,
-    String? mediaType,
+    // 🔄 UPDATED: Use MediaType enum
+    MediaType? mediaType,
   });
   Future<Either<Failure, Unit>> deletePost(String postId);
 

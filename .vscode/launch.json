@@ -9,7 +9,8 @@
             "name": "vlone_blog_app",
             "request": "launch",
             "type": "dart",
-            "console": "debugConsole"
+            "console": "debugConsole",
+            "flutterMode": "debug"
         },
         {
             "name": "vlone_blog_app (profile mode)",

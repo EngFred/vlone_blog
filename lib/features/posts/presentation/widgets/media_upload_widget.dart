@@ -6,6 +6,7 @@ import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/utils/crop_utils.dart';
 import 'package:vlone_blog_app/core/utils/helpers.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
+import 'package:vlone_blog_app/features/posts/domain/entities/media_file_type.dart';
 import 'media_picker_sheet.dart';
 import 'media_placeholder.dart';
 import 'media_preview.dart';
@@ -14,9 +15,9 @@ import 'dart:async'; // FIX: For TimeoutException
 
 class MediaUploadWidget extends StatefulWidget {
   final File? selectedMediaFile; // FIX: Issue 1 - Prop from Bloc for state sync
-  final String?
+  final MediaType?
   selectedMediaType; // FIX: Issue 1 - Prop from Bloc for state sync
-  final Function(File?, String?) onMediaSelected;
+  final Function(File?, MediaType?) onMediaSelected;
 
   /// Optional callback used to notify parent that media processing (duration fetch,
   /// video initialization, trimming flow) is underway. Parent should show a
@@ -37,7 +38,7 @@ class MediaUploadWidget extends StatefulWidget {
 
 class _MediaUploadWidgetState extends State<MediaUploadWidget> {
   File? _mediaFile;
-  String? _mediaType;
+  MediaType? _mediaType;
   VideoPlayerController? _videoController;
   bool _isPreviewPlaying = false;
 
@@ -71,7 +72,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
 
   // FIX: Issue 1 & 2 - Async init for video if pre-selected, with error handling
   Future<void> _initVideoControllerIfNeeded() async {
-    if (_mediaType == 'video' &&
+    if (_mediaType == MediaType.video &&
         _mediaFile != null &&
         _videoController == null) {
       try {
@@ -102,6 +103,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
 
   void _videoListener() {
     if (!mounted) return;
+    if (_videoController == null) return;
     if (!_videoController!.value.isPlaying &&
         _videoController!.value.position >= _videoController!.value.duration) {
       setState(() => _isPreviewPlaying = false);
@@ -128,7 +130,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
     }
     if (pickedFile == null) return; // User cancelled
     final file = File(pickedFile.path);
-    final mediaType = isImage ? 'image' : 'video';
+    final mediaType = isImage ? MediaType.image : MediaType.video;
 
     await _videoController?.dispose();
     _videoController = null;
@@ -136,7 +138,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
     // Notify parent that processing is starting (show full-screen overlay)
     widget.onProcessing?.call(true);
 
-    if (mediaType == 'image') {
+    if (mediaType == MediaType.image) {
       // Images: Quick validation and set (no duration check needed)
       try {
         final imageBytes = await file.readAsBytes();
@@ -274,21 +276,21 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
     if (_mediaFile == null) return;
 
     // Pause preview if playing
-    if (_mediaType == 'video' &&
+    if (_mediaType == MediaType.video &&
         _isPreviewPlaying &&
         _videoController != null) {
       await _videoController!.pause();
       setState(() => _isPreviewPlaying = false);
     }
 
-    if (_mediaType == 'image') {
+    if (_mediaType == MediaType.image) {
       // Images: Standard crop
       final croppedFile = await cropImageFile(context, _mediaFile!);
       if (croppedFile != null) {
         setState(() => _mediaFile = croppedFile);
         widget.onMediaSelected(_mediaFile, _mediaType);
       }
-    } else if (_mediaType == 'video') {
+    } else if (_mediaType == MediaType.video) {
       // Videos: Trim with limit enforcement via button (no auto if already short)
       final currentDuration = _videoController!.value.duration.inSeconds
           .toDouble();
@@ -345,27 +347,38 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
 
   @override
   Widget build(BuildContext context) {
+    // When media is selected we enforce a dark background for a professional
+    // media-focused experience regardless of app theme. Keep the placeholder
+    // behavior unchanged when no media is present.
     return _mediaFile == null
         ? MediaPlaceholder(onTap: _showPickOptions)
-        : MediaPreview(
-            file: _mediaFile!,
-            mediaType: _mediaType!,
-            videoController: _videoController,
-            isPlaying: _isPreviewPlaying,
-            onPlayPause: () {
-              if (_videoController == null) return;
-              setState(() {
-                if (_videoController!.value.isPlaying) {
-                  _videoController!.pause();
-                  _isPreviewPlaying = false;
-                } else {
-                  _videoController!.play();
-                  _isPreviewPlaying = true;
-                }
-              });
-            },
-            onRemove: _removeMedia,
-            onEdit: _editMedia,
+        : Container(
+            width: double.infinity,
+            height: double.infinity,
+            color: Colors.black,
+            child: SafeArea(
+              bottom: false,
+              child: MediaPreview(
+                file: _mediaFile!,
+                mediaType: _mediaType!,
+                videoController: _videoController,
+                isPlaying: _isPreviewPlaying,
+                onPlayPause: () {
+                  if (_videoController == null) return;
+                  setState(() {
+                    if (_videoController!.value.isPlaying) {
+                      _videoController!.pause();
+                      _isPreviewPlaying = false;
+                    } else {
+                      _videoController!.play();
+                      _isPreviewPlaying = true;
+                    }
+                  });
+                },
+                onRemove: _removeMedia,
+                onEdit: _editMedia,
+              ),
+            ),
           );
   }
 }

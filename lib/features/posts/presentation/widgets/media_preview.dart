@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/cutsom_alert_dialog.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
+import 'package:vlone_blog_app/features/posts/domain/entities/media_file_type.dart';
 
 class MediaPreview extends StatelessWidget {
   final File file;
-  final String mediaType;
+  final MediaType mediaType;
   final VideoPlayerController? videoController;
   final bool isPlaying;
   final VoidCallback onPlayPause;
@@ -33,8 +34,6 @@ class MediaPreview extends StatelessWidget {
     required Color foregroundColor,
     String? tooltip,
   }) {
-    // A pill-shaped button with icon + label. Looks modern and "pro" while
-    // remaining compact. Uses translucent background to sit nicely over media.
     return Tooltip(
       message: tooltip ?? label,
       child: ElevatedButton.icon(
@@ -60,7 +59,6 @@ class MediaPreview extends StatelessWidget {
     final floatingControlBgColor = theme.colorScheme.surface.withOpacity(0.85);
     final floatingControlIconColor = theme.colorScheme.onSurface;
 
-    // Use FittedBox with BoxFit.contain for full-screen immersive preview
     return FittedBox(
       fit: BoxFit.contain,
       child: SizedBox(
@@ -68,9 +66,12 @@ class MediaPreview extends StatelessWidget {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            if (mediaType == 'image')
+            // Image
+            if (mediaType == MediaType.image)
               Image.file(file, fit: BoxFit.contain)
-            else if (videoController != null &&
+            // Video (only show video widget when controller is initialized)
+            else if (mediaType == MediaType.video &&
+                videoController != null &&
                 videoController!.value.isInitialized)
               GestureDetector(
                 onTap: onPlayPause,
@@ -79,6 +80,7 @@ class MediaPreview extends StatelessWidget {
                   child: VideoPlayer(videoController!),
                 ),
               )
+            // Fallback/loading state
             else
               Container(
                 height: 200,
@@ -97,8 +99,10 @@ class MediaPreview extends StatelessWidget {
                 ),
               ),
 
-            // Play/Pause Overlay for Video
-            if (mediaType == 'video')
+            // Play/Pause Overlay for Video — only if controller is ready
+            if (mediaType == MediaType.video &&
+                videoController != null &&
+                videoController!.value.isInitialized)
               Positioned.fill(
                 child: AnimatedOpacity(
                   opacity: isPlaying ? 0.0 : 1.0,
@@ -122,7 +126,9 @@ class MediaPreview extends StatelessWidget {
                             ],
                           ),
                           child: Icon(
-                            Icons.play_arrow_rounded,
+                            videoController!.value.isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
                             color: floatingControlIconColor,
                             size: 42,
                           ),
@@ -140,7 +146,6 @@ class MediaPreview extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Edit: neutral translucent pill
                   _buildActionButton(
                     context: context,
                     icon: Icons.edit_rounded,
@@ -151,18 +156,16 @@ class MediaPreview extends StatelessWidget {
                     tooltip: 'Edit media',
                   ),
                   const SizedBox(width: 8),
-                  // Remove: primary destructive pill but slightly elevated
                   _buildActionButton(
                     context: context,
                     icon: Icons.delete_outline_rounded,
                     label: 'Remove',
-                    // Show confirmation dialog before calling the provided onRemove
                     onPressed: () async {
                       final confirmed = await showCustomDialog<bool>(
                         context: context,
                         title: 'Remove media',
                         content: const Text(
-                          'Are you sure you want to remove this media? This action cannot be undone.',
+                          'Are you sure you want to remove this media?',
                         ),
                         actions: [
                           DialogActions.createCancelButton(
@@ -172,8 +175,7 @@ class MediaPreview extends StatelessWidget {
                           DialogActions.createPrimaryButton(
                             context,
                             label: 'Remove',
-                            onPressed:
-                                () {}, // actual removal is handled after pop
+                            onPressed: () {}, // removal handled after pop
                           ),
                         ],
                         isDismissible: true,
@@ -192,7 +194,9 @@ class MediaPreview extends StatelessWidget {
             ),
 
             // Video Duration Indicator
-            if (mediaType == 'video' && videoController != null)
+            if (mediaType == MediaType.video &&
+                videoController != null &&
+                videoController!.value.isInitialized)
               Positioned(
                 bottom: 12,
                 left: 12,

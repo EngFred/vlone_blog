@@ -4,6 +4,7 @@ import 'package:vlone_blog_app/core/domain/errors/exceptions.dart';
 import 'package:vlone_blog_app/core/domain/errors/failure.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/posts/data/datasources/posts_remote_datasource.dart';
+import 'package:vlone_blog_app/features/posts/domain/entities/media_file_type.dart'; // 💡 NEW IMPORT
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
 
@@ -17,14 +18,20 @@ class PostsRepositoryImpl implements PostsRepository {
     required String userId,
     String? content,
     File? mediaFile,
-    String? mediaType,
+    // 🔄 UPDATED: Use MediaType enum
+    MediaType? mediaType,
   }) async {
     try {
+      // NOTE: We assume remoteDataSource.createPost also accepts MediaType? now.
+      // It might require converting the enum to a string for the backend.
+      final String? mediaTypeString = mediaType?.name;
+
       await remoteDataSource.createPost(
         userId: userId,
         content: content,
         mediaFile: mediaFile,
-        mediaType: mediaType,
+        mediaType:
+            mediaTypeString, // 💡 Using .name to convert enum to String for data source
       );
       return const Right(unit);
     } on ServerException catch (e) {
