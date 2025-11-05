@@ -9,11 +9,13 @@ abstract class ProfileEvent extends Equatable {
 
 class GetProfileDataEvent extends ProfileEvent {
   final String userId;
+  // ADDED: Optional completer for RefreshIndicator
+  final Completer<void>? refreshCompleter;
 
-  const GetProfileDataEvent(this.userId);
+  const GetProfileDataEvent(this.userId, {this.refreshCompleter});
 
   @override
-  List<Object?> get props => [userId];
+  List<Object?> get props => [userId, refreshCompleter];
 }
 
 class StartProfileRealtimeEvent extends ProfileEvent {

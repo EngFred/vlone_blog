@@ -222,25 +222,6 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
           initialLocation: index == widget.navigationShell.currentIndex,
         );
       });
-    } else {
-      _refreshCurrentTab();
-    }
-  }
-
-  void _refreshCurrentTab() {
-    switch (_selectedIndex) {
-      case 0:
-        _feedBloc?.add(RefreshFeedEvent(_userId!));
-        break;
-      case 1:
-        _reelsBloc?.add(GetReelsEvent(_userId!));
-        break;
-      case 2:
-        context.read<UsersBloc>().add(GetPaginatedUsersEvent(_userId!));
-        break;
-      case 3:
-        _profileBloc?.add(GetProfileDataEvent(_userId!));
-        break;
     }
   }
 

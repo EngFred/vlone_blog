@@ -11,7 +11,7 @@ import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bloc.dart';
 import 'package:vlone_blog_app/features/users/domain/entities/user_list_entity.dart';
 import 'package:vlone_blog_app/features/users/presentation/bloc/users_bloc.dart';
-import 'package:vlone_blog_app/features/users/presentation/widgets/user_list_item.dart';
+import 'package:vlone_blog_app/features/users/presentation/widgets/user_list_view.dart';
 
 /// New: supports followers, following, and the 'all users' screen.
 enum UserListMode { followers, following, users }
@@ -98,6 +98,20 @@ class _UserListPageState extends State<UserListPage> {
         );
         break;
     }
+  }
+
+  /// Handles the pull-to-refresh gesture for UserListMode.users.
+  Future<void> _onRefresh() async {
+    if (widget.mode == UserListMode.users) {
+      // Use Completer to signal the RefreshIndicator when the BLoC operation finishes
+      final completer = Completer<void>();
+      context.read<UsersBloc>().add(
+        RefreshUsersEvent(_currentUserId ?? '', completer),
+      );
+      return completer.future;
+    }
+    // No-op for followers/following
+    return Future.value();
   }
 
   @override
@@ -234,6 +248,98 @@ class _UserListPageState extends State<UserListPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Build the listeners list dynamically so UsersBloc listener is only added when needed.
+    final listeners = <BlocListenerBase>[
+      BlocListener<AuthBloc, AuthState>(
+        listener: (context, state) {
+          if (state is AuthAuthenticated) {
+            AppLogger.info(
+              'AuthBloc -> Authenticated in UserListPage, userId=${state.user.id}',
+            );
+            if (_currentUserId == null) {
+              setState(() => _currentUserId = state.user.id);
+              _retryFetch();
+            }
+          }
+        },
+      ),
+
+      // FollowersBloc listener (handles follow confirmations & failures)
+      BlocListener<FollowersBloc, FollowersState>(
+        listener: (context, state) {
+          // When follow completes, remove loading indicator for that id
+          if (state is UserFollowed) {
+            setState(() => _loadingUserIds.remove(state.followedUserId));
+          }
+
+          // If a follow operation failed, revert optimistic change (if users-mode) and show snackbar
+          if (state is FollowOperationFailed) {
+            setState(() => _loadingUserIds.remove(state.followedUserId));
+
+            // If users-mode, revert UsersBloc optimistic update
+            if (widget.mode == UserListMode.users) {
+              try {
+                context.read<UsersBloc>().add(
+                  UpdateUserFollowStatusEvent(
+                    state.followedUserId,
+                    !state.attemptedIsFollowing,
+                  ),
+                );
+              } catch (_) {}
+            }
+
+            SnackbarUtils.showError(context, 'Follow failed: ${state.message}');
+          }
+
+          // Generic error handling for loading/pagination
+          if (state is FollowersError) {
+            setState(() {
+              _loadingUserIds.clear();
+              _isLoadingMore = false;
+            });
+            SnackbarUtils.showError(context, state.message);
+          } else if (state is FollowersLoadMoreError) {
+            setState(() => _isLoadingMore = false);
+            SnackbarUtils.showError(context, state.message);
+          } else if (state is FollowersLoaded) {
+            setState(() => _isLoadingMore = false);
+          }
+        },
+      ),
+    ];
+
+    // Add UsersBloc listener only when in users mode (prevents ProviderNotFoundException
+    // when this page is provided with only FollowersBloc, e.g. followers/following routes).
+    if (widget.mode == UserListMode.users) {
+      listeners.add(
+        BlocListener<UsersBloc, UsersState>(
+          listener: (context, state) {
+            // Dismiss the RefreshIndicator by completing the completer
+            final completer = (state is UsersLoaded)
+                ? state.refreshCompleter
+                : (state is UsersError)
+                ? state.refreshCompleter
+                : null;
+            completer?.complete();
+
+            // Handle general state changes/errors for users mode
+            if (state is UsersLoaded) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() => _isLoadingMore = false);
+              });
+            } else if (state is UsersLoadMoreError || state is UsersError) {
+              // Load more error is handled in the footer widget
+              if (state is UsersError && state.users.isNotEmpty) {
+                // Show snackbar if initial load failed but we had previous data
+                SnackbarUtils.showError(context, state.message);
+              }
+              setState(() => _isLoadingMore = false);
+            }
+          },
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
@@ -244,124 +350,97 @@ class _UserListPageState extends State<UserListPage> {
         ),
       ),
       body: MultiBlocListener(
-        listeners: [
-          BlocListener<AuthBloc, AuthState>(
-            listener: (context, state) {
-              if (state is AuthAuthenticated) {
-                AppLogger.info(
-                  'AuthBloc -> Authenticated in UserListPage, userId=${state.user.id}',
-                );
-                if (_currentUserId == null) {
-                  setState(() => _currentUserId = state.user.id);
-                  _retryFetch();
-                }
-              }
-            },
-          ),
-
-          // FollowersBloc listener (handles follow confirmations & failures)
-          BlocListener<FollowersBloc, FollowersState>(
-            listener: (context, state) {
-              // When follow completes, remove loading indicator for that id
-              if (state is UserFollowed) {
-                setState(() => _loadingUserIds.remove(state.followedUserId));
-              }
-
-              // If a follow operation failed, revert optimistic change (if users-mode) and show snackbar
-              if (state is FollowOperationFailed) {
-                setState(() => _loadingUserIds.remove(state.followedUserId));
-
-                // If users-mode, revert UsersBloc optimistic update
-                if (widget.mode == UserListMode.users) {
-                  try {
-                    context.read<UsersBloc>().add(
-                      UpdateUserFollowStatusEvent(
-                        state.followedUserId,
-                        !state.attemptedIsFollowing,
-                      ),
-                    );
-                  } catch (_) {}
-                }
-
-                SnackbarUtils.showError(
-                  context,
-                  'Follow failed: ${state.message}',
-                );
-              }
-
-              // Generic error handling for loading/pagination
-              if (state is FollowersError) {
-                setState(() {
-                  _loadingUserIds.clear();
-                  _isLoadingMore = false;
-                });
-                SnackbarUtils.showError(context, state.message);
-              } else if (state is FollowersLoadMoreError) {
-                setState(() => _isLoadingMore = false);
-                SnackbarUtils.showError(context, state.message);
-              } else if (state is FollowersLoaded) {
-                setState(() => _isLoadingMore = false);
-              }
-            },
-          ),
-        ],
+        listeners: listeners,
         child: Builder(
           builder: (context) {
             // Branch UI based on mode
             if (widget.mode == UserListMode.users) {
-              // UsersBloc-driven UI
+              // UsersBloc-driven UI (WITH RefreshIndicator)
               return BlocBuilder<UsersBloc, UsersState>(
                 builder: (context, state) {
                   if (state is UsersLoading || state is UsersInitial) {
+                    // If the list is empty, show full screen loading
+                    if (state is UsersLoading &&
+                        context.read<UsersBloc>().state is! UsersLoaded) {
+                      return const Center(child: LoadingIndicator());
+                    }
+                    // Otherwise, the RefreshIndicator will show for a loading state
+                    if (state is UsersInitial) {
+                      return const Center(child: LoadingIndicator());
+                    }
+                  }
+
+                  // Handle cases where we have a list to show, possibly with error/loading footer
+                  List<UserListEntity> users = [];
+                  bool hasMore = false;
+                  String? loadMoreError;
+
+                  if (state is UsersLoadMoreError) {
+                    users = state.currentUsers;
+                    hasMore = true; // Assume true to show load more error
+                    loadMoreError = state.message;
+                  } else if (state is UsersLoadingMore) {
+                    users = state.currentUsers;
+                    hasMore = true;
+                  } else if (state is UsersLoaded) {
+                    users = state.users;
+                    hasMore = state.hasMore;
+                  } else if (state is UsersError) {
+                    users = state.users;
+                    hasMore = false;
+                    // If no users were fetched at all, show the error widget
+                    if (users.isEmpty) {
+                      return CustomErrorWidget(
+                        message: 'Failed to load users:\n${state.message}',
+                        onRetry: _retryFetch,
+                      );
+                    }
+                  } else if (state is UsersInitial) {
+                    // Should be handled by initial loading, but fallback for safety
                     return const Center(child: LoadingIndicator());
                   }
 
-                  if (state is UsersError) {
-                    return CustomErrorWidget(
-                      message: 'Failed to load users:\n${state.message}',
+                  if (users.isEmpty) {
+                    return EmptyStateWidget(
+                      message: 'No users found',
+                      icon: Icons.people_outline,
+                      actionText: 'Refresh',
                       onRetry: _retryFetch,
                     );
                   }
 
-                  if (state is UsersLoadMoreError) {
-                    return _buildListView(
-                      state.currentUsers,
-                      true,
-                      state.message,
-                    );
-                  }
-
-                  if (state is UsersLoadingMore) {
-                    return _buildListView(state.currentUsers, true, null);
-                  }
-
-                  if (state is UsersLoaded) {
-                    if (state.users.isEmpty) {
-                      return EmptyStateWidget(
-                        message: 'No users found',
-                        icon: Icons.people_outline,
-                        actionText: 'Refresh',
-                        onRetry: _retryFetch,
-                      );
-                    }
-                    // reset loading-more flag
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) setState(() => _isLoadingMore = false);
-                    });
-                    return _buildListView(state.users, state.hasMore, null);
-                  }
-
-                  return const SizedBox.shrink();
+                  // Build the list view wrapped in RefreshIndicator using the reusable UserListView
+                  return RefreshIndicator(
+                    onRefresh: _onRefresh,
+                    child: UserListView(
+                      controller: _scrollController,
+                      users: users,
+                      hasMore: hasMore,
+                      loadMoreError: loadMoreError,
+                      loadingUserIds: _loadingUserIds,
+                      currentUserId: _currentUserId ?? '',
+                      onFollowToggle: (followedId, isFollowing) {
+                        _onFollowToggle(followedId, isFollowing);
+                      },
+                      onRetryLoadMore: () {
+                        setState(() => _isLoadingMore = true);
+                        context.read<UsersBloc>().add(
+                          const LoadMoreUsersEvent(),
+                        );
+                      },
+                    ),
+                  );
                 },
               );
             }
 
-            // Followers/following UI (FollowersBloc)
+            // Followers/following UI (FollowersBloc) - NO RefreshIndicator
             return BlocBuilder<FollowersBloc, FollowersState>(
               builder: (context, state) {
                 bool isInitialLoading = false;
                 List<UserListEntity> users = [];
                 bool hasMore = false;
+                String? loadMoreError;
 
                 if (state is FollowersLoading) {
                   isInitialLoading = true;
@@ -372,6 +451,7 @@ class _UserListPageState extends State<UserListPage> {
                   users = state.users;
                 } else if (state is FollowersLoadMoreError) {
                   users = state.users;
+                  loadMoreError = state.message;
                 } else if (state is UserFollowed) {
                   users = state.users;
                   hasMore = state.hasMore;
@@ -380,8 +460,9 @@ class _UserListPageState extends State<UserListPage> {
                   hasMore = state.hasMore;
                 }
 
-                if (isInitialLoading)
+                if (isInitialLoading) {
                   return const Center(child: LoadingIndicator());
+                }
 
                 if (state is FollowersError && users.isEmpty) {
                   return CustomErrorWidget(
@@ -402,198 +483,48 @@ class _UserListPageState extends State<UserListPage> {
                   if (mounted) setState(() => _isLoadingMore = false);
                 });
 
-                final itemCount =
-                    users.length + ((hasMore || _isLoadingMore) ? 1 : 0);
-
-                return ListView.builder(
+                // Use the reusable UserListView here too. Provide an onRetryLoadMore that
+                // dispatches the appropriate FollowersBloc pagination event using the last user.
+                return UserListView(
                   controller: _scrollController,
-                  itemCount: itemCount,
-                  itemBuilder: (context, index) {
-                    if (index == users.length) {
-                      if (state is FollowersLoadMoreError) {
-                        return Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            children: [
-                              const Text('Failed to load more.'),
-                              const SizedBox(height: 8),
-                              ElevatedButton(
-                                onPressed: () {
-                                  final lastUser = users.isNotEmpty
-                                      ? users.last
-                                      : null;
-                                  if (lastUser != null) {
-                                    setState(() => _isLoadingMore = true);
-                                    if (widget.mode == UserListMode.followers) {
-                                      context.read<FollowersBloc>().add(
-                                        GetFollowersEvent(
-                                          userId: widget.userId!,
-                                          currentUserId: _currentUserId,
-                                          pageSize: _followersPageSize,
-                                          lastCreatedAt: lastUser.createdAt,
-                                          lastId: lastUser.id,
-                                        ),
-                                      );
-                                    } else {
-                                      context.read<FollowersBloc>().add(
-                                        GetFollowingEvent(
-                                          userId: widget.userId!,
-                                          currentUserId: _currentUserId,
-                                          pageSize: _followersPageSize,
-                                          lastCreatedAt: lastUser.createdAt,
-                                          lastId: lastUser.id,
-                                        ),
-                                      );
-                                    }
-                                  }
-                                },
-                                child: const Text('Retry'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: LoadingIndicator(),
+                  users: users,
+                  hasMore: hasMore,
+                  loadMoreError: loadMoreError,
+                  loadingUserIds: _loadingUserIds,
+                  currentUserId: _currentUserId ?? '',
+                  onFollowToggle: (followedId, isFollowing) {
+                    _onFollowToggle(followedId, isFollowing);
+                  },
+                  onRetryLoadMore: () {
+                    final lastUser = users.isNotEmpty ? users.last : null;
+                    if (lastUser == null) return;
+                    setState(() => _isLoadingMore = true);
+                    if (widget.mode == UserListMode.followers) {
+                      context.read<FollowersBloc>().add(
+                        GetFollowersEvent(
+                          userId: widget.userId!,
+                          currentUserId: _currentUserId,
+                          pageSize: _followersPageSize,
+                          lastCreatedAt: lastUser.createdAt,
+                          lastId: lastUser.id,
+                        ),
+                      );
+                    } else {
+                      context.read<FollowersBloc>().add(
+                        GetFollowingEvent(
+                          userId: widget.userId!,
+                          currentUserId: _currentUserId,
+                          pageSize: _followersPageSize,
+                          lastCreatedAt: lastUser.createdAt,
+                          lastId: lastUser.id,
                         ),
                       );
                     }
-
-                    final user = users[index];
-                    return UserListItem(
-                      user: user,
-                      currentUserId: _currentUserId ?? '',
-                      isLoading: _loadingUserIds.contains(user.id),
-                      onFollowToggle: (followedId, isFollowing) {
-                        _onFollowToggle(followedId, isFollowing);
-                      },
-                    );
                   },
                 );
               },
             );
           },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildListView(
-    List<UserListEntity> users,
-    bool hasMore,
-    String? loadMoreError,
-  ) {
-    return CustomScrollView(
-      controller: _scrollController,
-      slivers: [
-        SliverList(
-          delegate: SliverChildBuilderDelegate((context, index) {
-            final user = users[index];
-            return UserListItem(
-              key: ValueKey(user.id),
-              user: user,
-              currentUserId: _currentUserId ?? '',
-              isLoading: _loadingUserIds.contains(user.id),
-              onFollowToggle: (followedId, isFollowing) {
-                if (_currentUserId == null) {
-                  SnackbarUtils.showError(
-                    context,
-                    'You must be signed in to follow users.',
-                  );
-                  return;
-                }
-
-                // show spinner on that item
-                setState(() => _loadingUserIds.add(followedId));
-
-                // In users-mode, update UsersBloc optimistically before network call.
-                if (widget.mode == UserListMode.users) {
-                  context.read<UsersBloc>().add(
-                    UpdateUserFollowStatusEvent(followedId, isFollowing),
-                  );
-                  context.read<FollowersBloc>().add(
-                    FollowUserEvent(
-                      followerId: _currentUserId!,
-                      followingId: followedId,
-                      isFollowing: isFollowing,
-                    ),
-                  );
-                } else {
-                  // followers/following mode: FollowersBloc owns the list
-                  context.read<FollowersBloc>().add(
-                    FollowUserEvent(
-                      followerId: _currentUserId!,
-                      followingId: followedId,
-                      isFollowing: isFollowing,
-                    ),
-                  );
-                }
-              },
-            );
-          }, childCount: users.length),
-        ),
-        SliverToBoxAdapter(
-          child: _buildLoadingMoreFooter(hasMore, loadMoreError),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLoadingMoreFooter(bool hasMore, String? loadMoreError) {
-    if (!hasMore) return const SizedBox.shrink();
-
-    if (loadMoreError != null) {
-      return Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.errorContainer,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          children: [
-            Text(
-              'Failed to load more users',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onErrorContainer,
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.tonal(
-              onPressed: () {
-                if (widget.mode == UserListMode.users) {
-                  context.read<UsersBloc>().add(const LoadMoreUsersEvent());
-                } else {
-                  // For followers/following we rely on existing retry UI in builder
-                  _retryFetch();
-                }
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.errorContainer,
-                foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
-              ),
-              child: const Text('Try Again'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return const Padding(
-      padding: EdgeInsets.all(24.0),
-      child: Center(
-        child: Column(
-          children: [
-            LoadingIndicator(size: 20),
-            SizedBox(height: 8),
-            Text(
-              'Loading more users...',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ],
         ),
       ),
     );

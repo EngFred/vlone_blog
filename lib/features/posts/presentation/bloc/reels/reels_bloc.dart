@@ -29,7 +29,7 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     : super(const ReelsInitial()) {
     on<GetReelsEvent>(_onGetReels);
     on<LoadMoreReelsEvent>(_onLoadMoreReels);
-    on<RefreshReelsEvent>(_onRefreshReels);
+    on<RefreshReelsEvent>(_onRefreshReels); // UPDATED
 
     on<StartReelsRealtime>(_onStartReelsRealtime);
     on<StopReelsRealtime>(_onStopReelsRealtime);
@@ -58,14 +58,9 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
       return;
     }
 
-    // Get posts from *any* state that has them
-    final currentPostsSnapshot = state is ReelsLoaded
-        ? (state as ReelsLoaded).posts
-        : (state is ReelsLoadingMore)
-        ? (state as ReelsLoadingMore).posts
-        : (state is ReelsLoadMoreError)
-        ? (state as ReelsLoadMoreError).posts
-        : <PostEntity>[];
+    final currentPostsSnapshot = getPostsFromState(
+      state,
+    ); // Using public getter
 
     // Use 'posts' for consistent state
     emit(ReelsLoadingMore(posts: currentPostsSnapshot));
@@ -84,14 +79,20 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     _hasMoreReels = true;
     _lastReelsCreatedAt = null;
     _lastReelsId = null;
-    emit(const ReelsLoading());
-    await _safeFetchReels(emit, isRefresh: true);
+    // Do not emit ReelsLoading, let the RefreshIndicator spin
+    await _safeFetchReels(
+      emit,
+      isRefresh: true,
+      refreshCompleter: event.refreshCompleter, // PASS COMPLETER
+    );
   }
 
   Future<void> _safeFetchReels(
     Emitter<ReelsState> emit, {
     required bool isRefresh,
     List<PostEntity>? existingPosts,
+    // ADDED: Optional completer for refresh indicator
+    Completer<void>? refreshCompleter,
   }) async {
     if (_isFetchingReels) return;
     _isFetchingReels = true;
@@ -100,8 +101,8 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
         GetReelsParams(
           currentUserId: _currentReelsUserId!,
           pageSize: _pageSize,
-          lastCreatedAt: _lastReelsCreatedAt,
-          lastId: _lastReelsId,
+          lastCreatedAt: isRefresh ? null : _lastReelsCreatedAt,
+          lastId: isRefresh ? null : _lastReelsId,
         ),
       );
 
@@ -110,12 +111,13 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
           final message = ErrorMessageMapper.getErrorMessage(failure);
           AppLogger.error('Get reels failed: $message');
           if (isRefresh) {
-            emit(ReelsError(message));
+            // Emit ReelsError with the completer
+            emit(ReelsError(message, refreshCompleter: refreshCompleter));
           } else {
             final currentPosts = existingPosts ?? [];
-            // Use 'posts' for consistent state
             emit(ReelsLoadMoreError(message, posts: currentPosts));
           }
+          refreshCompleter?.complete(); // COMPLETE ON ERROR
         },
         (newPosts) {
           List<PostEntity> updatedPosts;
@@ -137,9 +139,11 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
               updatedPosts,
               hasMore: _hasMoreReels,
               isRealtimeActive: _isSubscribedToService,
+              refreshCompleter: refreshCompleter, // PASS COMPLETER
             ),
           );
           AppLogger.info('Reels loaded with ${updatedPosts.length} posts');
+          refreshCompleter?.complete(); // COMPLETE ON SUCCESS
         },
       );
     } finally {
@@ -151,7 +155,6 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     RemovePostFromReels event,
     Emitter<ReelsState> emit,
   ) async {
-    // This logic should also be applied to all states
     final currentState = state;
     if (currentState is ReelsLoaded) {
       final updatedPosts = currentState.posts
@@ -242,7 +245,8 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     add(RemovePostFromReels(event.postId));
   }
 
-  List<PostEntity> _getPostsFromState(ReelsState state) {
+  // MADE PUBLIC: Renamed from _getPostsFromState to getPostsFromState
+  List<PostEntity> getPostsFromState(ReelsState state) {
     if (state is ReelsLoaded) {
       return state.posts;
     } else if (state is ReelsLoadingMore) {
@@ -271,7 +275,7 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     _RealtimeReelsPostUpdated event,
     Emitter<ReelsState> emit,
   ) async {
-    final currentPosts = _getPostsFromState(state);
+    final currentPosts = getPostsFromState(state);
     if (currentPosts.isEmpty) return;
 
     final updatedPosts = currentPosts.map((post) {

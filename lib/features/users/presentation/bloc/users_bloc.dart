@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
@@ -5,7 +6,6 @@ import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 import 'package:vlone_blog_app/features/users/domain/usecases/get_paginated_users_usecase.dart';
 import 'package:vlone_blog_app/features/users/domain/entities/user_list_entity.dart';
-
 part 'users_event.dart';
 part 'users_state.dart';
 
@@ -65,8 +65,13 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     _lastCreatedAt = null;
     _lastId = null;
     _hasMore = true;
-    emit(UsersLoading());
-    await _fetchUsers(emit, isRefresh: true);
+
+    // Do not emit UsersLoading here, RefreshIndicator handles the visual cue
+    await _fetchUsers(
+      emit,
+      isRefresh: true,
+      refreshCompleter: event.refreshCompleter,
+    );
   }
 
   void _onUpdateUserFollowStatus(
@@ -74,6 +79,7 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     Emitter<UsersState> emit,
   ) {
     final currentState = state;
+    // Only update if current state is UsersLoaded (and copy over the Completer if present)
     if (currentState is! UsersLoaded) return;
 
     final index = currentState.users.indexWhere(
@@ -85,15 +91,31 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     updatedUsers[index] = updatedUsers[index].copyWith(
       isFollowing: event.isFollowing,
     );
-    emit(UsersLoaded(updatedUsers, hasMore: currentState.hasMore));
+    emit(
+      UsersLoaded(
+        updatedUsers,
+        hasMore: currentState.hasMore,
+        refreshCompleter:
+            currentState.refreshCompleter, // Pass completer through
+      ),
+    );
   }
 
   Future<void> _fetchUsers(
     Emitter<UsersState> emit, {
     required bool isRefresh,
+    // Added optional Completer
+    Completer<void>? refreshCompleter,
   }) async {
     if (_currentUserId == null) {
-      emit(UsersError('User not authenticated'));
+      // Pass completer on error
+      emit(
+        UsersError(
+          'User not authenticated',
+          refreshCompleter: refreshCompleter,
+        ),
+      );
+      refreshCompleter?.complete();
       return;
     }
 
@@ -114,16 +136,27 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     result.fold(
       (failure) {
         final errorMessage = ErrorMessageMapper.getErrorMessage(failure);
+        final currentUsers = state is UsersLoaded
+            ? (state as UsersLoaded).users
+            : (state is UsersLoadingMore
+                  ? (state as UsersLoadingMore).currentUsers
+                  : <UserListEntity>[]);
+
         if (isRefresh) {
-          emit(UsersError(errorMessage));
+          // On refresh error, emit UsersError with existing users list (if any) and the completer
+          emit(
+            UsersError(
+              errorMessage,
+              users: currentUsers,
+              refreshCompleter: refreshCompleter,
+            ),
+          );
         } else {
-          final currentUsers = state is UsersLoaded
-              ? (state as UsersLoaded).users
-              : (state is UsersLoadingMore
-                    ? (state as UsersLoadingMore).currentUsers
-                    : <UserListEntity>[]);
+          // On load more error, emit UsersLoadMoreError
           emit(UsersLoadMoreError(errorMessage, currentUsers: currentUsers));
         }
+        // Complete the refresh indicator on error
+        refreshCompleter?.complete();
       },
       (newUsers) {
         final List<UserListEntity> updatedUsers;
@@ -151,7 +184,16 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
         }
 
         _hasMore = newUsers.length == _pageSize;
-        emit(UsersLoaded(updatedUsers, hasMore: _hasMore));
+        // Emit UsersLoaded with the completer
+        emit(
+          UsersLoaded(
+            updatedUsers,
+            hasMore: _hasMore,
+            refreshCompleter: refreshCompleter,
+          ),
+        );
+        // Complete the refresh indicator on success
+        refreshCompleter?.complete();
       },
     );
   }
@@ -164,7 +206,14 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
       final userExists = currentState.users.any((u) => u.id == event.user.id);
       if (!userExists) {
         final updatedUsers = [event.user, ...currentState.users];
-        emit(UsersLoaded(updatedUsers, hasMore: currentState.hasMore));
+        emit(
+          UsersLoaded(
+            updatedUsers,
+            hasMore: currentState.hasMore,
+            refreshCompleter:
+                currentState.refreshCompleter, // Pass completer through
+          ),
+        );
       }
     }
   }

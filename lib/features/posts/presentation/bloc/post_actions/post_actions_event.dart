@@ -6,6 +6,11 @@ abstract class PostActionsEvent extends Equatable {
   List<Object?> get props => [];
 }
 
+// FIX: Issue 3 - New event for resetting form
+class ResetForm extends PostActionsEvent {
+  const ResetForm();
+}
+
 /// Existing events kept
 class CreatePostEvent extends PostActionsEvent {
   final String userId;

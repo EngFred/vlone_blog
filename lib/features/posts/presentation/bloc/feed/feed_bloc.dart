@@ -1,11 +1,13 @@
 import 'dart:async';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:vlone_blog_app/core/service/realtime_service.dart';
-import 'package:vlone_blog_app/core/utils/app_logger.dart';
-import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
-import 'package:vlone_blog_app/features/posts/domain/usecases/get_feed_usecase.dart';
+
+import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
+import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
+import 'package:vlone_blog_app/features/posts/domain/usecases/get_feed_usecase.dart';
+
 part 'feed_event.dart';
 part 'feed_state.dart';
 
@@ -48,6 +50,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     AppLogger.info('GetFeedEvent triggered');
     _currentFeedUserId = event.userId;
     emit(const FeedLoading());
+    // NOTE: Initial load does not pass a completer, so refreshCompleter is null here.
     await _safeFetchFeed(emit, isRefresh: true);
   }
 
@@ -84,14 +87,20 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     _hasMoreFeed = true;
     _lastFeedCreatedAt = null;
     _lastFeedId = null;
-    emit(const FeedLoading());
-    await _safeFetchFeed(emit, isRefresh: true);
+    // NOTE: Do NOT emit FeedLoading here, the RefreshIndicator shows the spinner
+    await _safeFetchFeed(
+      emit,
+      isRefresh: true,
+      refreshCompleter: event.refreshCompleter, // Pass the completer
+    );
   }
 
   Future<void> _safeFetchFeed(
     Emitter<FeedState> emit, {
     required bool isRefresh,
     List<PostEntity>? existingPosts,
+    // ADDED: Optional completer for refresh indicator
+    Completer<void>? refreshCompleter,
   }) async {
     if (_isFetchingFeed) return;
     _isFetchingFeed = true;
@@ -100,8 +109,8 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
         GetFeedParams(
           currentUserId: _currentFeedUserId!,
           pageSize: _pageSize,
-          lastCreatedAt: _lastFeedCreatedAt,
-          lastId: _lastFeedId,
+          lastCreatedAt: isRefresh ? null : _lastFeedCreatedAt,
+          lastId: isRefresh ? null : _lastFeedId,
         ),
       );
 
@@ -110,11 +119,13 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
           final message = ErrorMessageMapper.getErrorMessage(failure);
           AppLogger.error('Get feed failed: $message');
           if (isRefresh) {
-            emit(FeedError(message));
+            // Emit FeedError with the completer
+            emit(FeedError(message, refreshCompleter: refreshCompleter));
           } else {
             final currentPosts = existingPosts ?? [];
             emit(FeedLoadMoreError(message, posts: currentPosts));
           }
+          refreshCompleter?.complete(); // Complete on error
         },
         (newPosts) {
           List<PostEntity> updatedPosts;
@@ -136,9 +147,11 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
               updatedPosts,
               hasMore: _hasMoreFeed,
               isRealtimeActive: _isSubscribedToService,
+              refreshCompleter: refreshCompleter, // Pass the completer
             ),
           );
           AppLogger.info('Feed loaded with ${updatedPosts.length} posts');
+          refreshCompleter?.complete(); // Complete on success
         },
       );
     } finally {
@@ -153,6 +166,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     final currentState = state;
     if (currentState is FeedLoaded) {
       final updatedPosts = [event.post, ...currentState.posts];
+      // Preserve the completer if one exists in the current state
       emit(currentState.copyWith(posts: updatedPosts));
     }
     // You might want to handle other states (e.g. FeedLoadingMore) too
@@ -167,6 +181,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
       final updatedPosts = currentState.posts
           .where((p) => p.id != event.postId)
           .toList();
+      // Preserve the completer if one exists in the current state
       emit(currentState.copyWith(posts: updatedPosts));
     }
     // You might want to handle other states (e.g. FeedLoadingMore) too
@@ -199,6 +214,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     );
     _isSubscribedToService = true;
     if (state is FeedLoaded) {
+      // Preserve the completer if one exists in the current state
       emit((state as FeedLoaded).copyWith(isRealtimeActive: true));
     }
   }
@@ -214,6 +230,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     await _realtimePostDeletedSub?.cancel();
     _isSubscribedToService = false;
     if (state is FeedLoaded) {
+      // Preserve the completer if one exists in the current state
       emit((state as FeedLoaded).copyWith(isRealtimeActive: false));
     }
   }
@@ -226,6 +243,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     if (currentState is FeedLoaded &&
         !currentState.posts.any((p) => p.id == event.post.id)) {
       final updatedPosts = [event.post, ...currentState.posts];
+      // Preserve the completer if one exists in the current state
       emit(currentState.copyWith(posts: updatedPosts));
       AppLogger.info('New post added to feed realtime: ${event.post.id}');
     }
@@ -240,6 +258,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
       final updatedPosts = currentState.posts
           .where((p) => p.id != event.postId)
           .toList();
+      // Preserve the completer if one exists in the current state
       emit(currentState.copyWith(posts: updatedPosts));
       AppLogger.info('Post removed from feed realtime: ${event.postId}');
     }
@@ -257,7 +276,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     }
   }
 
-  List<PostEntity> _getPostsFromState(FeedState state) {
+  List<PostEntity> getPostsFromState(FeedState state) {
     if (state is FeedLoaded) {
       return state.posts;
     } else if (state is FeedLoadingMore) {
@@ -274,6 +293,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
   ) {
     final currentState = state;
     if (currentState is FeedLoaded) {
+      // Preserve the completer if one exists in the current state
       emit(currentState.copyWith(posts: updatedPosts));
     } else if (currentState is FeedLoadingMore) {
       emit(FeedLoadingMore(posts: updatedPosts));
@@ -286,7 +306,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     _RealtimeFeedPostUpdated event,
     Emitter<FeedState> emit,
   ) async {
-    final currentPosts = _getPostsFromState(state);
+    final currentPosts = getPostsFromState(state);
     if (currentPosts.isEmpty) return;
 
     final updatedPosts = currentPosts.map((post) {

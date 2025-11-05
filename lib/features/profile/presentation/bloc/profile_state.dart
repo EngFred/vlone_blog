@@ -17,13 +17,15 @@ class ProfileLoading extends ProfileState {
 class ProfileDataLoaded extends ProfileState {
   final ProfileEntity profile;
   final String userId;
-  // **NEW:** Property to track if the real-time listener is active.
   final bool isRealtimeActive;
+  // ADDED: Optional completer for RefreshIndicator
+  final Completer<void>? refreshCompleter;
 
   const ProfileDataLoaded({
     required this.profile,
     required this.userId,
     this.isRealtimeActive = false, // Default to false
+    this.refreshCompleter,
   });
 
   // Helper method for easy state updates
@@ -31,23 +33,32 @@ class ProfileDataLoaded extends ProfileState {
     ProfileEntity? profile,
     String? userId,
     bool? isRealtimeActive,
+    Completer<void>? refreshCompleter,
   }) {
     return ProfileDataLoaded(
       profile: profile ?? this.profile,
       userId: userId ?? this.userId,
       isRealtimeActive: isRealtimeActive ?? this.isRealtimeActive,
+      refreshCompleter: refreshCompleter,
     );
   }
 
   @override
-  List<Object> get props => [profile, userId, isRealtimeActive];
+  List<Object?> get props => [
+    profile,
+    userId,
+    isRealtimeActive,
+    refreshCompleter,
+  ];
 }
 
 class ProfileError extends ProfileState {
   final String message;
+  // ADDED: Optional completer for RefreshIndicator
+  final Completer<void>? refreshCompleter;
 
-  const ProfileError(this.message);
+  const ProfileError(this.message, {this.refreshCompleter});
 
   @override
-  List<Object> get props => [message];
+  List<Object?> get props => [message, refreshCompleter];
 }

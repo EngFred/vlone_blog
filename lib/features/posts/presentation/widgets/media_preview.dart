@@ -63,136 +63,136 @@ class MediaPreview extends StatelessWidget {
     final floatingControlBgColor = theme.colorScheme.surface.withOpacity(0.9);
     final floatingControlIconColor = theme.colorScheme.onSurface;
 
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Media Content
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 400),
-              child: mediaType == 'image'
-                  ? Image.file(file, width: double.infinity, fit: BoxFit.cover)
-                  : (videoController != null &&
-                        videoController!.value.isInitialized)
-                  ? GestureDetector(
-                      onTap: onPlayPause,
-                      child: AspectRatio(
-                        aspectRatio: videoController!.value.aspectRatio,
-                        child: VideoPlayer(videoController!),
-                      ),
-                    )
-                  : Container(
-                      height: 200,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Center(child: LoadingIndicator()),
-                    ),
-            ),
-          ),
-
-          // Play/Pause Overlay for Video
-          if (mediaType == 'video')
-            Positioned.fill(
-              child: AnimatedOpacity(
-                opacity: isPlaying ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 200),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Center(
-                    child: GestureDetector(
-                      onTap: onPlayPause,
-                      child: Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: floatingControlBgColor,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.4),
-                              blurRadius: 15,
-                              spreadRadius: 2,
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.play_arrow_rounded,
-                          color: floatingControlIconColor,
-                          size: 40,
-                        ),
-                      ),
-                    ),
-                  ),
+    // Changed: Use FittedBox with BoxFit.contain for full-screen immersive preview without constraints or distortions
+    return FittedBox(
+      fit: BoxFit.contain,
+      child: SizedBox(
+        // Use screen width to anchor scaling, height adapts via fit
+        width: MediaQuery.of(context).size.width,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Media Content: Removed ClipRRect, boxShadow, and decoration for clean full-screen look
+            if (mediaType == 'image')
+              Image.file(file, fit: BoxFit.contain)
+            else if (videoController != null &&
+                videoController!.value.isInitialized)
+              GestureDetector(
+                onTap: onPlayPause,
+                child: AspectRatio(
+                  aspectRatio: videoController!.value.aspectRatio,
+                  child: VideoPlayer(videoController!),
                 ),
-              ),
-            ),
-
-          // Action Buttons
-          Positioned(
-            top: 12,
-            right: 12,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildActionChip(
-                  context: context,
-                  icon: Icons.edit_rounded,
-                  onPressed: onEdit,
-                  backgroundColor: floatingControlBgColor,
-                  iconColor: floatingControlIconColor,
-                  tooltip: 'Edit',
-                ),
-                const SizedBox(width: 8),
-                _buildActionChip(
-                  context: context,
-                  icon: Icons.delete_rounded,
-                  onPressed: onRemove,
-                  backgroundColor: Colors.red.withOpacity(0.9),
-                  iconColor: Colors.white,
-                  tooltip: 'Remove',
-                ),
-              ],
-            ),
-          ),
-
-          // Video Duration Indicator
-          if (mediaType == 'video' && videoController != null)
-            Positioned(
-              bottom: 12,
-              left: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              )
+            else
+              Container(
+                height: 200,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(8),
+                  color: theme.colorScheme.surfaceContainerHighest,
                 ),
-                child: Text(
-                  _formatDuration(videoController!.value.duration),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                child: const Center(
+                  child: Column(
+                    // FIX: Issue 2 - Better loading UI for video init
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      LoadingIndicator(),
+                      SizedBox(height: 8),
+                      Text('Initializing video...'),
+                    ],
                   ),
                 ),
               ),
+
+            // Play/Pause Overlay for Video
+            if (mediaType == 'video')
+              Positioned.fill(
+                child: AnimatedOpacity(
+                  opacity: isPlaying ? 0.0 : 1.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Container(
+                    color: Colors.black.withOpacity(0.3),
+                    child: Center(
+                      child: GestureDetector(
+                        onTap: onPlayPause,
+                        child: Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: floatingControlBgColor,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.4),
+                                blurRadius: 15,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.play_arrow_rounded,
+                            color: floatingControlIconColor,
+                            size: 40,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+            // Action Buttons
+            Positioned(
+              top: 12,
+              right: 12,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildActionChip(
+                    context: context,
+                    icon: Icons.edit_rounded,
+                    onPressed: onEdit,
+                    backgroundColor: floatingControlBgColor,
+                    iconColor: floatingControlIconColor,
+                    tooltip: 'Edit',
+                  ),
+                  const SizedBox(width: 8),
+                  _buildActionChip(
+                    context: context,
+                    icon: Icons.delete_rounded,
+                    onPressed: onRemove,
+                    backgroundColor: Colors.red.withOpacity(0.9),
+                    iconColor: Colors.white,
+                    tooltip: 'Remove',
+                  ),
+                ],
+              ),
             ),
-        ],
+
+            // Video Duration Indicator
+            if (mediaType == 'video' && videoController != null)
+              Positioned(
+                bottom: 12,
+                left: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _formatDuration(videoController!.value.duration),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

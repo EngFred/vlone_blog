@@ -106,10 +106,15 @@ class PostFormState extends PostActionsState {
     return 'Uploading...';
   }
 
+  // Sentinel used to differentiate "no change" from explicit `null`
+  static const Object _noChange = Object();
+
+  /// copyWith supports explicit clearing by passing null for nullable fields.
+  /// To keep backward-compatible call sites you can pass values as before.
   PostFormState copyWith({
     String? content,
-    File? mediaFile,
-    String? mediaType,
+    Object? mediaFile = _noChange, // pass null explicitly to clear
+    Object? mediaType = _noChange, // pass null explicitly to clear
     bool? isProcessing,
     String? processingMessage,
     double? processingPercent,
@@ -118,10 +123,17 @@ class PostFormState extends PostActionsState {
     int? warningThreshold,
     bool? isPostButtonEnabled,
   }) {
+    final File? computedMediaFile = identical(mediaFile, _noChange)
+        ? this.mediaFile
+        : mediaFile as File?;
+    final String? computedMediaType = identical(mediaType, _noChange)
+        ? this.mediaType
+        : mediaType as String?;
+
     return PostFormState(
       content: content ?? this.content,
-      mediaFile: mediaFile ?? this.mediaFile,
-      mediaType: mediaType ?? this.mediaType,
+      mediaFile: computedMediaFile,
+      mediaType: computedMediaType,
       isProcessing: isProcessing ?? this.isProcessing,
       processingMessage: processingMessage ?? this.processingMessage,
       processingPercent: processingPercent ?? this.processingPercent,

@@ -19,9 +19,12 @@ class LoadMoreReelsEvent extends ReelsEvent {
 
 class RefreshReelsEvent extends ReelsEvent {
   final String userId;
-  const RefreshReelsEvent(this.userId);
+  // ADDED: Optional completer for RefreshIndicator
+  final Completer<void>? refreshCompleter;
+
+  const RefreshReelsEvent(this.userId, {this.refreshCompleter});
   @override
-  List<Object?> get props => [userId];
+  List<Object?> get props => [userId, refreshCompleter];
 }
 
 class RemovePostFromReels extends ReelsEvent {

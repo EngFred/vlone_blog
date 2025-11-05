@@ -17,6 +17,8 @@ import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.d
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_posts_list.dart';
 
+import 'dart:async';
+
 enum ProfileMenuOption { edit, settings, logout }
 
 class ProfilePage extends StatefulWidget {
@@ -31,7 +33,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final ScrollController _scrollController = ScrollController();
   static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
 
-  // New flags to track listener state locally (Kept as mirrors for fallback logic)
+  // Local flags to track listener state locally (Kept as mirrors for fallback logic)
   bool _isProfileRealtimeActive = false;
   bool _isUserPostsRealtimeActive = false;
 
@@ -64,9 +66,10 @@ class _ProfilePageState extends State<ProfilePage> {
     _isProfileRealtimeActive = false;
     _isUserPostsRealtimeActive = false;
 
+    // Use initial Get events without completers
     context.read<ProfileBloc>().add(GetProfileDataEvent(_currentUserId!));
     context.read<UserPostsBloc>().add(
-      RefreshUserPostsEvent(
+      GetUserPostsEvent(
         profileUserId: _currentUserId!,
         currentUserId: _currentUserId!,
       ),
@@ -104,48 +107,63 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  // UPDATED: Use Completers for RefreshIndicator
   Future<void> _onRefreshProfile() async {
     if (_currentUserId == null) return;
 
+    // Create two completers
+    final profileCompleter = Completer<void>();
+    final postsCompleter = Completer<void>();
+
     // 1. Dispatch event to refresh the Profile
-    context.read<ProfileBloc>().add(GetProfileDataEvent(_currentUserId!));
+    context.read<ProfileBloc>().add(
+      GetProfileDataEvent(_currentUserId!, refreshCompleter: profileCompleter),
+    );
 
     // 2. Dispatch event to refresh the User Posts
     context.read<UserPostsBloc>().add(
       RefreshUserPostsEvent(
         profileUserId: _currentUserId!,
         currentUserId: _currentUserId!,
+        refreshCompleter: postsCompleter,
       ),
     );
+
+    // Wait for BOTH to complete. The BLoC listeners will complete them.
+    await Future.wait([profileCompleter.future, postsCompleter.future]);
   }
 
   void _setupScrollListener() {
     _scrollController.addListener(() {
       if (!_scrollController.hasClients) return;
-      Debouncer.instance.debounce('load_more_user_posts', _loadMoreDebounce, () {
-        final userPostsState = context.read<UserPostsBloc>().state;
+      Debouncer.instance.debounce(
+        'load_more_user_posts',
+        _loadMoreDebounce,
+        () {
+          final userPostsState = context.read<UserPostsBloc>().state;
 
-        final bool hasMore = (userPostsState is UserPostsLoaded)
-            ? userPostsState.hasMore
-            : (userPostsState
-                  is UserPostsLoadMoreError); // Allow retry on error
+          final bool hasMore = (userPostsState is UserPostsLoaded)
+              ? userPostsState.hasMore
+              : (userPostsState
+                    is UserPostsLoadMoreError); // Allow retry on error
 
-        // We check if posts have been loaded at least once by checking the state type
-        final bool hasLoadedOnce =
-            userPostsState is UserPostsLoaded ||
-            userPostsState is UserPostsLoadingMore ||
-            userPostsState is UserPostsLoadMoreError;
+          final bool hasLoadedOnce =
+              userPostsState is UserPostsLoaded ||
+              userPostsState is UserPostsLoadingMore ||
+              userPostsState is UserPostsLoadMoreError;
 
-        if (_scrollController.position.pixels >=
-                _scrollController.position.maxScrollExtent - 200 &&
-            hasMore &&
-            !_isLoadingMoreUserPosts &&
-            hasLoadedOnce) {
-          if (!mounted) return;
-          setState(() => _isLoadingMoreUserPosts = true);
-          context.read<UserPostsBloc>().add(const LoadMoreUserPostsEvent());
-        }
-      });
+          if (_scrollController.position.pixels >=
+                  _scrollController.position.maxScrollExtent *
+                      0.85 && // Adjusted to 85%
+              hasMore &&
+              !_isLoadingMoreUserPosts &&
+              hasLoadedOnce) {
+            if (!mounted) return;
+            setState(() => _isLoadingMoreUserPosts = true);
+            context.read<UserPostsBloc>().add(const LoadMoreUserPostsEvent());
+          }
+        },
+      );
     });
   }
 
@@ -191,6 +209,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     if (_currentUserId == null) {
+      // ... (Error state for unauthenticated user remains the same)
       return Scaffold(
         body: Center(
           child: Column(
@@ -232,6 +251,7 @@ class _ProfilePageState extends State<ProfilePage> {
         return Scaffold(
           backgroundColor: Theme.of(context).colorScheme.surface,
           appBar: AppBar(
+            // ... (AppBar content remains the same)
             title: const Text(
               'My Profile',
               style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
@@ -320,6 +340,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       if (state is ProfileDataLoaded) {
                         // Update local flag from BLoC state
                         _isProfileRealtimeActive = state.isRealtimeActive;
+                        state.refreshCompleter
+                            ?.complete(); // **COMPLETE PROFILE REFRESH**
 
                         if (state.userId != _currentUserId) {
                           AppLogger.info(
@@ -332,6 +354,9 @@ class _ProfilePageState extends State<ProfilePage> {
                           );
                           _ensureProfileRealtimeActive(state);
                         }
+                      } else if (state is ProfileError) {
+                        state.refreshCompleter
+                            ?.complete(); // **COMPLETE PROFILE REFRESH ON ERROR**
                       }
                     },
                   ),
@@ -344,7 +369,8 @@ class _ProfilePageState extends State<ProfilePage> {
                           'ProfilePage: UserPostsBloc state is for foreign profile (${state.profileUserId}). Triggering refresh for $_currentUserId.',
                         );
                         context.read<UserPostsBloc>().add(
-                          RefreshUserPostsEvent(
+                          GetUserPostsEvent(
+                            // Changed back to GetUserPostsEvent for initial load
                             profileUserId: _currentUserId!,
                             currentUserId: _currentUserId!,
                           ),
@@ -360,6 +386,8 @@ class _ProfilePageState extends State<ProfilePage> {
                         setState(() {
                           _isLoadingMoreUserPosts = false;
                         });
+                        state.refreshCompleter
+                            ?.complete(); // **COMPLETE POSTS REFRESH**
                         AppLogger.info(
                           'ProfilePage: UserPosts Loaded. Realtime Active: ${_isUserPostsRealtimeActive}',
                         );
@@ -368,9 +396,10 @@ class _ProfilePageState extends State<ProfilePage> {
                         setState(() {
                           _isLoadingMoreUserPosts = false;
                         });
+                      } else if (state is UserPostsError) {
+                        state.refreshCompleter
+                            ?.complete(); // **COMPLETE POSTS REFRESH ON ERROR**
                       }
-                      // Loading state is handled by the BlocBuilder (to show the initial spinner).
-                      // We no longer need to manually copy lists or set hasMore/errors here.
                     },
                   ),
                   BlocListener<PostActionsBloc, PostActionsState>(
@@ -410,12 +439,14 @@ class _ProfilePageState extends State<ProfilePage> {
                     if (profileState is ProfileError) {
                       return CustomErrorWidget(
                         message: profileState.message,
+                        // Call the new async refresh method
                         onRetry: _onRefreshProfile,
                       );
                     }
                     if (profileState is ProfileDataLoaded) {
                       // Use a nested BlocBuilder to access UserPostsState
                       return RefreshIndicator(
+                        // USE THE NEW ASYNC REFRESH METHOD
                         onRefresh: _onRefreshProfile,
                         child: CustomScrollView(
                           controller: _scrollController,
@@ -429,7 +460,11 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                             BlocBuilder<UserPostsBloc, UserPostsState>(
                               builder: (context, userPostsState) {
-                                List<PostEntity> posts = [];
+                                // Extract posts using the public BLoC helper method
+                                final List<PostEntity> posts = context
+                                    .read<UserPostsBloc>()
+                                    .getPostsFromState(userPostsState);
+
                                 bool isLoading = false;
                                 String? error;
                                 bool hasMore = false;
@@ -437,22 +472,21 @@ class _ProfilePageState extends State<ProfilePage> {
 
                                 if (userPostsState is UserPostsLoading &&
                                     userPostsState.profileUserId ==
-                                        _currentUserId) {
+                                        _currentUserId &&
+                                    posts.isEmpty) {
+                                  // Only show full loading if posts is empty
                                   isLoading = true;
                                 } else if (userPostsState is UserPostsError &&
                                     userPostsState.profileUserId ==
                                         _currentUserId) {
                                   error = userPostsState.message;
                                 } else if (userPostsState is UserPostsLoaded) {
-                                  posts = userPostsState.posts;
                                   hasMore = userPostsState.hasMore;
                                 } else if (userPostsState
                                     is UserPostsLoadingMore) {
-                                  posts = userPostsState.posts;
                                   hasMore = true; // Still expecting more data
                                 } else if (userPostsState
                                     is UserPostsLoadMoreError) {
-                                  posts = userPostsState.posts;
                                   loadMoreError = userPostsState.message;
                                   hasMore = true; // Show retry button
                                 }
@@ -463,17 +497,14 @@ class _ProfilePageState extends State<ProfilePage> {
                                   isLoading: isLoading,
                                   error: error,
                                   hasMore: hasMore,
-                                  isLoadingMore:
-                                      _isLoadingMoreUserPosts &&
-                                      userPostsState
-                                          is UserPostsLoadingMore, // Only show if BLoC is loading more
+                                  isLoadingMore: _isLoadingMoreUserPosts,
                                   loadMoreError: loadMoreError,
                                   onRetry: () {
                                     if (!mounted || _currentUserId == null)
                                       return;
-                                    // No local state reset needed, just trigger refresh
+                                    // Trigger initial fetch/retry
                                     context.read<UserPostsBloc>().add(
-                                      RefreshUserPostsEvent(
+                                      GetUserPostsEvent(
                                         profileUserId: _currentUserId!,
                                         currentUserId: _currentUserId!,
                                       ),

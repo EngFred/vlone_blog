@@ -19,9 +19,11 @@ class LoadMoreFeedEvent extends FeedEvent {
 
 class RefreshFeedEvent extends FeedEvent {
   final String userId;
-  const RefreshFeedEvent(this.userId);
+  final Completer<void>? refreshCompleter;
+
+  const RefreshFeedEvent(this.userId, {this.refreshCompleter});
   @override
-  List<Object?> get props => [userId];
+  List<Object?> get props => [userId, refreshCompleter];
 }
 
 // For reacting to PostActionsBloc (e.g., post created/deleted)

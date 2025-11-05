@@ -16,34 +16,45 @@ class ReelsLoading extends ReelsState {
 
 class ReelsError extends ReelsState {
   final String message;
-  const ReelsError(this.message);
+  final Completer<void>? refreshCompleter;
+
+  const ReelsError(this.message, {this.refreshCompleter});
   @override
-  List<Object?> get props => [message];
+  List<Object?> get props => [message, refreshCompleter];
 }
 
 class ReelsLoaded extends ReelsState {
   final List<PostEntity> posts;
   final bool hasMore;
   final bool isRealtimeActive;
+  final Completer<void>? refreshCompleter;
 
   const ReelsLoaded(
     this.posts, {
     this.hasMore = true,
     this.isRealtimeActive = false,
+    this.refreshCompleter,
   });
 
   @override
-  List<Object?> get props => [posts, hasMore, isRealtimeActive];
+  List<Object?> get props => [
+    posts,
+    hasMore,
+    isRealtimeActive,
+    refreshCompleter,
+  ];
 
   ReelsLoaded copyWith({
     List<PostEntity>? posts,
     bool? hasMore,
     bool? isRealtimeActive,
+    Completer<void>? refreshCompleter,
   }) {
     return ReelsLoaded(
       posts ?? this.posts,
       hasMore: hasMore ?? this.hasMore,
       isRealtimeActive: isRealtimeActive ?? this.isRealtimeActive,
+      refreshCompleter: refreshCompleter,
     );
   }
 }

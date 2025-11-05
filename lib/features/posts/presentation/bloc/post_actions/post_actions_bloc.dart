@@ -1,3 +1,4 @@
+// post_actions_bloc.dart
 import 'dart:async';
 import 'dart:io';
 import 'package:equatable/equatable.dart';
@@ -38,6 +39,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
     on<ContentChanged>(_onContentChanged);
     on<MediaSelected>(_onMediaSelected);
     on<ProcessingChanged>(_onProcessingChanged);
+    on<ResetForm>(_onResetForm); // FIX: Issue 3 - Handler for reset event
 
     // Subscribe to MediaProgressNotifier to keep processing status in bloc
     _mediaProgressSub = MediaProgressNotifier.stream.listen((progress) {
@@ -100,7 +102,15 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
     return super.close();
   }
 
-  // ---------- Event handlers ----------
+  // FIX: Issue 3 - Reset to initial form state
+  Future<void> _onResetForm(
+    ResetForm event,
+    Emitter<PostActionsState> emit,
+  ) async {
+    emit(const PostFormState());
+  }
+
+  // ---------- Other Event handlers (unchanged except for comments) ----------
 
   Future<void> _onContentChanged(
     ContentChanged event,

@@ -25,8 +25,9 @@ class LoadMoreUsersEvent extends UsersEvent {
 
 class RefreshUsersEvent extends UsersEvent {
   final String currentUserId;
+  final Completer<void>? refreshCompleter;
 
-  const RefreshUsersEvent(this.currentUserId);
+  const RefreshUsersEvent(this.currentUserId, this.refreshCompleter);
 
   @override
   List<Object?> get props => [currentUserId];

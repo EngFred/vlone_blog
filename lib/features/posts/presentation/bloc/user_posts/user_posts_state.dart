@@ -21,38 +21,56 @@ class UserPostsLoading extends UserPostsState {
 
 class UserPostsError extends UserPostsState {
   final String message;
-  const UserPostsError(this.message, {required super.profileUserId});
+  // ADDED: Optional completer for RefreshIndicator
+  final Completer<void>? refreshCompleter;
+
+  const UserPostsError(
+    this.message, {
+    required super.profileUserId,
+    this.refreshCompleter,
+  });
 
   @override
-  List<Object?> get props => [profileUserId, message];
+  List<Object?> get props => [profileUserId, message, refreshCompleter];
 }
 
 class UserPostsLoaded extends UserPostsState {
   final List<PostEntity> posts;
   final bool hasMore;
   final bool isRealtimeActive;
+  // ADDED: Optional completer for RefreshIndicator
+  final Completer<void>? refreshCompleter;
 
   const UserPostsLoaded(
     this.posts, {
     required super.profileUserId,
     this.hasMore = true,
     this.isRealtimeActive = false,
+    this.refreshCompleter,
   });
 
   @override
-  List<Object?> get props => [profileUserId, posts, hasMore, isRealtimeActive];
+  List<Object?> get props => [
+    profileUserId,
+    posts,
+    hasMore,
+    isRealtimeActive,
+    refreshCompleter,
+  ];
 
   UserPostsLoaded copyWith({
     List<PostEntity>? posts,
     bool? hasMore,
     bool? isRealtimeActive,
     String? profileUserId, // Though this shouldn't typically change
+    Completer<void>? refreshCompleter,
   }) {
     return UserPostsLoaded(
       posts ?? this.posts,
       profileUserId: profileUserId ?? this.profileUserId,
       hasMore: hasMore ?? this.hasMore,
       isRealtimeActive: isRealtimeActive ?? this.isRealtimeActive,
+      refreshCompleter: refreshCompleter,
     );
   }
 }

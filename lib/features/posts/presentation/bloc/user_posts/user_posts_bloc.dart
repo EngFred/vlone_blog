@@ -33,7 +33,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
   }) : super(const UserPostsInitial()) {
     on<GetUserPostsEvent>(_onGetUserPosts);
     on<LoadMoreUserPostsEvent>(_onLoadMoreUserPosts);
-    on<RefreshUserPostsEvent>(_onRefreshUserPosts);
+    on<RefreshUserPostsEvent>(_onRefreshUserPosts); // UPDATED
     on<RemovePostFromUserPosts>(_onRemovePostFromUserPosts);
 
     // Realtime control events
@@ -67,7 +67,9 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     }
 
     // Get posts from *any* state that has them
-    final currentPostsSnapshot = _getPostsFromState(state);
+    final currentPostsSnapshot = getPostsFromState(
+      state,
+    ); // Using public getter
 
     emit(
       UserPostsLoadingMore(
@@ -91,22 +93,33 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     _hasMoreUserPosts = true;
     _lastUserPostsCreatedAt = null;
     _lastUserPostsId = null;
-    emit(UserPostsLoading(profileUserId: event.profileUserId));
-    await _safeFetchUserPosts(emit, isRefresh: true);
+
+    // Do NOT emit UserPostsLoading, let the RefreshIndicator spin
+    await _safeFetchUserPosts(
+      emit,
+      isRefresh: true,
+      refreshCompleter: event.refreshCompleter, // PASS COMPLETER
+    );
   }
 
   Future<void> _safeFetchUserPosts(
     Emitter<UserPostsState> emit, {
     required bool isRefresh,
     List<PostEntity>? existingPosts,
+    // ADDED: Optional completer for refresh indicator
+    Completer<void>? refreshCompleter,
   }) async {
-    if (_isFetchingUserPosts) return;
+    if (_isFetchingUserPosts) {
+      refreshCompleter?.complete(); // If already fetching, complete immediately
+      return;
+    }
     _isFetchingUserPosts = true;
 
     final profileId = _currentUserPostsProfileId;
     if (profileId == null) {
       emit(const UserPostsError("Profile ID not set.", profileUserId: null));
       _isFetchingUserPosts = false;
+      refreshCompleter?.complete(); // Complete on error
       return;
     }
 
@@ -116,8 +129,8 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
           profileUserId: profileId,
           currentUserId: _currentUserPostsUserId!,
           pageSize: _pageSize,
-          lastCreatedAt: _lastUserPostsCreatedAt,
-          lastId: _lastUserPostsId,
+          lastCreatedAt: isRefresh ? null : _lastUserPostsCreatedAt,
+          lastId: isRefresh ? null : _lastUserPostsId,
         ),
       );
 
@@ -126,7 +139,14 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
           final message = ErrorMessageMapper.getErrorMessage(failure);
           AppLogger.error('Get user posts failed for $profileId: $message');
           if (isRefresh) {
-            emit(UserPostsError(message, profileUserId: profileId));
+            // Emit UserPostsError with the completer
+            emit(
+              UserPostsError(
+                message,
+                profileUserId: profileId,
+                refreshCompleter: refreshCompleter,
+              ),
+            );
           } else {
             final currentPosts = existingPosts ?? [];
             emit(
@@ -137,6 +157,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
               ),
             );
           }
+          refreshCompleter?.complete(); // COMPLETE ON ERROR
         },
         (newPosts) {
           List<PostEntity> updatedPosts;
@@ -159,8 +180,10 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
               profileUserId: profileId,
               hasMore: _hasMoreUserPosts,
               isRealtimeActive: _isSubscribedToService,
+              refreshCompleter: refreshCompleter, // PASS COMPLETER
             ),
           );
+          refreshCompleter?.complete(); // COMPLETE ON SUCCESS
         },
       );
     } finally {
@@ -169,7 +192,8 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
   }
 
   // Helper to get posts from any state
-  List<PostEntity> _getPostsFromState(UserPostsState state) {
+  // MADE PUBLIC: Renamed from _getPostsFromState to getPostsFromState
+  List<PostEntity> getPostsFromState(UserPostsState state) {
     if (state is UserPostsLoaded) {
       return state.posts;
     } else if (state is UserPostsLoadingMore) {
@@ -185,9 +209,14 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     Emitter<UserPostsState> emit,
     List<PostEntity> updatedPosts,
   ) {
+    // ... (logic remains the same, but uses the public getPostsFromState internally if needed)
     final currentState = state;
     if (currentState is UserPostsLoaded) {
-      emit(currentState.copyWith(posts: updatedPosts));
+      // Preserve the completer if it exists
+      final completer = currentState.refreshCompleter;
+      emit(
+        currentState.copyWith(posts: updatedPosts, refreshCompleter: completer),
+      );
     } else if (currentState is UserPostsLoadingMore) {
       emit(
         UserPostsLoadingMore(
@@ -210,7 +239,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     RemovePostFromUserPosts event,
     Emitter<UserPostsState> emit,
   ) async {
-    final currentPosts = _getPostsFromState(state);
+    final currentPosts = getPostsFromState(state); // Using public getter
     if (currentPosts.isEmpty) return;
 
     final updatedPosts = currentPosts
@@ -224,6 +253,8 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
   }
 
   // ---- Realtime handlers ----
+
+  // ... (Realtime handlers remain the same, just ensure they use the public getPostsFromState)
 
   Future<void> _onStartUserPostsRealtime(
     StartUserPostsRealtime event,
@@ -253,7 +284,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
         if (postId == null) return;
 
         // Check if the post is relevant before dispatching
-        final currentPosts = _getPostsFromState(state);
+        final currentPosts = getPostsFromState(state);
         final post = currentPosts.firstWhere(
           (p) => p.id == postId,
           orElse: () => PostEntity.empty,
@@ -281,7 +312,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     _realtimePostDeletedSub = realtimeService.onPostDeleted.listen(
       (postId) {
         // Check if the post is in our current state before dispatching
-        final currentPosts = _getPostsFromState(state);
+        final currentPosts = getPostsFromState(state);
         if (currentPosts.any((p) => p.id == postId)) {
           add(_RealtimeUserPostDeleted(postId));
         }
@@ -311,7 +342,6 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     _realtimeNewPostSub = null;
     _realtimePostUpdateSub = null;
     _realtimePostDeletedSub = null;
-    _isSubscribedToService = false;
     _currentUserPostsProfileId = null; // Clear profile ID on stop
 
     if (state is UserPostsLoaded) {
@@ -323,7 +353,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     _RealtimeUserPostReceived event,
     Emitter<UserPostsState> emit,
   ) async {
-    final currentPosts = _getPostsFromState(state);
+    final currentPosts = getPostsFromState(state);
 
     if (!currentPosts.any((p) => p.id == event.post.id)) {
       final updatedPosts = [event.post, ...currentPosts];
@@ -336,7 +366,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     _RealtimeUserPostUpdated event,
     Emitter<UserPostsState> emit,
   ) async {
-    final currentPosts = _getPostsFromState(state);
+    final currentPosts = getPostsFromState(state);
     if (currentPosts.isEmpty) return;
 
     final updatedPosts = currentPosts.map((post) {

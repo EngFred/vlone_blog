@@ -27,7 +27,7 @@ class _FeedPageState extends State<FeedPage>
     with AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
   String? _userId;
-  static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
+  static const Duration _loadMoreDebounceDuration = Duration(milliseconds: 300);
   bool _isLoadingMore = false;
 
   @override
@@ -45,6 +45,10 @@ class _FeedPageState extends State<FeedPage>
         context.read<NotificationsBloc>().add(
           NotificationsSubscribeUnreadCountStream(),
         );
+        // Initial load check can be simplified or rely on FeedBloc being initialized/provided
+        if (context.read<FeedBloc>().state is FeedInitial) {
+          context.read<FeedBloc>().add(GetFeedEvent(_userId!));
+        }
       } else if (mounted) {
         AppLogger.warning('User not authenticated in FeedPage');
       }
@@ -59,33 +63,37 @@ class _FeedPageState extends State<FeedPage>
   void _setupScrollListener() {
     _scrollController.addListener(() {
       if (_scrollController.hasClients) {
-        Debouncer.instance.debounce('load_more_feed', _loadMoreDebounce, () {
-          // Get the *current* state directly from the BLoC
-          final currentState = context.read<FeedBloc>().state;
+        Debouncer.instance.debounce(
+          'load_more_feed',
+          _loadMoreDebounceDuration,
+          () {
+            // Get the *current* state directly from the BLoC
+            final currentState = context.read<FeedBloc>().state;
 
-          // Determine if we can load more from the BLoC state
-          final bool hasMore = (currentState is FeedLoaded)
-              ? currentState.hasMore
-              : (currentState is FeedLoadingMore ||
-                    currentState is FeedLoadMoreError)
-              ? true // We assume we can retry if we're in these states
-              : false;
+            // Determine if we can load more from the BLoC state
+            final bool hasMore = (currentState is FeedLoaded)
+                ? currentState.hasMore
+                : (currentState is FeedLoadingMore ||
+                      currentState is FeedLoadMoreError)
+                ? true // We assume we can retry if we're in these states
+                : false;
 
-          if (!hasMore) return;
-          if (_isLoadingMore) return;
-          if (_scrollController.position.pixels >=
-              _scrollController.position.maxScrollExtent - 200) {
-            AppLogger.info(
-              'FeedPage: near bottom; dispatching LoadMoreFeedEvent',
-            );
+            if (!hasMore) return;
+            if (_isLoadingMore) return;
+            if (_scrollController.position.pixels >=
+                _scrollController.position.maxScrollExtent - 200) {
+              AppLogger.info(
+                'FeedPage: near bottom; dispatching LoadMoreFeedEvent',
+              );
 
-            // Set local UI state
-            setState(() {
-              _isLoadingMore = true;
-            });
-            context.read<FeedBloc>().add(const LoadMoreFeedEvent());
-          }
-        });
+              // Set local UI state
+              setState(() {
+                _isLoadingMore = true;
+              });
+              context.read<FeedBloc>().add(const LoadMoreFeedEvent());
+            }
+          },
+        );
       }
     });
   }
@@ -101,17 +109,18 @@ class _FeedPageState extends State<FeedPage>
     }
   }
 
+  /// NEW: Implement RefreshIndicator logic using Completer
   Future<void> _onRefresh() async {
     final authState = context.read<AuthBloc>().state;
     final userId = _extractUserId(authState);
     if (userId != null) {
-      context.read<FeedBloc>().add(RefreshFeedEvent(userId));
+      final completer = Completer<void>();
+      context.read<FeedBloc>().add(
+        RefreshFeedEvent(userId, refreshCompleter: completer),
+      );
+      return completer.future;
     }
   }
-
-  // --- REMOVED `_updatePosts` FUNCTION ---
-  // This complex logic is no longer needed. The BLoC handles
-  // list updates, and our UI just rebuilds with the new list.
 
   @override
   void dispose() {
@@ -157,11 +166,17 @@ class _FeedPageState extends State<FeedPage>
       ),
       body: MultiBlocListener(
         listeners: [
-          // This listener is now only for managing _isLoadingMore
-          // and the realtime fallback check.
           BlocListener<FeedBloc, FeedState>(
             listener: (context, state) {
-              // If we were loading more and we are now in a final state
+              // 1. Handle Refresh Completer Completion
+              final completer = (state is FeedLoaded)
+                  ? state.refreshCompleter
+                  : (state is FeedError)
+                  ? state.refreshCompleter
+                  : null;
+              completer?.complete();
+
+              // 2. Manage _isLoadingMore flag
               if (_isLoadingMore &&
                   (state is FeedLoaded || state is FeedLoadMoreError)) {
                 setState(() {
@@ -169,7 +184,7 @@ class _FeedPageState extends State<FeedPage>
                 });
               }
 
-              // Fallback check
+              // 3. Fallback check
               if (state is FeedLoaded) {
                 _ensureRealtimeActive(state);
               }
@@ -185,27 +200,60 @@ class _FeedPageState extends State<FeedPage>
               // We watch the BLoC state directly in the build method.
               final feedState = context.watch<FeedBloc>().state;
 
+              // Do not show full-screen loading if we are refreshing or loading more
               if (feedState is FeedLoading || feedState is FeedInitial) {
-                return const Center(child: LoadingIndicator(size: 32));
+                if (feedState is FeedLoading &&
+                    context.read<FeedBloc>().state is! FeedLoaded) {
+                  return const Center(child: LoadingIndicator(size: 32));
+                }
+                if (feedState is FeedInitial) {
+                  return const Center(child: LoadingIndicator(size: 32));
+                }
               }
 
               if (feedState is FeedError) {
-                return CustomErrorWidget(
-                  message: feedState.message,
-                  onRetry: _onRefresh,
-                );
+                // Only show full error widget if the list is completely empty
+                // ignore: unnecessary_type_check
+                final isListEmpty = (feedState is FeedError)
+                    ? (context
+                          .read<FeedBloc>()
+                          .getPostsFromState(feedState)
+                          .isEmpty)
+                    // ignore: dead_code
+                    : true;
+                if (isListEmpty) {
+                  return CustomErrorWidget(
+                    message: feedState.message,
+                    onRetry: _onRefresh,
+                  );
+                }
+                // If not empty, the error will be handled by the listener (snackbar) or list (no change/refresh).
               }
 
               // These states all contain a list of posts to display.
               if (feedState is FeedLoaded ||
                   feedState is FeedLoadingMore ||
-                  feedState is FeedLoadMoreError) {
+                  feedState is FeedLoadMoreError ||
+                  feedState is FeedError) {
+                // Include FeedError to show existing list on refresh failure
+
                 // Extract data based on the state type
-                final List<PostEntity> posts = (feedState as dynamic).posts;
+                final List<PostEntity> posts = (feedState is FeedLoaded)
+                    ? feedState.posts
+                    : (feedState is FeedLoadingMore)
+                    ? feedState.posts
+                    : (feedState is FeedLoadMoreError)
+                    ? feedState.posts
+                    : (feedState is FeedError)
+                    ? context.read<FeedBloc>().getPostsFromState(feedState)
+                    : <PostEntity>[];
 
                 final bool hasMore = (feedState is FeedLoaded)
                     ? feedState.hasMore
-                    : true; // Keep "load more" active if we're in a loading/error state
+                    : (feedState is FeedLoadMoreError ||
+                          feedState is FeedLoadingMore)
+                    ? true // Keep "load more" active if we're in a loading/error state
+                    : false;
 
                 final bool isRealtimeActive = (feedState is FeedLoaded)
                     ? feedState.isRealtimeActive

@@ -24,12 +24,15 @@ class LoadMoreUserPostsEvent extends UserPostsEvent {
 class RefreshUserPostsEvent extends UserPostsEvent {
   final String profileUserId;
   final String currentUserId;
+  final Completer<void>? refreshCompleter;
+
   const RefreshUserPostsEvent({
     required this.profileUserId,
     required this.currentUserId,
+    this.refreshCompleter,
   });
   @override
-  List<Object?> get props => [profileUserId, currentUserId];
+  List<Object?> get props => [profileUserId, currentUserId, refreshCompleter];
 }
 
 class RemovePostFromUserPosts extends UserPostsEvent {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/core/presentation/theme/app_theme.dart';
@@ -61,18 +63,16 @@ class _ReelsPageState extends State<ReelsPage>
     final currentState = context.read<ReelsBloc>().state;
 
     // Determine if we can load more from the BLoC state
-    List<PostEntity> currentPosts = [];
+    List<PostEntity> currentPosts = context.read<ReelsBloc>().getPostsFromState(
+      currentState,
+    );
     bool hasMoreReels = false;
 
     if (currentState is ReelsLoaded) {
-      currentPosts = currentState.posts;
       hasMoreReels = currentState.hasMore;
-    } else if (currentState is ReelsLoadingMore) {
-      currentPosts = currentState.posts;
-      hasMoreReels = true; // Assume true if we're loading
-    } else if (currentState is ReelsLoadMoreError) {
-      currentPosts = currentState.posts;
-      hasMoreReels = true; // Assume true to allow retry
+    } else if (currentState is ReelsLoadingMore ||
+        currentState is ReelsLoadMoreError) {
+      hasMoreReels = true; // Assume true if we're loading/retrying
     }
 
     if (index >= currentPosts.length - 2 && hasMoreReels && !_isLoadingMore) {
@@ -99,8 +99,16 @@ class _ReelsPageState extends State<ReelsPage>
     }
   }
 
+  // NEW: Implement RefreshIndicator logic using Completer
+  Future<void> _onRefresh(String userId) async {
+    final completer = Completer<void>();
+    context.read<ReelsBloc>().add(
+      RefreshReelsEvent(userId, refreshCompleter: completer),
+    );
+    return completer.future;
+  }
+
   Widget _buildLoadingReel() {
-    // ... (This widget is fine, no changes needed)
     return Container(
       color: Colors.black,
       child: Stack(
@@ -196,23 +204,26 @@ class _ReelsPageState extends State<ReelsPage>
         },
         child: MultiBlocListener(
           listeners: [
-            // This listener now only manages local UI state (_isLoadingMore)
-            // and the realtime fallback.
             BlocListener<ReelsBloc, ReelsState>(
               listener: (context, state) {
+                // 1. Handle Refresh Completer Completion
+                final completer = (state is ReelsLoaded)
+                    ? state.refreshCompleter
+                    : (state is ReelsError)
+                    ? state.refreshCompleter
+                    : null;
+                completer?.complete();
+
+                // 2. Manage _isLoadingMore flag
+                if (mounted &&
+                    _isLoadingMore &&
+                    (state is ReelsLoaded || state is ReelsLoadMoreError)) {
+                  setState(() => _isLoadingMore = false);
+                }
+
+                // 3. Fallback check
                 if (state is ReelsLoaded) {
-                  AppLogger.info(
-                    'Reels loaded with ${state.posts.length} posts',
-                  );
-                  if (mounted) {
-                    setState(() {
-                      _isLoadingMore = false;
-                    });
-                    _ensureRealtimeActive(state);
-                  }
-                } else if (state is ReelsLoadMoreError) {
-                  AppLogger.error('Load more reels error: ${state.message}');
-                  if (mounted) setState(() => _isLoadingMore = false);
+                  _ensureRealtimeActive(state);
                 }
               },
             ),
@@ -220,14 +231,8 @@ class _ReelsPageState extends State<ReelsPage>
           child: RefreshIndicator(
             backgroundColor: Colors.black,
             color: Colors.white,
-            onRefresh: () async {
-              AppLogger.info('Refreshing reels for user: $currentUserId');
-              final bloc = context.read<ReelsBloc>();
-              bloc.add(RefreshReelsEvent(currentUserId));
-              await bloc.stream.firstWhere(
-                (state) => state is ReelsLoaded || state is ReelsError,
-              );
-            },
+            // UPDATED: Call the new _onRefresh method
+            onRefresh: () => _onRefresh(currentUserId),
             child: Builder(
               builder: (context) {
                 final reelsState = context.watch<ReelsBloc>().state;
@@ -235,34 +240,40 @@ class _ReelsPageState extends State<ReelsPage>
                 if (reelsState is ReelsLoading || reelsState is ReelsInitial) {
                   return const Center(child: LoadingIndicator(size: 32));
                 }
-                if (reelsState is ReelsError) {
-                  return CustomErrorWidget(
-                    message: reelsState.message,
-                    onRetry: () => context.read<ReelsBloc>().add(
-                      GetReelsEvent(currentUserId),
-                    ),
-                  );
-                }
 
-                // All these states contain a list of posts.
+                // All these states contain a list of posts or are an error state.
                 if (reelsState is ReelsLoaded ||
                     reelsState is ReelsLoadingMore ||
-                    reelsState is ReelsLoadMoreError) {
-                  // Extract data directly from the state
-                  final List<PostEntity> posts = (reelsState as dynamic).posts;
+                    reelsState is ReelsLoadMoreError ||
+                    reelsState is ReelsError) {
+                  // Include ReelsError for list retrieval
+
+                  // Extract data using the public BLoC method
+                  final List<PostEntity> posts = context
+                      .read<ReelsBloc>()
+                      .getPostsFromState(reelsState);
+
+                  // Check if the list is completely empty for the full error widget
+                  if (reelsState is ReelsError && posts.isEmpty) {
+                    return CustomErrorWidget(
+                      message: reelsState.message,
+                      onRetry: () => _onRefresh(currentUserId),
+                    );
+                  }
 
                   final bool hasMoreReels = (reelsState is ReelsLoaded)
                       ? reelsState.hasMore
-                      : true; // Always allow loading/retry
+                      : (reelsState is ReelsLoadMoreError ||
+                            reelsState is ReelsLoadingMore)
+                      ? true // Always allow loading/retry if not fully loaded
+                      : false;
 
-                  if (posts.isEmpty && reelsState is ReelsLoaded) {
+                  if (posts.isEmpty && reelsState is! ReelsLoadingMore) {
                     return EmptyStateWidget(
                       message: 'No reels yet',
                       icon: Icons.video_library_outlined,
                       actionText: 'Refresh',
-                      onRetry: () => context.read<ReelsBloc>().add(
-                        GetReelsEvent(currentUserId),
-                      ),
+                      onRetry: () => _onRefresh(currentUserId),
                     );
                   }
 

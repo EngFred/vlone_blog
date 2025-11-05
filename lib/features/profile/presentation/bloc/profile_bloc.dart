@@ -39,26 +39,41 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         ? (state as ProfileDataLoaded).isRealtimeActive
         : false;
 
-    emit(ProfileLoading());
+    // Do NOT emit ProfileLoading if it's a refresh event (has a completer)
+    if (event.refreshCompleter == null) {
+      emit(ProfileLoading());
+    }
+
     final result = await getProfileUseCase(event.userId);
     result.fold(
       (failure) {
         final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
         AppLogger.error('GetProfile failed: $friendlyMessage');
-        emit(ProfileError(friendlyMessage));
+        // Emit ProfileError with the completer
+        emit(
+          ProfileError(
+            friendlyMessage,
+            refreshCompleter: event.refreshCompleter,
+          ),
+        );
+        event.refreshCompleter?.complete(); // COMPLETE ON ERROR
       },
       (profile) {
-        // Load the data, preserving the realtime status
+        // Load the data, preserving the realtime status and passing the completer
         emit(
           ProfileDataLoaded(
             profile: profile,
             userId: event.userId,
             isRealtimeActive: wasRealtimeActive,
+            refreshCompleter: event.refreshCompleter, // PASS COMPLETER
           ),
         );
+        event.refreshCompleter?.complete(); // COMPLETE ON SUCCESS
       },
     );
   }
+
+  // ... (rest of the methods are the same)
 
   Future<void> _onStartProfileRealtime(
     StartProfileRealtimeEvent event,
@@ -90,7 +105,14 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
     // Update state to reflect active listener, only if already loaded
     if (state is ProfileDataLoaded) {
-      emit((state as ProfileDataLoaded).copyWith(isRealtimeActive: true));
+      // Preserve existing completer if present
+      final completer = (state as ProfileDataLoaded).refreshCompleter;
+      emit(
+        (state as ProfileDataLoaded).copyWith(
+          isRealtimeActive: true,
+          refreshCompleter: completer,
+        ),
+      );
       AppLogger.info('ProfileBloc: isRealtimeActive set to true.');
     } else {
       AppLogger.warning('ProfileBloc: Realtime started but state not loaded.');
@@ -107,7 +129,14 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
     // Update state to reflect inactive listener, only if already loaded
     if (state is ProfileDataLoaded) {
-      emit((state as ProfileDataLoaded).copyWith(isRealtimeActive: false));
+      // Preserve existing completer if present
+      final completer = (state as ProfileDataLoaded).refreshCompleter;
+      emit(
+        (state as ProfileDataLoaded).copyWith(
+          isRealtimeActive: false,
+          refreshCompleter: completer,
+        ),
+      );
     }
   }
 
@@ -128,11 +157,12 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
         // Apply only if matches current profile (prevents overwrite)
         if (updateUserId == currentState.profile.id) {
-          // Use copyWith to ensure the isRealtimeActive flag is preserved
+          // Use copyWith to ensure the isRealtimeActive and refreshCompleter flags are preserved
           emit(
             currentState.copyWith(
               profile: updatedProfile,
               userId: updateUserId,
+              // refreshCompleter is implicitly preserved by copyWith if not passed
             ),
           );
           AppLogger.info(

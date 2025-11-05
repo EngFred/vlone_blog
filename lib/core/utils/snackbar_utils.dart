@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:ui'; // Added for ImageFilter.blur in glassmorphism effect
 
 class SnackbarUtils {
-  // --- Core Utility: Builder for consistent SnackBar appearance ---
+  // --- Core Utility: Builder for consistent, premium SnackBar appearance ---
   static SnackBar _buildSnackBar({
     required BuildContext context,
     required String message,
@@ -14,44 +15,62 @@ class SnackbarUtils {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
     return SnackBar(
-      content: Row(
-        children: [
-          Icon(iconData, color: Colors.white),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(fontSize: 14, color: Colors.white),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+      content: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: backgroundColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: Row(
+              children: [
+                Icon(iconData, color: Colors.white),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (action == null)
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    },
+                  ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
-      backgroundColor: backgroundColor,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.all(20),
       duration: Duration(seconds: durationSeconds),
-      action:
-          action ??
-          SnackBarAction(
-            label: 'DISMISS',
-            textColor: Colors.white,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ),
+      action: action, // Custom action if provided (e.g., for undo in warnings)
     );
   }
 
-  /// Show error snackbar with white text and optional action.
+  /// Show error snackbar with premium glassmorphism and optional action.
   static void showError(
     BuildContext context,
     String message, {
-    SnackBarAction? action, // Added optional action
+    SnackBarAction? action,
     int durationSeconds = 4,
   }) {
     if (!context.mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
       _buildSnackBar(
         context: context,
@@ -64,36 +83,32 @@ class SnackbarUtils {
     );
   }
 
-  /// Show success snackbar with white text.
+  /// Show success snackbar with quick dismiss.
   static void showSuccess(
     BuildContext context,
     String message, {
     int durationSeconds = 3,
   }) {
     if (!context.mounted) return;
-
-    // Success messages usually don't need a persistent action button
     ScaffoldMessenger.of(context).showSnackBar(
       _buildSnackBar(
         context: context,
         message: message,
         backgroundColor: Colors.green.shade600,
         iconData: Icons.check_circle_outline,
-        // Using a short duration and no persistent action for a smooth UX
         action: null,
         durationSeconds: durationSeconds,
       ),
     );
   }
 
-  /// Show info snackbar with white text.
+  /// Show info snackbar with clean design.
   static void showInfo(
     BuildContext context,
     String message, {
     int durationSeconds = 3,
   }) {
     if (!context.mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
       _buildSnackBar(
         context: context,
@@ -106,15 +121,14 @@ class SnackbarUtils {
     );
   }
 
-  /// Show warning snackbar with white text and optional action.
+  /// Show warning snackbar with optional action.
   static void showWarning(
     BuildContext context,
     String message, {
-    SnackBarAction? action, // Added optional action
+    SnackBarAction? action,
     int durationSeconds = 5,
   }) {
     if (!context.mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
       _buildSnackBar(
         context: context,
