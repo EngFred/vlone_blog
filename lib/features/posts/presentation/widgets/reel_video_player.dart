@@ -1,12 +1,10 @@
-import 'dart:async';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/core/utils/debouncer.dart';
-import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
@@ -106,6 +104,10 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer>
 
     if (_videoController != null && _initialized) {
       AppLogger.info('Playing video for post: ${widget.post.id}');
+
+      // <<< FIX: Force unmute for reels >>>
+      _videoController!.setVolume(1.0);
+
       VideoPlaybackManager.play(_videoController!, () {
         if (mounted && !_isDisposed) setState(() {});
       });

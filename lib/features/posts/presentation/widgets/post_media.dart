@@ -1,22 +1,15 @@
-// --- PostMedia.dart ---
-// Full replacement of PostMedia
-import 'dart:async'; // Added unawaited
+import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart'; // Assuming this for context.push
+import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
-
-import 'package:vlone_blog_app/core/utils/app_logger.dart'; // Stub
-import 'package:vlone_blog_app/core/utils/debouncer.dart'; // Stub
+import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_controller_manager.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
 
-/// Full replacement of PostMedia
-/// - **Strictly relies** on server-provided mediaWidth/mediaHeight being available and correct.
-/// - Uses AspectRatio based *only* on server-provided dimensions.
-/// - If dimensions are missing, it defaults to an error state immediately.
 class PostMedia extends StatefulWidget {
   final PostEntity post;
   final double? height;
@@ -45,7 +38,9 @@ class _PostMediaState extends State<PostMedia>
   bool _isDisposed = false;
   bool _isOpeningFull = false;
 
-  // Aspect ratio is now nullable and relies ONLY on server dimensions.
+  // NEW: Add state to track mute status
+  bool _isMuted = true;
+
   double? _aspectRatio;
 
   @override
@@ -55,16 +50,13 @@ class _PostMediaState extends State<PostMedia>
   void initState() {
     super.initState();
 
-    // **STRICT RELIANCE APPLIED**: Calculate aspect ratio from dimensions or set error.
+    // ... (Your existing initState logic is perfect) ...
     try {
       final w = widget.post.mediaWidth;
       final h = widget.post.mediaHeight;
-      // Strict check for valid positive dimensions
       if (w != null && h != null && w > 0 && h > 0) {
         _aspectRatio = w.toDouble() / h.toDouble();
       } else {
-        // If the assumption fails (dimensions are null or <= 0),
-        // we set _aspectRatio to null and immediately flag an error.
         _aspectRatio = null;
         _hasError = true;
         AppLogger.error(
@@ -72,15 +64,12 @@ class _PostMediaState extends State<PostMedia>
         );
       }
     } catch (e) {
-      // In case of any casting error, set error.
       _aspectRatio = null;
       _hasError = true;
       AppLogger.error('PostMedia: Error calculating aspect ratio: $e');
     }
 
-    // If it's a video and autoPlay is requested, start initializing the controller
     if (widget.post.mediaType == 'video' && widget.autoPlay) {
-      // Delay to let build finish in some cases
       unawaited(Future.microtask(() => _ensureControllerInitialized()));
     }
   }
@@ -90,7 +79,6 @@ class _PostMediaState extends State<PostMedia>
     if (_videoController != null && _initialized) return;
     if (_isInitializing) return;
 
-    // Safety check: Don't try to init if mediaUrl isn't there
     if (widget.post.mediaUrl == null) {
       setState(() {
         _hasError = true;
@@ -117,19 +105,18 @@ class _PostMediaState extends State<PostMedia>
 
       _videoController = controller;
 
-      // Set initial initialized flag based on controller state
+      // MODIFIED: Set the initial volume based on the mute state
+      await _videoController!.setVolume(_isMuted ? 0.0 : 1.0);
+
       if (controller.value.isInitialized) {
         _initialized = true;
       } else {
-        // Listen for initialization
         void listener() {
           if (!mounted) return;
           if (!_initialized && controller.value.isInitialized) {
             _initialized = true;
-            // still trigger rebuild for play/pause overlay changes
             setState(() {});
           } else {
-            // rebuild for play/pause overlay changes
             if (mounted) setState(() {});
           }
         }
@@ -150,19 +137,39 @@ class _PostMediaState extends State<PostMedia>
     }
   }
 
+  // NEW: A dedicated play function that respects the mute state
+  void _playVideo() {
+    if (_isDisposed || !mounted || _videoController == null || !_initialized) {
+      return;
+    }
+    // Ensure volume is set correctly before playing
+    _videoController!.setVolume(_isMuted ? 0.0 : 1.0);
+    VideoPlaybackManager.play(_videoController!, () {
+      if (mounted && !_isDisposed) setState(() {});
+    });
+    if (mounted) setState(() {});
+  }
+
+  // NEW: Function to toggle mute state
+  void _toggleMute() {
+    if (_isDisposed || !mounted || _videoController == null || !_initialized) {
+      return;
+    }
+
+    setState(() {
+      _isMuted = !_isMuted;
+      _videoController!.setVolume(_isMuted ? 0.0 : 1.0);
+    });
+  }
+
+  // MODIFIED: _togglePlayPause now uses the new _playVideo function
   void _togglePlayPause() {
     if (_isDisposed || !mounted) return;
     if (_isInitializing) return;
     if (_videoController == null || !_videoController!.value.isInitialized) {
       _ensureControllerInitialized().then((_) {
-        if (_videoController != null &&
-            mounted &&
-            !_isDisposed &&
-            _videoController!.value.isInitialized) {
-          VideoPlaybackManager.play(_videoController!, () {
-            if (mounted && !_isDisposed) setState(() {});
-          });
-          if (mounted) setState(() {});
+        if (mounted && !_isDisposed) {
+          _playVideo(); // Play (will be muted by default)
         }
       });
       return;
@@ -171,15 +178,9 @@ class _PostMediaState extends State<PostMedia>
     final isPlaying = VideoPlaybackManager.isPlaying(_videoController!);
 
     if (isPlaying) {
-      if (_videoController!.value.isInitialized) {
-        VideoPlaybackManager.pause();
-      }
+      VideoPlaybackManager.pause();
     } else {
-      if (_videoController!.value.isInitialized) {
-        VideoPlaybackManager.play(_videoController!, () {
-          if (mounted && !_isDisposed) setState(() {});
-        });
-      }
+      _playVideo(); // Use the new play function
     }
 
     if (mounted) setState(() {});
@@ -190,6 +191,7 @@ class _PostMediaState extends State<PostMedia>
   }
 
   void _openFullMedia(String heroTag) async {
+    // ... (This function is unchanged) ...
     if (_isOpeningFull) return;
     if (widget.post.mediaType == 'video') {
       _videoManager.holdForNavigation(
@@ -213,6 +215,7 @@ class _PostMediaState extends State<PostMedia>
   }
 
   Widget _buildViewButton(String heroTag) {
+    // ... (This function is unchanged) ...
     return Align(
       alignment: Alignment.bottomCenter,
       child: Padding(
@@ -256,7 +259,6 @@ class _PostMediaState extends State<PostMedia>
   }
 
   Widget _buildErrorContent() {
-    // We use AspectRatio wrapper outside; caller controls height via AspectRatio.
     return Container(
       width: double.infinity,
       color: Theme.of(context).colorScheme.errorContainer,
@@ -271,7 +273,6 @@ class _PostMediaState extends State<PostMedia>
             ),
             const SizedBox(height: 8),
             Text(
-              // Updated text to reflect strict dimension requirement
               _aspectRatio == null
                   ? 'Missing Dimensions/Media'
                   : 'Media failed to load',
@@ -285,6 +286,7 @@ class _PostMediaState extends State<PostMedia>
     );
   }
 
+  // MODIFIED: Added the mute button to the stack
   Widget _buildMediaStack(String heroTag, BoxFit boxFit) {
     return Stack(
       fit: StackFit.expand,
@@ -304,9 +306,6 @@ class _PostMediaState extends State<PostMedia>
           _initialized &&
                   _videoController != null &&
                   _videoController!.value.isInitialized
-              // **OPTIMIZATION**: Replaced a competing AspectRatio with FittedBox.
-              // This correctly scales the video to 'cover' or 'contain'
-              // inside the parent AspectRatio, matching the image behavior.
               ? FittedBox(
                   fit: boxFit,
                   clipBehavior: Clip.hardEdge,
@@ -331,7 +330,8 @@ class _PostMediaState extends State<PostMedia>
                           child: Icon(Icons.play_circle_outline),
                         ),
                       )),
-        // Play icon overlay for videos when not actively playing
+
+        // ... (Play icon overlay is unchanged) ...
         if (widget.post.mediaType == 'video' &&
             (!(_initialized &&
                 _videoController != null &&
@@ -343,6 +343,8 @@ class _PostMediaState extends State<PostMedia>
               color: Colors.white.withOpacity(0.8),
             ),
           ),
+
+        // ... (Initializing indicator is unchanged) ...
         if (_isInitializing)
           const Center(
             child: SizedBox(
@@ -351,17 +353,39 @@ class _PostMediaState extends State<PostMedia>
               child: CircularProgressIndicator(color: Colors.white),
             ),
           ),
-        // Always show 'View' button if mediaUrl is present (i.e., completed)
+
+        // ... (View button is unchanged) ...
         _buildViewButton(heroTag),
+
+        // NEW: Add a mute/unmute button for videos
+        if (widget.post.mediaType == 'video' && _initialized)
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Padding(
+              // Add padding to avoid the "View" button
+              padding: const EdgeInsets.only(bottom: 8.0, right: 8.0, top: 8.0),
+              child: IconButton(
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.black.withOpacity(0.4),
+                  padding: const EdgeInsets.all(8.0),
+                  iconSize: 20.0,
+                  shape: const CircleBorder(),
+                ),
+                onPressed: _toggleMute,
+                icon: Icon(
+                  _isMuted ? Icons.volume_off : Icons.volume_up,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
 
   Widget _buildMediaContent(String heroTag, BoxFit boxFit) {
-    // **STRICT CHECK:** If _aspectRatio is null (meaning dimensions were missing in initState),
-    // or if a runtime error has occurred, show the error content.
+    // ... (This function is unchanged) ...
     if (_aspectRatio == null || _hasError) {
-      // Use a reasonable fallback for the error display container if dimensions are missing entirely
       const double fallbackErrorRatio = 16.0 / 9.0;
       return AspectRatio(
         aspectRatio: _aspectRatio ?? fallbackErrorRatio,
@@ -373,9 +397,6 @@ class _PostMediaState extends State<PostMedia>
 
     return AspectRatio(
       aspectRatio: effectiveAspect,
-      // **BUG FIX**: The GestureDetector was REMOVED from here.
-      // All gestures are now handled in the main `build` method
-      // to prevent nesting and conflicts.
       child: Hero(
         tag: heroTag,
         child: ClipRRect(
@@ -389,26 +410,23 @@ class _PostMediaState extends State<PostMedia>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    // ... (heroTag, boxFit, mediaType definitions are unchanged) ...
     final heroTag = 'media_${widget.post.id}_${identityHashCode(this)}';
     final boxFit = _getBoxFit();
-
     final mediaType = widget.post.mediaType;
 
-    // 1. If no media type (text-only post), render nothing.
     if (mediaType == 'none' ||
         mediaType == null ||
         widget.post.mediaUrl == null) {
       return const SizedBox.shrink();
     }
 
-    // 2. Build the core media content
     final mediaContent = _buildMediaContent(heroTag, boxFit);
 
-    // 3. Define gesture callbacks based on media type
+    // ... (Gesture definitions are unchanged) ...
     VoidCallback? onTap;
     VoidCallback? onDoubleTap;
 
-    // Only allow gestures if media dimensions are valid
     if (_aspectRatio != null) {
       if (mediaType == 'image') {
         onTap = () => _openFullMedia(heroTag);
@@ -422,14 +440,13 @@ class _PostMediaState extends State<PostMedia>
       }
     }
 
-    // 4. Wrap content in a single GestureDetector
     final gestureWrapper = GestureDetector(
       onTap: onTap,
       onDoubleTap: onDoubleTap,
       child: mediaContent,
     );
 
-    // 5. If it's a video, optionally wrap in VisibilityDetector
+    // MODIFIED: Updated the onVisibilityChanged logic
     if (mediaType == 'video' && widget.useVisibilityDetector) {
       return VisibilityDetector(
         key: Key('post_media_${widget.post.id}_${identityHashCode(this)}'),
@@ -438,21 +455,32 @@ class _PostMediaState extends State<PostMedia>
           final visiblePct = info.visibleFraction;
           final controller = _videoController;
 
-          // Initialize when sufficiently visible
-          if (visiblePct > 0.4 &&
-              !_initialized &&
-              !_isInitializing &&
-              !_hasError &&
-              _aspectRatio != null) {
-            // Added check for valid dimensions
-            _ensureControllerInitialized();
+          // MODIFIED: Auto-play logic
+          if (visiblePct > 0.4) {
+            if (!_initialized &&
+                !_isInitializing &&
+                !_hasError &&
+                _aspectRatio != null) {
+              // 1. Initialize if not already
+              _ensureControllerInitialized().then((_) {
+                // 2. Once initialized, play (it will be muted)
+                if (mounted && !_isDisposed) {
+                  _playVideo();
+                }
+              });
+            } else if (_initialized &&
+                controller != null &&
+                !VideoPlaybackManager.isPlaying(controller)) {
+              // 3. If already initialized but paused, play it
+              _playVideo();
+            }
           }
 
-          // Pause logic
+          // MODIFIED: Pause logic (this is still correct)
           if (controller != null &&
               !_isDisposed &&
               mounted &&
-              visiblePct < 0.2 &&
+              visiblePct < 0.2 && // Pause when less than 20% visible
               VideoPlaybackManager.isPlaying(controller) &&
               controller.value.isInitialized) {
             if (!_isOpeningFull && !VideoPlaybackManager.pauseSuppressed) {
@@ -465,12 +493,13 @@ class _PostMediaState extends State<PostMedia>
       );
     }
 
-    // 6. For images, just return the gesture wrapper
+    // For images, just return the gesture wrapper (unchanged)
     return gestureWrapper;
   }
 
   @override
   void dispose() {
+    // ... (This function is unchanged) ...
     _isDisposed = true;
 
     final controller = _videoController;

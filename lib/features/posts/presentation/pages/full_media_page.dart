@@ -34,6 +34,10 @@ class _FullMediaPageState extends State<FullMediaPage> {
   bool _isDownloading = false;
   double _downloadProgress = 0.0;
 
+  // --- NEW: State for mute ---
+  // Default to unmuted on this page
+  bool _isMuted = false;
+
   @override
   void initState() {
     super.initState();
@@ -54,6 +58,11 @@ class _FullMediaPageState extends State<FullMediaPage> {
         _videoManager.releaseController(widget.post.id);
         return;
       }
+
+      // --- MODIFIED: Set volume on init ---
+      // Ensure it's unmuted (or respects state) when loading
+      await ctrl.setVolume(_isMuted ? 0.0 : 1.0);
+
       ctrl.addListener(_videoListener);
       setState(() {
         _videoController = ctrl;
@@ -79,11 +88,24 @@ class _FullMediaPageState extends State<FullMediaPage> {
       VideoPlaybackManager.pause();
       setState(() {});
     } else {
+      // --- MODIFIED: Set volume on play ---
+      // Ensure volume is correct when playback starts
+      _videoController!.setVolume(_isMuted ? 0.0 : 1.0);
+
       VideoPlaybackManager.play(_videoController!, () {
         if (mounted) setState(() {});
       });
       setState(() {});
     }
+  }
+
+  // --- NEW: Mute toggle function ---
+  void _toggleMute() {
+    if (_videoController == null || !_initialized) return;
+    setState(() {
+      _isMuted = !_isMuted;
+      _videoController!.setVolume(_isMuted ? 0.0 : 1.0);
+    });
   }
 
   String _formatDuration(Duration? d) {
@@ -102,7 +124,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
     }
   }
 
-  // ---Download handler ---
+  // ---Download handler (unchanged) ---
   Future<void> _handleDownload() async {
     if (_isDownloading) return;
 
@@ -177,7 +199,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
     }
   }
 
-  // --- ADDED: Download button widget ---
+  // --- Download button widget (unchanged) ---
   Widget _buildDownloadButton() {
     if (_isDownloading) {
       return Padding(
@@ -255,6 +277,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
         });
   }
 
+  // --- build() (unchanged) ---
   @override
   Widget build(BuildContext context) {
     final media = widget.post;
@@ -304,6 +327,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
     );
   }
 
+  // --- _buildInteractiveImage() (unchanged) ---
   Widget _buildInteractiveImage(PostEntity media) {
     return InteractiveViewer(
       panEnabled: true,
@@ -322,6 +346,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
     );
   }
 
+  // --- _buildFullVideo() (unchanged) ---
   Widget _buildFullVideo(PostEntity media) {
     if (!_initialized || _videoController == null) {
       return media.thumbnailUrl != null
@@ -367,6 +392,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
     );
   }
 
+  // --- MODIFIED: _buildVideoControls() ---
   Widget _buildVideoControls() {
     if (_videoController == null || !_initialized) {
       return Container(
@@ -442,18 +468,30 @@ class _FullMediaPageState extends State<FullMediaPage> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          // Single prominent play/pause control
+          // const SizedBox(height: 6), // Removed to make controls more compact
+          // Play/pause and Mute controls
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // Mute/Unmute Button
+              IconButton(
+                icon: Icon(
+                  _isMuted ? Icons.volume_off : Icons.volume_up,
+                  color: Colors.white,
+                  size: 28,
+                ),
+                onPressed: _toggleMute,
+              ),
+
+              // Play/Pause Button
               IconButton(
                 icon: Icon(
                   VideoPlaybackManager.isPlaying(_videoController!)
                       ? Icons.pause_circle_filled
                       : Icons.play_circle_filled,
                   color: Colors.white,
-                  size: 36,
+                  size: 42, // Made larger to be the primary control
                 ),
                 onPressed: () => Debouncer.instance.throttle(
                   'full_media_toggle_${widget.post.id}',
@@ -461,6 +499,9 @@ class _FullMediaPageState extends State<FullMediaPage> {
                   _togglePlayPause,
                 ),
               ),
+
+              // Empty Sized Box for spacing to balance the row
+              const SizedBox(width: 48), // approx width of an IconButton
             ],
           ),
         ],
@@ -468,6 +509,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
     );
   }
 
+  // --- dispose() (unchanged) ---
   @override
   void dispose() {
     _isDisposed = true;
