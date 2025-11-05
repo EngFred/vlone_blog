@@ -35,6 +35,7 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     on<StopReelsRealtime>(_onStopReelsRealtime);
     on<_RealtimeReelsPostReceived>(_onRealtimePostReceived);
     on<_RealtimeReelsPostDeleted>(_onRealtimePostDeleted);
+    on<_RealtimeReelsPostUpdated>(_onRealtimeReelsPostUpdated);
 
     on<RemovePostFromReels>(_onRemovePostFromReels);
   }
@@ -239,6 +240,54 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
   ) {
     // This logic is now robust and handles all states
     add(RemovePostFromReels(event.postId));
+  }
+
+  List<PostEntity> _getPostsFromState(ReelsState state) {
+    if (state is ReelsLoaded) {
+      return state.posts;
+    } else if (state is ReelsLoadingMore) {
+      return state.posts;
+    } else if (state is ReelsLoadMoreError) {
+      return state.posts;
+    }
+    return [];
+  }
+
+  void _emitUpdatedState(
+    Emitter<ReelsState> emit,
+    List<PostEntity> updatedPosts,
+  ) {
+    final currentState = state;
+    if (currentState is ReelsLoaded) {
+      emit(currentState.copyWith(posts: updatedPosts));
+    } else if (currentState is ReelsLoadingMore) {
+      emit(ReelsLoadingMore(posts: updatedPosts));
+    } else if (currentState is ReelsLoadMoreError) {
+      emit(ReelsLoadMoreError(currentState.message, posts: updatedPosts));
+    }
+  }
+
+  Future<void> _onRealtimeReelsPostUpdated(
+    _RealtimeReelsPostUpdated event,
+    Emitter<ReelsState> emit,
+  ) async {
+    final currentPosts = _getPostsFromState(state);
+    if (currentPosts.isEmpty) return;
+
+    final updatedPosts = currentPosts.map((post) {
+      if (post.id == event.postId) {
+        return post.copyWith(
+          likesCount: event.likesCount ?? post.likesCount,
+          commentsCount: event.commentsCount ?? post.commentsCount,
+          favoritesCount: event.favoritesCount ?? post.favoritesCount,
+          sharesCount: event.sharesCount ?? post.sharesCount,
+        );
+      }
+      return post;
+    }).toList();
+
+    _emitUpdatedState(emit, updatedPosts);
+    AppLogger.info('Realtime post updated in reels: ${event.postId}');
   }
 
   @override

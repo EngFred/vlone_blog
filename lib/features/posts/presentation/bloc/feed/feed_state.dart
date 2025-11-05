@@ -49,7 +49,6 @@ class FeedLoaded extends FeedState {
 }
 
 class FeedLoadingMore extends FeedState {
-  // RENAMED from currentPosts to posts for consistency
   final List<PostEntity> posts;
   const FeedLoadingMore({required this.posts});
   @override
@@ -58,7 +57,6 @@ class FeedLoadingMore extends FeedState {
 
 class FeedLoadMoreError extends FeedState {
   final String message;
-  // RENAMED from currentPosts to posts for consistency
   final List<PostEntity> posts;
   const FeedLoadMoreError(this.message, {required this.posts});
   @override

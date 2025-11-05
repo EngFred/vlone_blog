@@ -37,6 +37,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     on<StopFeedRealtime>(_onStopFeedRealtime);
     on<_RealtimeFeedPostReceived>(_onRealtimePostReceived);
     on<_RealtimeFeedPostDeleted>(_onRealtimePostDeleted);
+    on<_RealtimeFeedPostUpdated>(_onRealtimeFeedPostUpdated);
 
     // Local update handlers
     on<AddPostToFeed>(_onAddPostToFeed);
@@ -254,6 +255,54 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
           .toList();
       emit(FeedLoadMoreError(currentState.message, posts: updatedPosts));
     }
+  }
+
+  List<PostEntity> _getPostsFromState(FeedState state) {
+    if (state is FeedLoaded) {
+      return state.posts;
+    } else if (state is FeedLoadingMore) {
+      return state.posts;
+    } else if (state is FeedLoadMoreError) {
+      return state.posts;
+    }
+    return [];
+  }
+
+  void _emitUpdatedState(
+    Emitter<FeedState> emit,
+    List<PostEntity> updatedPosts,
+  ) {
+    final currentState = state;
+    if (currentState is FeedLoaded) {
+      emit(currentState.copyWith(posts: updatedPosts));
+    } else if (currentState is FeedLoadingMore) {
+      emit(FeedLoadingMore(posts: updatedPosts));
+    } else if (currentState is FeedLoadMoreError) {
+      emit(FeedLoadMoreError(currentState.message, posts: updatedPosts));
+    }
+  }
+
+  Future<void> _onRealtimeFeedPostUpdated(
+    _RealtimeFeedPostUpdated event,
+    Emitter<FeedState> emit,
+  ) async {
+    final currentPosts = _getPostsFromState(state);
+    if (currentPosts.isEmpty) return;
+
+    final updatedPosts = currentPosts.map((post) {
+      if (post.id == event.postId) {
+        return post.copyWith(
+          likesCount: event.likesCount ?? post.likesCount,
+          commentsCount: event.commentsCount ?? post.commentsCount,
+          favoritesCount: event.favoritesCount ?? post.favoritesCount,
+          sharesCount: event.sharesCount ?? post.sharesCount,
+        );
+      }
+      return post;
+    }).toList();
+
+    _emitUpdatedState(emit, updatedPosts);
+    AppLogger.info('Realtime post updated in feed: ${event.postId}');
   }
 
   @override
