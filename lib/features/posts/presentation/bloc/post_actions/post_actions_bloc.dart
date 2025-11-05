@@ -42,6 +42,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
     // Subscribe to MediaProgressNotifier to keep processing status in bloc
     _mediaProgressSub = MediaProgressNotifier.stream.listen((progress) {
       // Map notifier progress to ProcessingChanged events
+      // Assuming progress has postId if needed; add filter if concurrent
       switch (progress.stage) {
         case MediaProcessingStage.compressing:
           add(

@@ -28,14 +28,7 @@ class _FeedPageState extends State<FeedPage>
   final ScrollController _scrollController = ScrollController();
   String? _userId;
   static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
-
-  // --- REFACTORED STATE ---
-  // We only keep state that is related to UI *interaction*,
-  // not data that duplicates the BLoC.
-  // The BLoC state is now the single source of truth for
-  // posts, hasMore, loadMoreError, etc.
   bool _isLoadingMore = false;
-  // --- END REFACTORED STATE ---
 
   @override
   bool get wantKeepAlive => true;
@@ -189,10 +182,8 @@ class _FeedPageState extends State<FeedPage>
           onRefresh: _onRefresh,
           child: Builder(
             builder: (context) {
-              // --- SINGLE SOURCE OF TRUTH ---
               // We watch the BLoC state directly in the build method.
               final feedState = context.watch<FeedBloc>().state;
-              // --- END SINGLE SOURCE OF TRUTH ---
 
               if (feedState is FeedLoading || feedState is FeedInitial) {
                 return const Center(child: LoadingIndicator(size: 32));
@@ -205,7 +196,6 @@ class _FeedPageState extends State<FeedPage>
                 );
               }
 
-              // --- UNIFIED STATE HANDLING ---
               // These states all contain a list of posts to display.
               if (feedState is FeedLoaded ||
                   feedState is FeedLoadingMore ||
@@ -250,7 +240,6 @@ class _FeedPageState extends State<FeedPage>
                   controller: _scrollController,
                 );
               }
-              // --- END UNIFIED STATE HANDLING ---
 
               // Fallback for any unhandled state
               return const Center(child: LoadingIndicator());

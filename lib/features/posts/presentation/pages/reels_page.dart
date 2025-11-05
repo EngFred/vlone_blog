@@ -20,19 +20,11 @@ class ReelsPage extends StatefulWidget {
 
 class _ReelsPageState extends State<ReelsPage>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
-  // --- REFACTORED STATE ---
-  // All local state duplicating the BLoC is REMOVED.
-  // -REMOVED: final List<PostEntity> _posts = [];
-  // -REMOVED: bool _hasLoadedOnce = false;
-  // -REMOVED: bool _hasMoreReels = true;
-  // -REMOVED: bool _isRealtimeActive = false;
-
   late PageController _pageController;
   int _currentPage = 0;
   bool _isPageChanging = false;
   bool _isLoadingMore = false;
   bool _isPageVisible = true;
-  // --- END REFACTORED STATE ---
 
   @override
   bool get wantKeepAlive => true;
@@ -53,9 +45,6 @@ class _ReelsPageState extends State<ReelsPage>
       VideoPlaybackManager.pause();
     }
   }
-
-  // --- REMOVED `_updatePosts` method ---
-  // This complex logic is no longer needed. The BLoC state is the truth.
 
   void _onPageChanged(int index) {
     if (_isPageChanging) return;
@@ -163,7 +152,6 @@ class _ReelsPageState extends State<ReelsPage>
     super.build(context);
     final currentUserId = context.select((AuthBloc b) => b.cachedUser?.id);
     if (currentUserId == null) {
-      // ... (Initial loading widget is fine, no changes needed)
       return Scaffold(
         backgroundColor: Colors.black,
         body: Center(
@@ -228,9 +216,6 @@ class _ReelsPageState extends State<ReelsPage>
                 }
               },
             ),
-            // --- REMOVED LikesBloc and FavoritesBloc Listeners ---
-            // The BLoC state is now the single source of truth,
-            // so manual state syncing is no longer needed.
           ],
           child: RefreshIndicator(
             backgroundColor: Colors.black,
@@ -245,9 +230,7 @@ class _ReelsPageState extends State<ReelsPage>
             },
             child: Builder(
               builder: (context) {
-                // --- SINGLE SOURCE OF TRUTH ---
                 final reelsState = context.watch<ReelsBloc>().state;
-                // --- END ---
 
                 if (reelsState is ReelsLoading || reelsState is ReelsInitial) {
                   return const Center(child: LoadingIndicator(size: 32));
@@ -261,7 +244,6 @@ class _ReelsPageState extends State<ReelsPage>
                   );
                 }
 
-                // --- UNIFIED STATE HANDLING ---
                 // All these states contain a list of posts.
                 if (reelsState is ReelsLoaded ||
                     reelsState is ReelsLoadingMore ||
@@ -309,7 +291,6 @@ class _ReelsPageState extends State<ReelsPage>
                     },
                   );
                 }
-                // --- END UNIFIED STATE HANDLING ---
 
                 // Fallback
                 return const Center(child: LoadingIndicator(size: 32));

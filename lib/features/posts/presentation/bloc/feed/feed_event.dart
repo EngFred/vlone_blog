@@ -24,35 +24,6 @@ class RefreshFeedEvent extends FeedEvent {
   List<Object?> get props => [userId];
 }
 
-// For optimistic updates (e.g., liking a post)
-class UpdateFeedPostOptimistic extends FeedEvent {
-  final String postId;
-  final int deltaLikes;
-  final int deltaFavorites;
-  final int deltaComments;
-  final bool? isLiked;
-  final bool? isFavorited;
-
-  const UpdateFeedPostOptimistic({
-    required this.postId,
-    this.deltaLikes = 0,
-    this.deltaFavorites = 0,
-    this.deltaComments = 0,
-    this.isLiked,
-    this.isFavorited,
-  });
-
-  @override
-  List<Object?> get props => [
-    postId,
-    deltaLikes,
-    deltaFavorites,
-    deltaComments,
-    isLiked,
-    isFavorited,
-  ];
-}
-
 // For reacting to PostActionsBloc (e.g., post created/deleted)
 class AddPostToFeed extends FeedEvent {
   final PostEntity post;

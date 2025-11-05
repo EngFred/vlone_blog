@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-// Assuming necessary imports for your project structure
 import 'package:vlone_blog_app/core/di/injection_container.dart';
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
@@ -29,15 +28,7 @@ class UserProfilePage extends StatefulWidget {
 class _UserProfilePageState extends State<UserProfilePage> {
   String? _currentUserId;
   bool _isOwnProfile = false;
-
-  // --- REFACTORED: REMOVED DUPLICATE BLoC STATE ---
-  // final List<PostEntity> _userPosts = [];
-  // bool _hasMoreUserPosts = true;
-  // bool _isUserPostsLoading = false;
   bool _isLoadingMoreUserPosts = false;
-  // String? _userPostsError;
-  // String? _loadMoreError;
-  // bool _hasLoadedOnce = false;
 
   bool? _isFollowing;
   bool _isProcessingFollow = false;

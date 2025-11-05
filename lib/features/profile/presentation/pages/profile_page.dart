@@ -27,16 +27,9 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   String? _currentUserId;
-  // --- REFACTORED: REMOVED DUPLICATE BLoC STATE ---
-  // final List<PostEntity> _userPosts = [];
-  // bool _hasMoreUserPosts = true;
-  // bool _isUserPostsLoading = true;
   bool _isLoadingMoreUserPosts = false;
-  // String? _userPostsError;
-  // String? _loadMoreError;
   final ScrollController _scrollController = ScrollController();
   static const Duration _loadMoreDebounce = Duration(milliseconds: 300);
-  // bool _hasLoadedOnce = false;
 
   // New flags to track listener state locally (Kept as mirrors for fallback logic)
   bool _isProfileRealtimeActive = false;
@@ -66,16 +59,6 @@ class _ProfilePageState extends State<ProfilePage> {
       );
       return;
     }
-
-    // --- REFACTORED: REMOVED LOCAL STATE RESETS ---
-    // if (_userPosts.isEmpty && _isUserPostsLoading == false) {
-    //   setState(() { _isUserPostsLoading = true; });
-    // }
-    // _userPosts.clear();
-    // _userPostsError = null;
-    // _loadMoreError = null;
-    // _hasMoreUserPosts = true;
-    // _hasLoadedOnce = false;
 
     // Reset local realtime tracking flags
     _isProfileRealtimeActive = false;
@@ -134,16 +117,6 @@ class _ProfilePageState extends State<ProfilePage> {
         currentUserId: _currentUserId!,
       ),
     );
-
-    // --- REFACTORED: REMOVED LOCAL STATE RESETS ---
-    // if (!mounted) return;
-    // setState(() {
-    //   _userPosts.clear();
-    //   _userPostsError = null;
-    //   _hasMoreUserPosts = true;
-    //   _isUserPostsLoading = true;
-    //   _hasLoadedOnce = false;
-    // });
   }
 
   void _setupScrollListener() {
@@ -364,7 +337,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   BlocListener<UserPostsBloc, UserPostsState>(
                     listener: (context, state) {
-                      // --- REFACTORED: Listener streamlined to only handle UI loading flags ---
                       if (state.profileUserId != null &&
                           state.profileUserId != _currentUserId) {
                         // Ignore state for foreign profile
@@ -457,7 +429,6 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                             BlocBuilder<UserPostsBloc, UserPostsState>(
                               builder: (context, userPostsState) {
-                                // --- REFACTORED: Extract data directly from BLoC state ---
                                 List<PostEntity> posts = [];
                                 bool isLoading = false;
                                 String? error;

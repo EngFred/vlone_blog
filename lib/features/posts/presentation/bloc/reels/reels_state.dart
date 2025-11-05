@@ -49,7 +49,6 @@ class ReelsLoaded extends ReelsState {
 }
 
 class ReelsLoadingMore extends ReelsState {
-  // RENAMED for consistency
   final List<PostEntity> posts;
   const ReelsLoadingMore({required this.posts});
   @override
@@ -58,7 +57,6 @@ class ReelsLoadingMore extends ReelsState {
 
 class ReelsLoadMoreError extends ReelsState {
   final String message;
-  // RENAMED for consistency
   final List<PostEntity> posts;
   const ReelsLoadMoreError(this.message, {required this.posts});
   @override

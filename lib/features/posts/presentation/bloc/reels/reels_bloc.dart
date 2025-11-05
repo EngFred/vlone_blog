@@ -34,10 +34,8 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     on<StartReelsRealtime>(_onStartReelsRealtime);
     on<StopReelsRealtime>(_onStopReelsRealtime);
     on<_RealtimeReelsPostReceived>(_onRealtimePostReceived);
-    on<_RealtimeReelsPostUpdated>(_onRealtimePostUpdated);
     on<_RealtimeReelsPostDeleted>(_onRealtimePostDeleted);
 
-    on<UpdateReelsPostOptimistic>(_onUpdateReelsPostOptimistic);
     on<RemovePostFromReels>(_onRemovePostFromReels);
   }
 
@@ -148,51 +146,6 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     }
   }
 
-  Future<void> _onUpdateReelsPostOptimistic(
-    UpdateReelsPostOptimistic event,
-    Emitter<ReelsState> emit,
-  ) async {
-    final currentState = state;
-
-    // Get posts from *any* state that has them
-    List<PostEntity> currentPosts = [];
-    if (currentState is ReelsLoaded) {
-      currentPosts = currentState.posts;
-    } else if (currentState is ReelsLoadingMore) {
-      currentPosts = currentState.posts;
-    } else if (currentState is ReelsLoadMoreError) {
-      currentPosts = currentState.posts;
-    } else {
-      return; // Not a state we can update
-    }
-
-    final updatedPosts = currentPosts.map((p) {
-      if (p.id != event.postId) return p;
-      return p.copyWith(
-        likesCount: (p.likesCount + event.deltaLikes)
-            .clamp(0, double.infinity)
-            .toInt(),
-        favoritesCount: (p.favoritesCount + event.deltaFavorites)
-            .clamp(0, double.infinity)
-            .toInt(),
-        commentsCount: (p.commentsCount + event.deltaComments)
-            .clamp(0, double.infinity)
-            .toInt(),
-        isLiked: event.isLiked ?? p.isLiked,
-        isFavorited: event.isFavorited ?? p.isFavorited,
-      );
-    }).toList();
-
-    // Re-emit the *correct* state class with the updated posts
-    if (currentState is ReelsLoaded) {
-      emit(currentState.copyWith(posts: updatedPosts));
-    } else if (currentState is ReelsLoadingMore) {
-      emit(ReelsLoadingMore(posts: updatedPosts));
-    } else if (currentState is ReelsLoadMoreError) {
-      emit(ReelsLoadMoreError(currentState.message, posts: updatedPosts));
-    }
-  }
-
   Future<void> _onRemovePostFromReels(
     RemovePostFromReels event,
     Emitter<ReelsState> emit,
@@ -278,22 +231,6 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
       emit(currentState.copyWith(posts: updatedPosts));
       AppLogger.info('New reel added realtime: ${event.post.id}');
     }
-  }
-
-  Future<void> _onRealtimePostUpdated(
-    _RealtimeReelsPostUpdated event,
-    Emitter<ReelsState> emit,
-  ) async {
-    // This logic is now robust and handles all states
-    await _onUpdateReelsPostOptimistic(
-      UpdateReelsPostOptimistic(
-        postId: event.postId,
-        deltaLikes: 0, // Realtime updates are absolute, not deltas
-        deltaFavorites: 0,
-        deltaComments: 0,
-      ),
-      emit,
-    );
   }
 
   void _onRealtimePostDeleted(
