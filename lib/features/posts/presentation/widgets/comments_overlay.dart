@@ -1,4 +1,5 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -11,7 +12,6 @@ import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.
 class CommentsOverlay extends StatefulWidget {
   final PostEntity post;
   final String userId;
-
   const CommentsOverlay({super.key, required this.post, required this.userId});
 
   static Future<void> show(
@@ -45,24 +45,6 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
   final FocusNode _focusNode = FocusNode();
   CommentEntity? _replyingTo;
 
-  void _addComment() {
-    final text = _commentController.text.trim();
-    if (text.isEmpty) return;
-
-    context.read<CommentsBloc>().add(
-      AddCommentEvent(
-        postId: widget.post.id,
-        userId: widget.userId,
-        text: text,
-        parentCommentId: _replyingTo?.id,
-      ),
-    );
-
-    _commentController.clear();
-    setState(() => _replyingTo = null);
-    _focusNode.unfocus();
-  }
-
   int _countAllComments(List<CommentEntity> comments) {
     int total = 0;
     for (final comment in comments) {
@@ -84,15 +66,15 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context); // Get the theme here
-
-    return BlocSelector<AuthBloc, AuthState, String?>(
-      selector: (state) =>
-          (state is AuthAuthenticated) ? state.user.profileImageUrl : null,
-      builder: (context, userAvatarUrl) {
+    return BlocSelector<AuthBloc, AuthState, (String?, String?)>(
+      selector: (state) => state is AuthAuthenticated
+          ? (state.user.username, state.user.profileImageUrl)
+          : (null, null),
+      builder: (context, userInfo) {
+        final (username, avatarUrl) = userInfo;
         final initialFraction = 0.75;
         final minFraction = 0.45;
         final maxFraction = min(0.92, 0.95);
-
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () {},
@@ -251,11 +233,27 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
                               ),
                             ),
                             child: CommentInputField(
-                              userAvatarUrl: userAvatarUrl,
+                              userAvatarUrl: avatarUrl,
                               controller: _commentController,
                               focusNode: _focusNode,
                               replyingTo: _replyingTo,
-                              onSend: _addComment,
+                              onSend: () {
+                                if (_commentController.text.trim().isNotEmpty) {
+                                  context.read<CommentsBloc>().add(
+                                    AddCommentEvent(
+                                      postId: widget.post.id,
+                                      userId: widget.userId,
+                                      text: _commentController.text.trim(),
+                                      parentCommentId: _replyingTo?.id,
+                                      username: username,
+                                      avatarUrl: avatarUrl,
+                                    ),
+                                  );
+                                  _commentController.clear();
+                                  setState(() => _replyingTo = null);
+                                  _focusNode.unfocus();
+                                }
+                              },
                               onCancelReply: () =>
                                   setState(() => _replyingTo = null),
                             ),

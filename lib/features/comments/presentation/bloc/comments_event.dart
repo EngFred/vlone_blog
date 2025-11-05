@@ -2,7 +2,6 @@ part of 'comments_bloc.dart';
 
 abstract class CommentsEvent extends Equatable {
   const CommentsEvent();
-
   @override
   List<Object?> get props => [];
 }
@@ -10,9 +9,7 @@ abstract class CommentsEvent extends Equatable {
 // CHANGE: Renamed from GetCommentsEvent to GetInitialCommentsEvent for clarity.
 class GetInitialCommentsEvent extends CommentsEvent {
   final String postId;
-
   const GetInitialCommentsEvent(this.postId);
-
   @override
   List<Object?> get props => [postId];
 }
@@ -26,9 +23,7 @@ class LoadMoreCommentsEvent extends CommentsEvent {
 // For pull-to-refresh.
 class RefreshCommentsEvent extends CommentsEvent {
   final String postId;
-
   const RefreshCommentsEvent(this.postId);
-
   @override
   List<Object?> get props => [postId];
 }
@@ -38,23 +33,32 @@ class AddCommentEvent extends CommentsEvent {
   final String userId;
   final String text;
   final String? parentCommentId;
+  final String? username;
+  final String? avatarUrl;
 
   const AddCommentEvent({
     required this.postId,
     required this.userId,
     required this.text,
     this.parentCommentId,
+    this.username,
+    this.avatarUrl,
   });
 
   @override
-  List<Object?> get props => [postId, userId, text, parentCommentId];
+  List<Object?> get props => [
+    postId,
+    userId,
+    text,
+    parentCommentId,
+    username,
+    avatarUrl,
+  ];
 }
 
 class StartCommentsStreamEvent extends CommentsEvent {
   final String postId;
-
   const StartCommentsStreamEvent(this.postId);
-
   @override
   List<Object?> get props => [postId];
 }
@@ -66,18 +70,14 @@ class StopCommentsStreamEvent extends CommentsEvent {
 // Legacy event for backwards compatibility
 class SubscribeToCommentsEvent extends CommentsEvent {
   final String postId;
-
   const SubscribeToCommentsEvent(this.postId);
-
   @override
   List<Object?> get props => [postId];
 }
 
 class NewCommentsEvent extends CommentsEvent {
   final List<CommentEntity> newComments;
-
   const NewCommentsEvent(this.newComments);
-
   @override
   List<Object?> get props => [newComments];
 }
@@ -86,9 +86,7 @@ class NewCommentsEvent extends CommentsEvent {
 class _RealtimeCommentReceivedEvent extends CommentsEvent {
   final String postId;
   final List<CommentEntity> comments;
-
   const _RealtimeCommentReceivedEvent(this.postId, this.comments);
-
   @override
   List<Object?> get props => [postId, comments];
 }

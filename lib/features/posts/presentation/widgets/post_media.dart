@@ -498,7 +498,6 @@ class _PostMediaState extends State<PostMedia>
 
   @override
   void dispose() {
-    // ... (This function is unchanged) ...
     _isDisposed = true;
 
     final controller = _videoController;

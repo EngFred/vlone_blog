@@ -18,7 +18,6 @@ class CreatePostEvent extends PostActionsEvent {
   final String? content;
   final File? mediaFile;
 
-  // 🎯 FIX: This type MUST be MediaType? to match the state and use case.
   final MediaType? mediaType;
 
   const CreatePostEvent({
