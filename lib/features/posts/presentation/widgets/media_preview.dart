@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/cutsom_alert_dialog.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
 
 class MediaPreview extends StatelessWidget {
@@ -155,7 +156,33 @@ class MediaPreview extends StatelessWidget {
                     context: context,
                     icon: Icons.delete_outline_rounded,
                     label: 'Remove',
-                    onPressed: onRemove,
+                    // Show confirmation dialog before calling the provided onRemove
+                    onPressed: () async {
+                      final confirmed = await showCustomDialog<bool>(
+                        context: context,
+                        title: 'Remove media',
+                        content: const Text(
+                          'Are you sure you want to remove this media? This action cannot be undone.',
+                        ),
+                        actions: [
+                          DialogActions.createCancelButton(
+                            context,
+                            label: 'Cancel',
+                          ),
+                          DialogActions.createPrimaryButton(
+                            context,
+                            label: 'Remove',
+                            onPressed:
+                                () {}, // actual removal is handled after pop
+                          ),
+                        ],
+                        isDismissible: true,
+                      );
+
+                      if (confirmed == true) {
+                        onRemove();
+                      }
+                    },
                     backgroundColor: Colors.redAccent.withOpacity(0.95),
                     foregroundColor: Colors.white,
                     tooltip: 'Remove media',
