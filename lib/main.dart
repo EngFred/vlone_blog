@@ -20,17 +20,21 @@ import 'router.dart';
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+
   AppLogger.info('Initializing app dependencies');
+
   // Initialize Supabase first
   await Supabase.initialize(
     url: Constants.supabaseUrl,
     anonKey: Constants.supabaseAnonKey,
     authOptions: FlutterAuthClientOptions(localStorage: SecureStorage()),
   );
+
   di.initCoreServices();
   await di.initAuth(supabaseClient: Supabase.instance.client);
   await di.initRealtime();
-  // Parallelize other feature inits (removed Workmanager)
+
+  // Parallelize other feature inits
   await Future.wait([
     di.initPosts(),
     di.initLikes(),
@@ -42,6 +46,7 @@ void main() async {
     di.initNotifications(),
     di.initSettings(),
   ]);
+
   AppLogger.info('Starting app');
   runApp(const MyApp());
 }
@@ -58,14 +63,10 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. AuthBloc remains at the root
     return BlocProvider<AuthBloc>(
       create: (_) => di.sl<AuthBloc>()..add(CheckAuthStatusEvent()),
-      // 2. Wrap the entire app (MaterialApp.router) in MultiBlocProvider
-      // for global access to interaction BLoCs.
       child: MultiBlocProvider(
         providers: [
-          // ALL GLOBAL BLoCS
           BlocProvider<CommentsBloc>(create: (_) => di.sl<CommentsBloc>()),
           BlocProvider<LikesBloc>(create: (_) => di.sl<LikesBloc>()),
           BlocProvider<FavoritesBloc>(create: (_) => di.sl<FavoritesBloc>()),
@@ -96,12 +97,14 @@ class _MyAppState extends State<MyApp> {
                         'Failed to clear snackbars before auth navigation: $e',
                       );
                     }
+
                     if (state is AuthAuthenticated) {
                       AppLogger.info(
                         'AuthBloc: User authenticated, received AuthAuthenticated in MyApp listener',
                       );
                       FlutterNativeSplash.remove();
-                      // ---- navigate to feed only once on initial auth ----
+
+                      // navigate to feed only once on initial auth
                       if (!_didInitialAuthNavigate) {
                         _didInitialAuthNavigate = true;
                         appRouter.go(Constants.feedRoute);
@@ -110,6 +113,7 @@ class _MyAppState extends State<MyApp> {
                           'Skipping navigation to feed because initial auth navigation already occurred.',
                         );
                       }
+
                       // START RealtimeService ONCE at app-level for the authenticated user.
                       try {
                         final realtime = di.sl<RealtimeService>();
@@ -135,6 +139,7 @@ class _MyAppState extends State<MyApp> {
                       FlutterNativeSplash.remove();
                       _didInitialAuthNavigate = false;
                       appRouter.go(Constants.loginRoute);
+
                       // Stop realtime service when user logs out
                       try {
                         final realtime = di.sl<RealtimeService>();

@@ -3,14 +3,14 @@ flutter_native_splash:
   color_dark: "#121212"
 
   image: assets/logo.png
-  image_dark: assets/logo.png
+  image_dark: assets/flutter.png
 
   android_12:
     color: "#FFFFFF"
     color_dark: "#121212"
-    image: assets/logo.png
-    image_dark: assets/logo.png
-    icon_background_color: "#FFFFFF"  # Optional: Add this for a bg behind the logo (use with 960x960 image)
+    image: assets/flutter.png
+    image_dark: assets/flutter.png
+    icon_background_color: "#FFFFFF"
     icon_background_color_dark: "#121212"
 
   web: false

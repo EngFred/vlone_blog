@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'dart:ui'; // Added for ImageFilter.blur in glassmorphism effect
+import 'dart:ui';
 
 class SnackbarUtils {
-  // --- Core Utility: Builder for consistent, premium SnackBar appearance ---
   static SnackBar _buildSnackBar({
     required BuildContext context,
     required String message,
@@ -11,8 +10,13 @@ class SnackbarUtils {
     SnackBarAction? action,
     int durationSeconds = 3,
   }) {
-    // Hide any previous SnackBar to prevent stacking
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    // Determine text/icon color based on background brightness
+    final brightness = Theme.of(context).brightness;
+    final textColor = brightness == Brightness.dark
+        ? Colors.white
+        : Colors.black87;
 
     return SnackBar(
       content: ClipRRect(
@@ -24,18 +28,18 @@ class SnackbarUtils {
             decoration: BoxDecoration(
               color: backgroundColor.withOpacity(0.2),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
+              border: Border.all(color: textColor.withOpacity(0.1)),
             ),
             child: Row(
               children: [
-                Icon(iconData, color: Colors.white),
+                Icon(iconData, color: textColor),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Text(
                     message,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
-                      color: Colors.white,
+                      color: textColor,
                       fontWeight: FontWeight.w500,
                     ),
                     maxLines: 2,
@@ -44,7 +48,7 @@ class SnackbarUtils {
                 ),
                 if (action == null)
                   IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
+                    icon: Icon(Icons.close, color: textColor),
                     onPressed: () {
                       ScaffoldMessenger.of(context).hideCurrentSnackBar();
                     },
@@ -59,11 +63,10 @@ class SnackbarUtils {
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.all(20),
       duration: Duration(seconds: durationSeconds),
-      action: action, // Custom action if provided (e.g., for undo in warnings)
+      action: action,
     );
   }
 
-  /// Show error snackbar with premium glassmorphism and optional action.
   static void showError(
     BuildContext context,
     String message, {
@@ -83,7 +86,6 @@ class SnackbarUtils {
     );
   }
 
-  /// Show success snackbar with quick dismiss.
   static void showSuccess(
     BuildContext context,
     String message, {
@@ -102,7 +104,6 @@ class SnackbarUtils {
     );
   }
 
-  /// Show info snackbar with clean design.
   static void showInfo(
     BuildContext context,
     String message, {
@@ -121,7 +122,6 @@ class SnackbarUtils {
     );
   }
 
-  /// Show warning snackbar with optional action.
   static void showWarning(
     BuildContext context,
     String message, {

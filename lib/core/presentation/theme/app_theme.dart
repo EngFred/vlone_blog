@@ -1,3 +1,4 @@
+// lib/core/presentation/theme/app_theme.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
@@ -7,151 +8,247 @@ class AppTheme {
   // Use a single seed color for brand consistency across both themes.
   static final Color _seedColor = Constants.primaryColor;
 
-  /// Defines the Light Theme
+  /// Light Theme
   static ThemeData lightTheme() {
-    final ColorScheme lightColorScheme = ColorScheme.fromSeed(
+    final colorScheme = ColorScheme.fromSeed(
       seedColor: _seedColor,
       brightness: Brightness.light,
+      background: Constants.lightSurfaceVariant,
+      surface: Constants.lightSurface,
+      error: Constants.errorColor,
+      onPrimary: Colors.white,
+      onSurface: Constants.lightOnSurface,
     );
 
-    return ThemeData.light().copyWith(
-      colorScheme: lightColorScheme,
-      scaffoldBackgroundColor: lightColorScheme.surface,
+    final base = ThemeData(
+      useMaterial3: true,
+      colorScheme: colorScheme,
+      visualDensity: VisualDensity.adaptivePlatformDensity,
+      scaffoldBackgroundColor: colorScheme.background,
+    );
 
-      // --- Status Bar Configuration for Light Theme ---
+    return base.copyWith(
       appBarTheme: AppBarTheme(
-        backgroundColor: lightColorScheme.surface,
-        foregroundColor: lightColorScheme.onSurface,
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
         elevation: 0,
-        scrolledUnderElevation: 4,
         centerTitle: false,
-        // IMPORTANT: This makes status bar icons dark in light theme
-        systemOverlayStyle: SystemUiOverlayStyle(
+        scrolledUnderElevation: 4,
+        systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
-          statusBarIconBrightness:
-              Brightness.dark, // Dark icons for light background
-          statusBarBrightness: Brightness.light, // iOS specific
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
         ),
       ),
 
-      textTheme: TextTheme(
-        bodyLarge: TextStyle(color: lightColorScheme.onSurface),
-        bodyMedium: TextStyle(
-          color: lightColorScheme.onSurface.withOpacity(0.8),
+      // Use CardThemeData (Material 3) to match ThemeData API
+      cardTheme: CardThemeData(
+        color: colorScheme.surface,
+        elevation: 2,
+        margin: const EdgeInsets.symmetric(
+          horizontal: Constants.spacingMD,
+          vertical: Constants.spacingSM,
         ),
-        headlineMedium: TextStyle(
-          color: lightColorScheme.onSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Constants.radiusMedium),
+        ),
+      ),
+
+      textTheme: base.textTheme.copyWith(
+        bodyLarge: TextStyle(color: colorScheme.onSurface),
+        bodyMedium: TextStyle(color: colorScheme.onSurface.withOpacity(0.85)),
+        headlineSmall: TextStyle(
+          color: colorScheme.onSurface,
           fontWeight: FontWeight.w600,
         ),
       ),
 
       inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: lightColorScheme.primary, width: 2),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(Constants.radiusMedium),
         ),
-        fillColor: lightColorScheme.surfaceContainerHighest.withOpacity(0.2),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(Constants.radiusMedium),
+          borderSide: BorderSide(color: colorScheme.primary, width: 2),
+        ),
+        fillColor: colorScheme.surfaceVariant.withOpacity(0.6),
         filled: true,
       ),
 
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: lightColorScheme.primary,
-          foregroundColor: lightColorScheme.onPrimary,
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(Constants.radiusMedium),
           ),
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        ),
+      ),
+
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: colorScheme.outline),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Constants.radiusMedium),
+          ),
+          foregroundColor: colorScheme.onSurface,
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
         ),
       ),
 
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: lightColorScheme.surface,
-        selectedItemColor: lightColorScheme.primary,
-        unselectedItemColor: lightColorScheme.onSurfaceVariant,
+        backgroundColor: colorScheme.surface,
+        selectedItemColor: colorScheme.primary,
+        unselectedItemColor: colorScheme.onSurface.withOpacity(0.6),
         showUnselectedLabels: true,
+        elevation: 8,
       ),
+
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
+        elevation: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+
+      dividerTheme: DividerThemeData(
+        color: Constants.lightDivider,
+        thickness: 0.8,
+      ),
+
+      iconTheme: IconThemeData(color: colorScheme.onSurface),
     );
   }
 
-  /// Defines the Dark Theme
+  /// Dark Theme
   static ThemeData darkTheme() {
-    final ColorScheme darkColorScheme = ColorScheme.fromSeed(
+    final colorScheme = ColorScheme.fromSeed(
       seedColor: _seedColor,
       brightness: Brightness.dark,
-      background: Colors.grey[900]!,
-      surface: Colors.grey[850]!,
-      surfaceContainer: Colors.grey[800]!,
+      background: Constants.darkSurface,
+      surface: Constants.darkSurfaceAlt,
+      error: Constants.errorColor,
+      onPrimary: Colors.black,
+      onSurface: Constants.darkOnSurface,
     );
 
-    return ThemeData.dark().copyWith(
-      colorScheme: darkColorScheme,
-      scaffoldBackgroundColor: darkColorScheme.surface,
+    final base = ThemeData(
+      useMaterial3: true,
+      colorScheme: colorScheme,
+      visualDensity: VisualDensity.adaptivePlatformDensity,
+      scaffoldBackgroundColor: colorScheme.background,
+      brightness: Brightness.dark,
+    );
 
-      // --- Status Bar Configuration for Dark Theme ---
+    return base.copyWith(
       appBarTheme: AppBarTheme(
-        backgroundColor: darkColorScheme.surface,
-        foregroundColor: darkColorScheme.onSurface,
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
         elevation: 0,
-        scrolledUnderElevation: 4,
         centerTitle: false,
-        // IMPORTANT: This makes status bar icons light in dark theme
-        systemOverlayStyle: SystemUiOverlayStyle(
+        scrolledUnderElevation: 4,
+        systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
-          statusBarIconBrightness:
-              Brightness.light, // Light icons for dark background
-          statusBarBrightness: Brightness.dark, // iOS specific
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
         ),
       ),
 
-      textTheme: TextTheme(
-        headlineMedium: TextStyle(
-          color: darkColorScheme.onSurface,
+      // Use CardThemeData here as well
+      cardTheme: CardThemeData(
+        color: colorScheme.surface,
+        elevation: 2,
+        margin: const EdgeInsets.symmetric(
+          horizontal: Constants.spacingMD,
+          vertical: Constants.spacingSM,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Constants.radiusMedium),
+        ),
+      ),
+
+      textTheme: base.textTheme.copyWith(
+        bodyLarge: TextStyle(color: colorScheme.onSurface.withOpacity(0.9)),
+        bodyMedium: TextStyle(color: colorScheme.onSurface.withOpacity(0.75)),
+        headlineSmall: TextStyle(
+          color: colorScheme.onSurface,
           fontWeight: FontWeight.w600,
-        ),
-        bodyLarge: TextStyle(
-          color: darkColorScheme.onSurface.withOpacity(0.85),
-        ),
-        bodyMedium: TextStyle(
-          color: darkColorScheme.onSurface.withOpacity(0.7),
         ),
       ),
 
       inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: darkColorScheme.primary, width: 2),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(Constants.radiusMedium),
         ),
-        fillColor: darkColorScheme.surfaceContainer,
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(Constants.radiusMedium),
+          borderSide: BorderSide(color: colorScheme.primary, width: 2),
+        ),
+        fillColor: colorScheme.surfaceVariant,
         filled: true,
       ),
 
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: darkColorScheme.primary,
-          foregroundColor: darkColorScheme.onPrimary,
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(Constants.radiusMedium),
           ),
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
         ),
       ),
+
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: colorScheme.outline),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Constants.radiusMedium),
+          ),
+          foregroundColor: colorScheme.onSurface,
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        ),
+      ),
+
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: colorScheme.surface,
+        selectedItemColor: colorScheme.primary,
+        unselectedItemColor: colorScheme.onSurface.withOpacity(0.6),
+        showUnselectedLabels: true,
+        elevation: 8,
+      ),
+
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
+        elevation: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+
+      dividerTheme: DividerThemeData(
+        color: Constants.darkDivider,
+        thickness: 0.8,
+      ),
+
+      iconTheme: IconThemeData(color: colorScheme.onSurface),
     );
   }
 
-  /// Helper method to set status bar style for special pages (like Reels with black background)
+  /// Helper for Reels / fullscreen black backgrounds
   static void setStatusBarForReels() {
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness:
-            Brightness.light, // Always light icons on black
-        statusBarBrightness: Brightness.dark, // iOS
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
       ),
     );
   }
 
-  /// Helper method to restore default status bar style based on theme
+  /// Restore default status bar style based on current theme brightness
   static void restoreDefaultStatusBar(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     SystemChrome.setSystemUIOverlayStyle(
