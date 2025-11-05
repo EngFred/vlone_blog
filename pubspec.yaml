@@ -43,7 +43,6 @@ dependencies:
   device_info_plus: ^12.2.0
   image_gallery_saver_plus: ^4.0.1
   bloc_concurrency: ^0.3.0
-  iconsax: ^0.0.8
 
 dev_dependencies:
   flutter_test:
