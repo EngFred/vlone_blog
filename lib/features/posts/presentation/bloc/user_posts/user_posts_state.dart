@@ -21,16 +21,18 @@ class UserPostsLoading extends UserPostsState {
 
 class UserPostsError extends UserPostsState {
   final String message;
+  final List<PostEntity> posts;
   final Completer<void>? refreshCompleter;
 
   const UserPostsError(
     this.message, {
     required super.profileUserId,
+    this.posts = const [],
     this.refreshCompleter,
   });
 
   @override
-  List<Object?> get props => [profileUserId, message, refreshCompleter];
+  List<Object?> get props => [profileUserId, message, posts, refreshCompleter];
 }
 
 class UserPostsLoaded extends UserPostsState {
@@ -68,7 +70,7 @@ class UserPostsLoaded extends UserPostsState {
       profileUserId: profileUserId ?? this.profileUserId,
       hasMore: hasMore ?? this.hasMore,
       isRealtimeActive: isRealtimeActive ?? this.isRealtimeActive,
-      refreshCompleter: refreshCompleter,
+      refreshCompleter: refreshCompleter ?? this.refreshCompleter,
     );
   }
 }

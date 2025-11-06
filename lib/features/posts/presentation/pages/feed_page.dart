@@ -8,6 +8,7 @@ import 'package:vlone_blog_app/core/utils/debouncer.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/empty_state_widget.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/feed/feed_bloc.dart';
@@ -185,6 +186,11 @@ class _FeedPageState extends State<FeedPage>
               if (state is FeedLoaded) {
                 _ensureRealtimeActive(state);
               }
+
+              // 4. Show snackbar for refresh errors when we have existing posts
+              if (state is FeedError && _hasExistingPosts(state)) {
+                _showRefreshErrorSnackbar(context, state.message);
+              }
             },
           ),
         ],
@@ -209,21 +215,14 @@ class _FeedPageState extends State<FeedPage>
 
               if (feedState is FeedError) {
                 // Only show full error widget if the list is completely empty
-                // ignore: unnecessary_type_check
-                final isListEmpty = (feedState is FeedError)
-                    ? (context
-                          .read<FeedBloc>()
-                          .getPostsFromState(feedState)
-                          .isEmpty)
-                    // ignore: dead_code
-                    : true;
-                if (isListEmpty) {
+                final existingPosts = _getPostsFromState(feedState);
+                if (existingPosts.isEmpty) {
                   return CustomErrorWidget(
                     message: feedState.message,
                     onRetry: _onRefresh,
                   );
                 }
-                // If not empty, the error will be handled by the listener (snackbar) or list (no change/refresh).
+                // If not empty, we'll show the existing posts and a snackbar
               }
 
               // These states all contain a list of posts to display.
@@ -234,15 +233,7 @@ class _FeedPageState extends State<FeedPage>
                 // Include FeedError to show existing list on refresh failure
 
                 // Extract data based on the state type
-                final List<PostEntity> posts = (feedState is FeedLoaded)
-                    ? feedState.posts
-                    : (feedState is FeedLoadingMore)
-                    ? feedState.posts
-                    : (feedState is FeedLoadMoreError)
-                    ? feedState.posts
-                    : (feedState is FeedError)
-                    ? context.read<FeedBloc>().getPostsFromState(feedState)
-                    : <PostEntity>[];
+                final List<PostEntity> posts = _getPostsFromState(feedState);
 
                 final bool hasMore = (feedState is FeedLoaded)
                     ? feedState.hasMore
@@ -302,6 +293,34 @@ class _FeedPageState extends State<FeedPage>
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
+    );
+  }
+
+  bool _hasExistingPosts(FeedState state) {
+    return _getPostsFromState(state).isNotEmpty;
+  }
+
+  List<PostEntity> _getPostsFromState(FeedState state) {
+    if (state is FeedLoaded) {
+      return state.posts;
+    } else if (state is FeedLoadingMore) {
+      return state.posts;
+    } else if (state is FeedLoadMoreError) {
+      return state.posts;
+    } else if (state is FeedError) {
+      // Extract posts from previous state if available in FeedError
+      // This requires modifying FeedError to include posts
+      return state.posts;
+    }
+    return [];
+  }
+
+  void _showRefreshErrorSnackbar(BuildContext context, String message) {
+    SnackbarUtils.showError(
+      context,
+      'Refresh failed: $message',
+      action: SnackBarAction(label: 'Retry', onPressed: _onRefresh),
+      durationSeconds: 4,
     );
   }
 }

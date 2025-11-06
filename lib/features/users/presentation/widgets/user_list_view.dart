@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/end_of_list_indicator.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/list_load_more_error_indicator.dart';
+import 'package:vlone_blog_app/core/presentation/widgets/load_more_indicator.dart';
 import 'package:vlone_blog_app/features/users/domain/entities/user_list_entity.dart';
-import 'package:vlone_blog_app/features/users/presentation/widgets/loading_more_footer.dart';
 import 'package:vlone_blog_app/features/users/presentation/widgets/user_list_item.dart';
 
 typedef FollowToggleCallback =
@@ -16,6 +18,7 @@ class UserListView extends StatelessWidget {
   final bool isLoadingMore;
   final FollowToggleCallback onFollowToggle;
   final VoidCallback? onRetryLoadMore;
+  final bool showEndOfList;
 
   const UserListView({
     super.key,
@@ -28,11 +31,14 @@ class UserListView extends StatelessWidget {
     this.loadMoreError,
     this.isLoadingMore = false,
     this.onRetryLoadMore,
+    this.showEndOfList = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final itemCount = users.length + (hasMore ? 1 : 0);
+    final itemCount =
+        users.length +
+        (hasMore || (!hasMore && showEndOfList && users.isNotEmpty) ? 1 : 0);
 
     return ListView.builder(
       controller: controller,
@@ -40,12 +46,31 @@ class UserListView extends StatelessWidget {
       itemCount: itemCount,
       itemBuilder: (context, index) {
         if (index == users.length) {
-          // Footer
-          return LoadingMoreFooter(
-            hasMore: hasMore,
-            loadMoreError: loadMoreError,
-            onRetry: onRetryLoadMore,
-          );
+          if (hasMore) {
+            // Load more indicator or error
+            if (loadMoreError != null) {
+              return LoadMoreErrorIndicator(
+                message: loadMoreError!,
+                onRetry: onRetryLoadMore ?? () {},
+                horizontalMargin: 16.0,
+              );
+            } else {
+              return LoadMoreIndicator(
+                message: 'Loading more users...',
+                indicatorSize: 20.0,
+                spacing: 12.0,
+              );
+            }
+          } else if (showEndOfList && users.isNotEmpty) {
+            return EndOfListIndicator(
+              message: "You've reached the end",
+              icon: Icons.people_outline,
+              iconSize: 24.0,
+              spacing: 12.0,
+            );
+          } else {
+            return const SizedBox.shrink();
+          }
         }
 
         final user = users[index];

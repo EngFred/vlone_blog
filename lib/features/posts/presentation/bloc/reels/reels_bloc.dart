@@ -106,7 +106,15 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
           final message = ErrorMessageMapper.getErrorMessage(failure);
           AppLogger.error('Get reels failed: $message');
           if (isRefresh) {
-            emit(ReelsError(message, refreshCompleter: refreshCompleter));
+            // Preserve existing posts on refresh error
+            final currentPosts = existingPosts ?? getPostsFromState(state);
+            emit(
+              ReelsError(
+                message,
+                posts: currentPosts,
+                refreshCompleter: refreshCompleter,
+              ),
+            );
           } else {
             final currentPosts = existingPosts ?? [];
             emit(ReelsLoadMoreError(message, posts: currentPosts));
@@ -243,6 +251,8 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
       return state.posts;
     } else if (state is ReelsLoadMoreError) {
       return state.posts;
+    } else if (state is ReelsError) {
+      return state.posts;
     }
     return [];
   }
@@ -258,6 +268,8 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
       emit(ReelsLoadingMore(posts: updatedPosts));
     } else if (currentState is ReelsLoadMoreError) {
       emit(ReelsLoadMoreError(currentState.message, posts: updatedPosts));
+    } else if (currentState is ReelsError) {
+      emit(ReelsError(currentState.message, posts: updatedPosts));
     }
   }
 

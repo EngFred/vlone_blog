@@ -13,6 +13,7 @@ import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/user_posts/user_posts_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
+import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_posts_list.dart';
@@ -107,7 +108,6 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // UPDATED: Use Completers for RefreshIndicator
   Future<void> _onRefreshProfile() async {
     if (_currentUserId == null) return;
 
@@ -131,6 +131,54 @@ class _ProfilePageState extends State<ProfilePage> {
 
     // Wait for BOTH to complete. The BLoC listeners will complete them.
     await Future.wait([profileCompleter.future, postsCompleter.future]);
+  }
+
+  bool _hasExistingPosts(UserPostsState state) {
+    return _getPostsFromState(state).isNotEmpty;
+  }
+
+  List<PostEntity> _getPostsFromState(UserPostsState state) {
+    if (state is UserPostsLoaded) {
+      return state.posts;
+    } else if (state is UserPostsLoadingMore) {
+      return state.posts;
+    } else if (state is UserPostsLoadMoreError) {
+      return state.posts;
+    } else if (state is UserPostsError) {
+      return state.posts;
+    }
+    return [];
+  }
+
+  bool _hasExistingProfile(ProfileState state) {
+    return _getProfileFromState(state) != null;
+  }
+
+  ProfileEntity? _getProfileFromState(ProfileState state) {
+    if (state is ProfileDataLoaded) {
+      return state.profile;
+    } else if (state is ProfileError) {
+      return state.profile;
+    }
+    return null;
+  }
+
+  void _showRefreshErrorSnackbar(BuildContext context, String message) {
+    SnackbarUtils.showError(
+      context,
+      'Refresh failed: $message',
+      action: SnackBarAction(label: 'Retry', onPressed: _onRefreshProfile),
+      durationSeconds: 4,
+    );
+  }
+
+  void _showProfileRefreshErrorSnackbar(BuildContext context, String message) {
+    SnackbarUtils.showError(
+      context,
+      'Profile refresh failed: $message',
+      action: SnackBarAction(label: 'Retry', onPressed: _onRefreshProfile),
+      durationSeconds: 4,
+    );
   }
 
   void _setupScrollListener() {
@@ -174,7 +222,6 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _showLogoutConfirmationDialog() {
-    // (Function body is unchanged)
     showCustomDialog(
       context: context,
       title: 'Logout Confirmation',
@@ -209,7 +256,6 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     if (_currentUserId == null) {
-      // ... (Error state for unauthenticated user remains the same)
       return Scaffold(
         body: Center(
           child: Column(
@@ -251,7 +297,6 @@ class _ProfilePageState extends State<ProfilePage> {
         return Scaffold(
           backgroundColor: Theme.of(context).colorScheme.surface,
           appBar: AppBar(
-            // ... (AppBar content remains the same)
             title: const Text(
               'My Profile',
               style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
@@ -340,8 +385,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       if (state is ProfileDataLoaded) {
                         // Update local flag from BLoC state
                         _isProfileRealtimeActive = state.isRealtimeActive;
-                        state.refreshCompleter
-                            ?.complete(); // **COMPLETE PROFILE REFRESH**
+                        state.refreshCompleter?.complete();
 
                         if (state.userId != _currentUserId) {
                           AppLogger.info(
@@ -355,8 +399,15 @@ class _ProfilePageState extends State<ProfilePage> {
                           _ensureProfileRealtimeActive(state);
                         }
                       } else if (state is ProfileError) {
-                        state.refreshCompleter
-                            ?.complete(); // **COMPLETE PROFILE REFRESH ON ERROR**
+                        state.refreshCompleter?.complete();
+
+                        // Show snackbar for profile refresh errors with existing profile
+                        if (_hasExistingProfile(state)) {
+                          _showProfileRefreshErrorSnackbar(
+                            context,
+                            state.message,
+                          );
+                        }
                       }
                     },
                   ),
@@ -370,7 +421,6 @@ class _ProfilePageState extends State<ProfilePage> {
                         );
                         context.read<UserPostsBloc>().add(
                           GetUserPostsEvent(
-                            // Changed back to GetUserPostsEvent for initial load
                             profileUserId: _currentUserId!,
                             currentUserId: _currentUserId!,
                           ),
@@ -386,10 +436,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         setState(() {
                           _isLoadingMoreUserPosts = false;
                         });
-                        state.refreshCompleter
-                            ?.complete(); // **COMPLETE POSTS REFRESH**
+                        state.refreshCompleter?.complete();
                         AppLogger.info(
-                          'ProfilePage: UserPosts Loaded. Realtime Active: ${_isUserPostsRealtimeActive}',
+                          'ProfilePage: UserPosts Loaded. Realtime Active: $_isUserPostsRealtimeActive',
                         );
                         _ensureUserPostsRealtimeActive(state);
                       } else if (state is UserPostsLoadMoreError) {
@@ -397,8 +446,12 @@ class _ProfilePageState extends State<ProfilePage> {
                           _isLoadingMoreUserPosts = false;
                         });
                       } else if (state is UserPostsError) {
-                        state.refreshCompleter
-                            ?.complete(); // **COMPLETE POSTS REFRESH ON ERROR**
+                        state.refreshCompleter?.complete();
+
+                        // Show snackbar for refresh errors with existing posts
+                        if (_hasExistingPosts(state)) {
+                          _showRefreshErrorSnackbar(context, state.message);
+                        }
                       }
                     },
                   ),
@@ -437,16 +490,27 @@ class _ProfilePageState extends State<ProfilePage> {
                       );
                     }
                     if (profileState is ProfileError) {
-                      return CustomErrorWidget(
-                        message: profileState.message,
-                        // Call the new async refresh method
-                        onRetry: _onRefreshProfile,
+                      // Only show full error widget if we don't have an existing profile
+                      final existingProfile = _getProfileFromState(
+                        profileState,
                       );
+                      if (existingProfile == null) {
+                        return CustomErrorWidget(
+                          message: profileState.message,
+                          onRetry: _onRefreshProfile,
+                        );
+                      }
+                      // If we have an existing profile, continue showing it with the error snackbar
                     }
-                    if (profileState is ProfileDataLoaded) {
+                    if (profileState is ProfileDataLoaded ||
+                        (profileState is ProfileError &&
+                            _hasExistingProfile(profileState))) {
                       // Use a nested BlocBuilder to access UserPostsState
+                      final profile = profileState is ProfileDataLoaded
+                          ? profileState.profile
+                          : (profileState as ProfileError).profile!;
+
                       return RefreshIndicator(
-                        // USE THE NEW ASYNC REFRESH METHOD
                         onRefresh: _onRefreshProfile,
                         child: CustomScrollView(
                           controller: _scrollController,
@@ -454,16 +518,15 @@ class _ProfilePageState extends State<ProfilePage> {
                           slivers: [
                             SliverToBoxAdapter(
                               child: ProfileHeader(
-                                profile: profileState.profile,
+                                profile: profile,
                                 isOwnProfile: true,
                               ),
                             ),
                             BlocBuilder<UserPostsBloc, UserPostsState>(
                               builder: (context, userPostsState) {
-                                // Extract posts using the public BLoC helper method
-                                final List<PostEntity> posts = context
-                                    .read<UserPostsBloc>()
-                                    .getPostsFromState(userPostsState);
+                                // Extract posts using the helper method
+                                final List<PostEntity> posts =
+                                    _getPostsFromState(userPostsState);
 
                                 bool isLoading = false;
                                 String? error;
@@ -480,6 +543,15 @@ class _ProfilePageState extends State<ProfilePage> {
                                     userPostsState.profileUserId ==
                                         _currentUserId) {
                                   error = userPostsState.message;
+                                  // Only show full error if no posts exist
+                                  if (posts.isEmpty) {
+                                    return SliverToBoxAdapter(
+                                      child: CustomErrorWidget(
+                                        message: error,
+                                        onRetry: _onRefreshProfile,
+                                      ),
+                                    );
+                                  }
                                 } else if (userPostsState is UserPostsLoaded) {
                                   hasMore = userPostsState.hasMore;
                                 } else if (userPostsState
@@ -500,8 +572,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                   isLoadingMore: _isLoadingMoreUserPosts,
                                   loadMoreError: loadMoreError,
                                   onRetry: () {
-                                    if (!mounted || _currentUserId == null)
+                                    if (!mounted || _currentUserId == null) {
                                       return;
+                                    }
                                     // Trigger initial fetch/retry
                                     context.read<UserPostsBloc>().add(
                                       GetUserPostsEvent(

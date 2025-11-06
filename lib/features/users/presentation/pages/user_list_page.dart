@@ -138,6 +138,32 @@ class _UserListPageState extends State<UserListPage> {
     return Future.value();
   }
 
+  bool _hasExistingUsers(UsersState state) {
+    return _getUsersFromState(state).isNotEmpty;
+  }
+
+  List<UserListEntity> _getUsersFromState(UsersState state) {
+    if (state is UsersLoaded) {
+      return state.users;
+    } else if (state is UsersLoadingMore) {
+      return state.currentUsers;
+    } else if (state is UsersLoadMoreError) {
+      return state.currentUsers;
+    } else if (state is UsersError) {
+      return state.users;
+    }
+    return [];
+  }
+
+  void _showRefreshErrorSnackbar(BuildContext context, String message) {
+    SnackbarUtils.showError(
+      context,
+      'Refresh failed: $message',
+      action: SnackBarAction(label: 'Retry', onPressed: _onRefresh),
+      durationSeconds: 4,
+    );
+  }
+
   @override
   void dispose() {
     _loadMoreDebounce?.cancel();
@@ -361,16 +387,17 @@ class _UserListPageState extends State<UserListPage> {
                 : null;
             completer?.complete();
 
+            // Handle refresh errors with existing users
+            if (state is UsersError && _hasExistingUsers(state)) {
+              _showRefreshErrorSnackbar(context, state.message);
+            }
+
             // Handle general state changes/errors for users mode pagination
             if (state is UsersLoaded) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) setState(() => _isLoadingMore = false);
               });
             } else if (state is UsersLoadMoreError || state is UsersError) {
-              if (state is UsersError && state.users.isNotEmpty) {
-                // Show a non-blocking snackbar if initial load failed but we have stale data
-                SnackbarUtils.showError(context, state.message);
-              }
               setState(() => _isLoadingMore = false);
             }
           },

@@ -132,10 +132,13 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
           final message = ErrorMessageMapper.getErrorMessage(failure);
           AppLogger.error('Get user posts failed for $profileId: $message');
           if (isRefresh) {
+            // Preserve existing posts on refresh error
+            final currentPosts = existingPosts ?? getPostsFromState(state);
             emit(
               UserPostsError(
                 message,
                 profileUserId: profileId,
+                posts: currentPosts,
                 refreshCompleter: refreshCompleter,
               ),
             );
@@ -191,6 +194,8 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
       return state.posts;
     } else if (state is UserPostsLoadMoreError) {
       return state.posts;
+    } else if (state is UserPostsError) {
+      return state.posts;
     }
     return [];
   }
@@ -220,6 +225,15 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
           currentState.message,
           posts: updatedPosts,
           profileUserId: currentState.profileUserId!,
+        ),
+      );
+    } else if (currentState is UserPostsError) {
+      emit(
+        UserPostsError(
+          currentState.message,
+          profileUserId: currentState.profileUserId!,
+          posts: updatedPosts,
+          refreshCompleter: currentState.refreshCompleter,
         ),
       );
     }

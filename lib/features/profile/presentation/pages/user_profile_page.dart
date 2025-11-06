@@ -13,6 +13,7 @@ import 'package:vlone_blog_app/features/followers/presentation/bloc/followers_bl
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/user_posts/user_posts_bloc.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
+import 'package:vlone_blog_app/features/profile/domain/entities/profile_entity.dart';
 import 'package:vlone_blog_app/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:vlone_blog_app/features/profile/presentation/widgets/profile_posts_list.dart';
@@ -210,6 +211,54 @@ class _UserProfilePageState extends State<UserProfilePage> {
     }
   }
 
+  bool _hasExistingPosts(UserPostsState state) {
+    return _getPostsFromState(state).isNotEmpty;
+  }
+
+  List<PostEntity> _getPostsFromState(UserPostsState state) {
+    if (state is UserPostsLoaded) {
+      return state.posts;
+    } else if (state is UserPostsLoadingMore) {
+      return state.posts;
+    } else if (state is UserPostsLoadMoreError) {
+      return state.posts;
+    } else if (state is UserPostsError) {
+      return state.posts;
+    }
+    return [];
+  }
+
+  bool _hasExistingProfile(ProfileState state) {
+    return _getProfileFromState(state) != null;
+  }
+
+  ProfileEntity? _getProfileFromState(ProfileState state) {
+    if (state is ProfileDataLoaded) {
+      return state.profile;
+    } else if (state is ProfileError) {
+      return state.profile;
+    }
+    return null;
+  }
+
+  void _showRefreshErrorSnackbar(BuildContext context, String message) {
+    SnackbarUtils.showError(
+      context,
+      'Refresh failed: $message',
+      action: SnackBarAction(label: 'Retry', onPressed: _onRefreshProfile),
+      durationSeconds: 4,
+    );
+  }
+
+  void _showProfileRefreshErrorSnackbar(BuildContext context, String message) {
+    SnackbarUtils.showError(
+      context,
+      'Profile refresh failed: $message',
+      action: SnackBarAction(label: 'Retry', onPressed: _onRefreshProfile),
+      durationSeconds: 4,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -227,14 +276,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
           BlocListener<ProfileBloc, ProfileState>(
             listener: (context, state) {
               if (state is ProfileDataLoaded) {
-                state.refreshCompleter
-                    ?.complete(); // **COMPLETE PROFILE REFRESH**
+                state.refreshCompleter?.complete();
                 AppLogger.info(
                   'User profile loaded/updated: ${state.profile.username}',
                 );
               } else if (state is ProfileError) {
-                state.refreshCompleter
-                    ?.complete(); // **COMPLETE PROFILE REFRESH ON ERROR**
+                state.refreshCompleter?.complete();
+                // Show snackbar for profile refresh errors with existing profile
+                if (_hasExistingProfile(state)) {
+                  _showProfileRefreshErrorSnackbar(context, state.message);
+                }
               }
             },
           ),
@@ -247,15 +298,18 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 if (_isLoadingMoreUserPosts) {
                   setState(() => _isLoadingMoreUserPosts = false);
                 }
-                state.refreshCompleter
-                    ?.complete(); // **COMPLETE POSTS REFRESH**
+                state.refreshCompleter?.complete();
               } else if (state is UserPostsLoadMoreError) {
                 if (_isLoadingMoreUserPosts) {
                   setState(() => _isLoadingMoreUserPosts = false);
                 }
               } else if (state is UserPostsError) {
-                state.refreshCompleter
-                    ?.complete(); // **COMPLETE POSTS REFRESH ON ERROR**
+                state.refreshCompleter?.complete();
+
+                // Show snackbar for refresh errors with existing posts
+                if (_hasExistingPosts(state)) {
+                  _showRefreshErrorSnackbar(context, state.message);
+                }
               }
             },
           ),
@@ -310,14 +364,25 @@ class _UserProfilePageState extends State<UserProfilePage> {
               return const Center(child: LoadingIndicator());
             }
             if (profileState is ProfileError) {
-              return CustomErrorWidget(
-                message: profileState.message,
-                onRetry: _onRefreshProfile, // Use unified refresh
-              );
+              // Only show full error widget if we don't have an existing profile
+              final existingProfile = _getProfileFromState(profileState);
+              if (existingProfile == null) {
+                return CustomErrorWidget(
+                  message: profileState.message,
+                  onRetry: _onRefreshProfile,
+                );
+              }
+              // If we have an existing profile, continue showing it with the error snackbar
             }
-            if (profileState is ProfileDataLoaded) {
+            if (profileState is ProfileDataLoaded ||
+                (profileState is ProfileError &&
+                    _hasExistingProfile(profileState))) {
               // Check if wrong user and reload (safety check)
-              if (profileState.userId != widget.userId) {
+              final profile = profileState is ProfileDataLoaded
+                  ? profileState.profile
+                  : (profileState as ProfileError).profile!;
+
+              if (profile.id != widget.userId) {
                 context.read<ProfileBloc>().add(
                   GetProfileDataEvent(widget.userId),
                 );
@@ -337,14 +402,13 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     slivers: [
                       SliverToBoxAdapter(
                         child: ProfileHeader(
-                          profile: profileState.profile,
+                          profile: profile,
                           isOwnProfile: _isOwnProfile,
                           isFollowing: _isFollowing,
                           onFollowToggle: _onFollowToggle,
                           isProcessingFollow: _isProcessingFollow,
                         ),
                       ),
-                      // --- NESTED BLOCBUILDER FOR USER POSTS STATE ---
                       BlocBuilder<UserPostsBloc, UserPostsState>(
                         builder: (context, userPostsState) {
                           // Filter state relevance to this profile
@@ -354,10 +418,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
                             );
                           }
 
-                          // Extract posts using the public BLoC helper method
-                          final List<PostEntity> posts = context
-                              .read<UserPostsBloc>()
-                              .getPostsFromState(userPostsState);
+                          // Extract posts using the helper method
+                          final List<PostEntity> posts = _getPostsFromState(
+                            userPostsState,
+                          );
 
                           bool isLoading = false;
                           String? error;
@@ -369,6 +433,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
                             isLoading = true;
                           } else if (userPostsState is UserPostsError) {
                             error = userPostsState.message;
+                            // Only show full error if no posts exist
+                            if (posts.isEmpty) {
+                              return SliverToBoxAdapter(
+                                child: CustomErrorWidget(
+                                  message: error,
+                                  onRetry: _onRefreshProfile,
+                                ),
+                              );
+                            }
                           } else if (userPostsState is UserPostsLoaded) {
                             hasMore = userPostsState.hasMore;
                           } else if (userPostsState is UserPostsLoadingMore) {

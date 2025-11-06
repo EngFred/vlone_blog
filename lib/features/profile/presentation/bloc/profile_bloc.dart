@@ -43,10 +43,15 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       (failure) {
         final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
         AppLogger.error('GetProfile failed: $friendlyMessage');
-        // Emit ProfileError with the completer
+
+        // Preserve existing profile on refresh error
+        final existingProfile = _getProfileFromState(state);
+
+        // Emit ProfileError with the completer and existing profile
         emit(
           ProfileError(
             friendlyMessage,
+            profile: existingProfile,
             refreshCompleter: event.refreshCompleter,
           ),
         );
@@ -65,6 +70,15 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         event.refreshCompleter?.complete();
       },
     );
+  }
+
+  ProfileEntity? _getProfileFromState(ProfileState state) {
+    if (state is ProfileDataLoaded) {
+      return state.profile;
+    } else if (state is ProfileError) {
+      return state.profile;
+    }
+    return null;
   }
 
   Future<void> _onStartProfileRealtime(

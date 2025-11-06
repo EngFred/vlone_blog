@@ -242,7 +242,15 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
           final message = ErrorMessageMapper.getErrorMessage(failure);
           AppLogger.error('Get feed failed: $message');
           if (isRefresh) {
-            emit(FeedError(message, refreshCompleter: refreshCompleter));
+            // Preserve existing posts on refresh error
+            final currentPosts = existingPosts ?? getPostsFromState(state);
+            emit(
+              FeedError(
+                message,
+                posts: currentPosts,
+                refreshCompleter: refreshCompleter,
+              ),
+            );
           } else {
             final currentPosts = existingPosts ?? [];
             emit(FeedLoadMoreError(message, posts: currentPosts));

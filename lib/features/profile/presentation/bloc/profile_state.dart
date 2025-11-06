@@ -37,7 +37,7 @@ class ProfileDataLoaded extends ProfileState {
       profile: profile ?? this.profile,
       userId: userId ?? this.userId,
       isRealtimeActive: isRealtimeActive ?? this.isRealtimeActive,
-      refreshCompleter: refreshCompleter,
+      refreshCompleter: refreshCompleter ?? this.refreshCompleter,
     );
   }
 
@@ -52,10 +52,11 @@ class ProfileDataLoaded extends ProfileState {
 
 class ProfileError extends ProfileState {
   final String message;
+  final ProfileEntity? profile;
   final Completer<void>? refreshCompleter;
 
-  const ProfileError(this.message, {this.refreshCompleter});
+  const ProfileError(this.message, {this.profile, this.refreshCompleter});
 
   @override
-  List<Object?> get props => [message, refreshCompleter];
+  List<Object?> get props => [message, profile, refreshCompleter];
 }

@@ -64,7 +64,7 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     _lastId = null;
     _hasMore = true;
 
-    // Dot emitting UsersLoading here, RefreshIndicator handles the visual cue
+    // Not emitting UsersLoading here, RefreshIndicator handles the visual cue
     await _fetchUsers(
       emit,
       isRefresh: true,
@@ -129,17 +129,13 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     result.fold(
       (failure) {
         final errorMessage = ErrorMessageMapper.getErrorMessage(failure);
-        final currentUsers = state is UsersLoaded
-            ? (state as UsersLoaded).users
-            : (state is UsersLoadingMore
-                  ? (state as UsersLoadingMore).currentUsers
-                  : <UserListEntity>[]);
+        final currentUsers = _getCurrentUsersFromState();
 
         if (isRefresh) {
           emit(
             UsersError(
               errorMessage,
-              users: currentUsers,
+              users: currentUsers, // Preserve existing users on refresh error
               refreshCompleter: refreshCompleter,
             ),
           );
@@ -154,12 +150,7 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
         if (isRefresh) {
           updatedUsers = newUsers;
         } else {
-          final currentUsers = state is UsersLoaded
-              ? (state as UsersLoaded).users
-              : (state is UsersLoadingMore
-                    ? (state as UsersLoadingMore).currentUsers
-                    : <UserListEntity>[]);
-
+          final currentUsers = _getCurrentUsersFromState();
           updatedUsers = List<UserListEntity>.from(currentUsers)
             ..addAll(newUsers);
         }
@@ -180,6 +171,17 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
         refreshCompleter?.complete();
       },
     );
+  }
+
+  List<UserListEntity> _getCurrentUsersFromState() {
+    if (state is UsersLoaded) {
+      return (state as UsersLoaded).users;
+    } else if (state is UsersLoadingMore) {
+      return (state as UsersLoadingMore).currentUsers;
+    } else if (state is UsersError) {
+      return (state as UsersError).users;
+    }
+    return <UserListEntity>[];
   }
 
   Future<void> _onNewUser(_NewUserEvent event, Emitter<UsersState> emit) async {

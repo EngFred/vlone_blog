@@ -16,11 +16,13 @@ class FeedLoading extends FeedState {
 
 class FeedError extends FeedState {
   final String message;
+  final List<PostEntity> posts;
   final Completer<void>? refreshCompleter;
 
-  const FeedError(this.message, {this.refreshCompleter});
+  const FeedError(this.message, {this.posts = const [], this.refreshCompleter});
+
   @override
-  List<Object?> get props => [message, refreshCompleter];
+  List<Object?> get props => [message, posts, refreshCompleter];
 }
 
 class FeedLoaded extends FeedState {

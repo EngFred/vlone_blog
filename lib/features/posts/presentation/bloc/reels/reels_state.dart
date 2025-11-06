@@ -16,11 +16,17 @@ class ReelsLoading extends ReelsState {
 
 class ReelsError extends ReelsState {
   final String message;
+  final List<PostEntity> posts;
   final Completer<void>? refreshCompleter;
 
-  const ReelsError(this.message, {this.refreshCompleter});
+  const ReelsError(
+    this.message, {
+    this.posts = const [],
+    this.refreshCompleter,
+  });
+
   @override
-  List<Object?> get props => [message, refreshCompleter];
+  List<Object?> get props => [message, posts, refreshCompleter];
 }
 
 class ReelsLoaded extends ReelsState {
@@ -54,7 +60,7 @@ class ReelsLoaded extends ReelsState {
       posts ?? this.posts,
       hasMore: hasMore ?? this.hasMore,
       isRealtimeActive: isRealtimeActive ?? this.isRealtimeActive,
-      refreshCompleter: refreshCompleter,
+      refreshCompleter: refreshCompleter ?? this.refreshCompleter,
     );
   }
 }
