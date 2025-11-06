@@ -5,6 +5,7 @@ import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/di/injection_container.dart' as di;
 import 'package:vlone_blog_app/core/service/realtime_service.dart';
 import 'package:vlone_blog_app/core/service/secure_storage.dart';
+import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/settings/presentation/bloc/settings_bloc.dart';
 import 'core/presentation/theme/app_theme.dart';
@@ -81,6 +82,7 @@ class _MyAppState extends State<MyApp> {
         child: BlocBuilder<SettingsBloc, SettingsState>(
           builder: (context, state) {
             return MaterialApp.router(
+              scaffoldMessengerKey: SnackbarUtils.scaffoldMessengerKey,
               title: Constants.appName,
               theme: AppTheme.lightTheme(),
               darkTheme: AppTheme.darkTheme(),
@@ -90,14 +92,6 @@ class _MyAppState extends State<MyApp> {
               builder: (context, child) {
                 return BlocListener<AuthBloc, AuthState>(
                   listener: (context, state) async {
-                    try {
-                      ScaffoldMessenger.of(context).clearSnackBars();
-                    } catch (e) {
-                      AppLogger.warning(
-                        'Failed to clear snackbars before auth navigation: $e',
-                      );
-                    }
-
                     if (state is AuthAuthenticated) {
                       AppLogger.info(
                         'AuthBloc: User authenticated, received AuthAuthenticated in MyApp listener',

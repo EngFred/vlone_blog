@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import 'dart:ui';
 
 class SnackbarUtils {
+  static final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+  static ScaffoldMessengerState? get _messengerState {
+    return scaffoldMessengerKey.currentState;
+  }
+
   static SnackBar _buildSnackBar({
     required BuildContext context,
     required String message,
@@ -10,8 +16,10 @@ class SnackbarUtils {
     SnackBarAction? action,
     int durationSeconds = 3,
   }) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    // Using the global key's state to hide, not the context's.
+    _messengerState?.hideCurrentSnackBar();
 
+    // Still using the provided context to get theme data.
     final brightness = Theme.of(context).brightness;
     final textColor = brightness == Brightness.dark
         ? Colors.white
@@ -49,7 +57,8 @@ class SnackbarUtils {
                   IconButton(
                     icon: Icon(Icons.close, color: textColor),
                     onPressed: () {
-                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      // Use the global key's state to hide.
+                      _messengerState?.hideCurrentSnackBar();
                     },
                   ),
               ],
@@ -73,7 +82,8 @@ class SnackbarUtils {
     int durationSeconds = 4,
   }) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+
+    _messengerState?.showSnackBar(
       _buildSnackBar(
         context: context,
         message: message,
@@ -91,7 +101,7 @@ class SnackbarUtils {
     int durationSeconds = 3,
   }) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    _messengerState?.showSnackBar(
       _buildSnackBar(
         context: context,
         message: message,
@@ -109,7 +119,7 @@ class SnackbarUtils {
     int durationSeconds = 3,
   }) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    _messengerState?.showSnackBar(
       _buildSnackBar(
         context: context,
         message: message,
@@ -128,7 +138,7 @@ class SnackbarUtils {
     int durationSeconds = 5,
   }) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    _messengerState?.showSnackBar(
       _buildSnackBar(
         context: context,
         message: message,
