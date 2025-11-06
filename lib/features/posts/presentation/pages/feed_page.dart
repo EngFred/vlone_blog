@@ -46,7 +46,6 @@ class _FeedPageState extends State<FeedPage>
         context.read<NotificationsBloc>().add(
           NotificationsSubscribeUnreadCountStream(),
         );
-
         if (context.read<FeedBloc>().state is FeedInitial) {
           context.read<FeedBloc>().add(GetFeedEvent(_userId!));
         }
@@ -69,7 +68,6 @@ class _FeedPageState extends State<FeedPage>
           _loadMoreDebounceDuration,
           () {
             final currentState = context.read<FeedBloc>().state;
-
             // Determining if we can load more from the BLoC state
             final bool hasMore = (currentState is FeedLoaded)
                 ? currentState.hasMore
@@ -80,12 +78,12 @@ class _FeedPageState extends State<FeedPage>
 
             if (!hasMore) return;
             if (_isLoadingMore) return;
+
             if (_scrollController.position.pixels >=
                 _scrollController.position.maxScrollExtent - 200) {
               AppLogger.info(
                 'FeedPage: near bottom; dispatching LoadMoreFeedEvent',
               );
-
               // Set local UI state
               setState(() {
                 _isLoadingMore = true;
@@ -231,7 +229,6 @@ class _FeedPageState extends State<FeedPage>
                   feedState is FeedLoadMoreError ||
                   feedState is FeedError) {
                 // Include FeedError to show existing list on refresh failure
-
                 // Extract data based on the state type
                 final List<PostEntity> posts = _getPostsFromState(feedState);
 
@@ -241,11 +238,9 @@ class _FeedPageState extends State<FeedPage>
                           feedState is FeedLoadingMore)
                     ? true // Keeps "load more" active if we're in a loading/error state
                     : false;
-
                 final bool isRealtimeActive = (feedState is FeedLoaded)
                     ? feedState.isRealtimeActive
                     : false;
-
                 final String? loadMoreError = (feedState is FeedLoadMoreError)
                     ? feedState.message
                     : null;
@@ -308,8 +303,7 @@ class _FeedPageState extends State<FeedPage>
     } else if (state is FeedLoadMoreError) {
       return state.posts;
     } else if (state is FeedError) {
-      // Extract posts from previous state if available in FeedError
-      // This requires modifying FeedError to include posts
+      // FIX: Explicitly extract posts from FeedError state
       return state.posts;
     }
     return [];

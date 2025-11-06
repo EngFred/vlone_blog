@@ -55,6 +55,9 @@ class _PostMediaState extends State<PostMedia>
   /// Flag indicating if there was an error during aspect ratio calculation or media loading.
   bool _hasError = false;
 
+  /// Counter used to force a reload of CachedNetworkImage by changing its key.
+  int _imageRetryCount = 0;
+
   /// Manager responsible for getting and releasing shared video controllers.
   final VideoControllerManager _videoManager = VideoControllerManager();
 
@@ -105,6 +108,19 @@ class _PostMediaState extends State<PostMedia>
       _hasError = true;
       AppLogger.error('PostMedia: Error calculating aspect ratio: $e');
     }
+  }
+
+  /// Triggers a manual retry for image loading by updating the key.
+  void _retryImage() {
+    if (_isDisposed || !mounted) return;
+    AppLogger.info(
+      'PostMedia: Retrying image load for post ID: ${widget.post.id}',
+    );
+    // Incrementing the key forces CachedNetworkImage to attempt reloading.
+    setState(() {
+      _imageRetryCount++;
+      _hasError = false; // Optimistically remove error while retrying
+    });
   }
 
   /// Ensures the video controller is initialized and ready for playback.
@@ -206,6 +222,7 @@ class _PostMediaState extends State<PostMedia>
   void _togglePlayPause() {
     if (_isDisposed || !mounted) return;
     if (_isInitializing) return;
+
     if (_videoController == null || !_videoController!.value.isInitialized) {
       _ensureControllerInitialized().then((_) {
         if (mounted && !_isDisposed) {
@@ -305,25 +322,40 @@ class _PostMediaState extends State<PostMedia>
 
   /// Builds the content displayed when media loading fails or dimensions are missing.
   Widget _buildErrorContent() {
+    // Polished UI/UX for error state: Use a neutral background and a clear icon.
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
-      color: Theme.of(context).colorScheme.errorContainer,
+      // Use a soft, high-contrast surface color instead of the sharp error color
+      color: colorScheme.surfaceContainerHighest,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.warning_amber_rounded,
+              // Use a clear, broken media icon
+              widget.post.mediaType == 'image'
+                  ? Icons.image_not_supported
+                  : Icons.videocam_off,
               size: 48,
-              color: Theme.of(context).colorScheme.onErrorContainer,
+              // Use a strong color for the icon, e.g., error color or primary color
+              color: colorScheme.error,
             ),
             const SizedBox(height: 8),
             Text(
               _aspectRatio == null
-                  ? 'Missing Dimensions/Media'
-                  : 'Media failed to load',
+                  ? 'Missing Media Info'
+                  : 'Media Failed to Load',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onErrorContainer,
+                // Use a standard onSurface color for readability
+                color: colorScheme.onSurface.withOpacity(0.8),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Tap to retry loading.',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: colorScheme.primary, // Subtle call to action
               ),
             ),
           ],
@@ -340,14 +372,15 @@ class _PostMediaState extends State<PostMedia>
         if (widget.post.mediaType == 'image')
           // Displaying network image using CachedNetworkImage.
           CachedNetworkImage(
+            // Key is used to force reload when _imageRetryCount changes
+            key: ValueKey('image_${widget.post.id}_$_imageRetryCount'),
             imageUrl: widget.post.mediaUrl!,
             fit: BoxFit.cover,
             placeholder: (context, url) =>
                 const Center(child: CircularProgressIndicator()),
-            errorWidget: (context, url, error) => Container(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              child: const Center(child: Icon(Icons.broken_image)),
-            ),
+            errorWidget: (context, url, error) =>
+                // Using the new _buildErrorContent for failed image loading
+                _buildErrorContent(),
           )
         else if (widget.post.mediaType == 'video')
           // Conditional rendering for initialized video player or placeholder/thumbnail.
@@ -479,7 +512,15 @@ class _PostMediaState extends State<PostMedia>
     VoidCallback? onTap;
     VoidCallback? onDoubleTap;
 
-    if (_aspectRatio != null) {
+    // Logic to set the onTap handler for the entire area.
+    if (_hasError) {
+      // When in error state, tapping triggers a retry based on media type.
+      if (mediaType == 'video') {
+        onTap = _ensureControllerInitialized; // Retry video initialization
+      } else if (mediaType == 'image') {
+        onTap = _retryImage; // Retry image loading by updating the key
+      }
+    } else if (_aspectRatio != null) {
       if (mediaType == 'image') {
         // Tap on an image opens the full-screen view.
         onTap = () => _openFullMedia(heroTag);

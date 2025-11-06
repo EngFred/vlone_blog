@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:vlone_blog_app/core/utils/error_message_mapper.dart';
@@ -32,13 +31,11 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     on<GetFeedEvent>(_onGetFeed);
     on<LoadMoreFeedEvent>(_onLoadMoreFeed);
     on<RefreshFeedEvent>(_onRefreshFeed);
-
     on<StartFeedRealtime>(_onStartFeedRealtime);
     on<StopFeedRealtime>(_onStopFeedRealtime);
     on<_RealtimeFeedPostReceived>(_onRealtimePostReceived);
     on<_RealtimeFeedPostDeleted>(_onRealtimePostDeleted);
     on<_RealtimeFeedPostUpdated>(_onRealtimeFeedPostUpdated);
-
     on<AddPostToFeed>(_onAddPostToFeed);
     on<RemovePostFromFeed>(_onRemovePostFromFeed);
   }
@@ -58,15 +55,10 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
       return;
     }
 
-    final currentPostsSnapshot = state is FeedLoaded
-        ? (state as FeedLoaded).posts
-        : (state is FeedLoadingMore)
-        ? (state as FeedLoadingMore).posts
-        : (state is FeedLoadMoreError)
-        ? (state as FeedLoadMoreError).posts
-        : <PostEntity>[];
+    final currentPostsSnapshot = getPostsFromState(state);
 
     emit(FeedLoadingMore(posts: currentPostsSnapshot));
+
     await _safeFetchFeed(
       emit,
       isRefresh: false,
@@ -82,9 +74,14 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     _hasMoreFeed = true;
     _lastFeedCreatedAt = null;
     _lastFeedId = null;
+
+    // Get posts from the current state (which might be FeedError) to preserve them
+    final existingPosts = getPostsFromState(state);
+
     await _safeFetchFeed(
       emit,
       isRefresh: true,
+      existingPosts: existingPosts, // Pass existing posts to safeFetch
       refreshCompleter: event.refreshCompleter,
     );
   }
@@ -95,12 +92,14 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
   ) async {
     if (_isSubscribedToService) return;
     AppLogger.info('FeedBloc: subscribing to RealtimeService');
+
     _realtimeNewPostSub = realtimeService.onNewPost.listen(
       (post) => add(_RealtimeFeedPostReceived(post)),
     );
     _realtimePostUpdateSub = realtimeService.onPostUpdate.listen((updateData) {
       int? safeParseInt(dynamic value) =>
           value is int ? value : int.tryParse(value.toString());
+
       add(
         _RealtimeFeedPostUpdated(
           postId: updateData['id'],
@@ -115,6 +114,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
       (postId) => add(_RealtimeFeedPostDeleted(postId)),
     );
     _isSubscribedToService = true;
+
     if (state is FeedLoaded) {
       emit((state as FeedLoaded).copyWith(isRealtimeActive: true));
     }
@@ -130,6 +130,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     await _realtimePostUpdateSub?.cancel();
     await _realtimePostDeletedSub?.cancel();
     _isSubscribedToService = false;
+
     if (state is FeedLoaded) {
       emit((state as FeedLoaded).copyWith(isRealtimeActive: false));
     }
@@ -227,6 +228,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
   }) async {
     if (_isFetchingFeed) return;
     _isFetchingFeed = true;
+
     try {
       final result = await getFeedUseCase(
         GetFeedParams(
@@ -241,13 +243,15 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
         (failure) {
           final message = ErrorMessageMapper.getErrorMessage(failure);
           AppLogger.error('Get feed failed: $message');
+
           if (isRefresh) {
-            // Preserve existing posts on refresh error
+            // FIX: Ensure existingPosts is used if available from the event/caller
             final currentPosts = existingPosts ?? getPostsFromState(state);
             emit(
               FeedError(
                 message,
-                posts: currentPosts,
+                posts:
+                    currentPosts, // Will now correctly include previous posts
                 refreshCompleter: refreshCompleter,
               ),
             );
@@ -270,6 +274,7 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
             _lastFeedCreatedAt = newPosts.last.createdAt;
             _lastFeedId = newPosts.last.id;
           }
+
           _hasMoreFeed = newPosts.length == _pageSize;
 
           emit(
@@ -295,6 +300,9 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     } else if (state is FeedLoadingMore) {
       return state.posts;
     } else if (state is FeedLoadMoreError) {
+      return state.posts;
+    } else if (state is FeedError) {
+      // FIX: Correctly extract posts from FeedError state
       return state.posts;
     }
     return [];
