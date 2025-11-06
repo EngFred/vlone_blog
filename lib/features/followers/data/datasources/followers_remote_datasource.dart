@@ -9,8 +9,12 @@ class FollowersRemoteDataSource {
 
   FollowersRemoteDataSource(this.client);
 
-  /// Follow/unfollow a user. Returns the created follower row on follow,
-  /// and a placeholder FollowerModel on unfollow to keep the same method shape.
+  /// Toggles the follow relationship between two users.
+  ///
+  /// - If `isFollowing` is true, a new 'followers' record is created.
+  /// - If `isFollowing` is false, the existing 'followers' record is deleted.
+  ///
+  /// Returns the created [FollowerModel] on follow, or a placeholder model on unfollow.
   Future<FollowerModel> followUser({
     required String followerId,
     required String followingId,
@@ -40,7 +44,7 @@ class FollowersRemoteDataSource {
           'following_id': followingId,
         });
         AppLogger.info('Follow relationship deleted successfully');
-        // Return a placeholder to keep contract (caller should typically refetch lists)
+        // Returning a placeholder model to satisfy the method's contract.
         return FollowerModel(
           id: '',
           followerId: followerId,
@@ -57,6 +61,11 @@ class FollowersRemoteDataSource {
     }
   }
 
+  /// Fetches a paginated list of users who are following the `userId`.
+  ///
+  /// Utilizes a Postgres RPC function (`get_followers_with_follow_status`) for
+  /// efficient cursor-based pagination and injection of the `currentUserId`'s
+  /// follow status relative to each follower in the list.
   Future<List<UserListModel>> getFollowers({
     required String userId,
     String? currentUserId,
@@ -99,6 +108,11 @@ class FollowersRemoteDataSource {
     }
   }
 
+  /// Fetches a paginated list of users that the `userId` is following.
+  ///
+  /// Utilizes a Postgres RPC function (`get_following_with_follow_status`) for
+  /// efficient cursor-based pagination and injection of the `currentUserId`'s
+  /// follow status relative to each user in the list.
   Future<List<UserListModel>> getFollowing({
     required String userId,
     String? currentUserId,
@@ -141,6 +155,9 @@ class FollowersRemoteDataSource {
     }
   }
 
+  /// Checks the current follow status between a `followerId` and a `followingId`.
+  ///
+  /// Performs a simple query on the 'followers' table, returning `true` if a match is found.
   Future<bool> getFollowStatus({
     required String followerId,
     required String followingId,
@@ -153,6 +170,7 @@ class FollowersRemoteDataSource {
         'follower_id': followerId,
         'following_id': followingId,
       }).maybeSingle();
+
       final isFollowing = response != null;
       AppLogger.info('Follow status: $isFollowing');
       return isFollowing;

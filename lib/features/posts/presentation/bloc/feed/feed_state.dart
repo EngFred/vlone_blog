@@ -16,7 +16,6 @@ class FeedLoading extends FeedState {
 
 class FeedError extends FeedState {
   final String message;
-  // ADDED: Optional completer for RefreshIndicator
   final Completer<void>? refreshCompleter;
 
   const FeedError(this.message, {this.refreshCompleter});
@@ -28,7 +27,6 @@ class FeedLoaded extends FeedState {
   final List<PostEntity> posts;
   final bool hasMore;
   final bool isRealtimeActive;
-  // ADDED: Optional completer for RefreshIndicator
   final Completer<void>? refreshCompleter;
 
   const FeedLoaded(

@@ -11,37 +11,26 @@ import 'package:vlone_blog_app/features/profile/domain/usecases/update_profile_u
 part 'edit_profile_event.dart';
 part 'edit_profile_state.dart';
 
-// A sensible duration for debouncing text field validation
 const _debounceDuration = Duration(milliseconds: 300);
 
-// We make it generic over <E extends EditProfileEvent>
 EventTransformer<E> debouncedTransformer<E extends EditProfileEvent>(
   Duration duration,
 ) {
   return (events, mapper) {
-    // Use debounceTime from rxdart and switchMap (restartable logic)
-    // to handle only the latest debounced event.
     return events.debounceTime(duration).switchMap(mapper);
   };
 }
 
 class EditProfileBloc extends Bloc<EditProfileEvent, EditProfileState> {
-  // Removed: final GetProfileUseCase getProfileUseCase;
   final UpdateProfileUseCase updateProfileUseCase;
 
-  EditProfileBloc({
-    // Removed: required this.getProfileUseCase,
-    required this.updateProfileUseCase,
-  }) : super(EditProfileInitial()) {
-    // Register all event handlers here instead of using mapEventToState
-
-    // 'restartable' cancels previous API calls if a new one comes in
+  EditProfileBloc({required this.updateProfileUseCase})
+    : super(EditProfileInitial()) {
     on<LoadInitialProfileEvent>(
       _onLoadInitialProfile,
       transformer: restartable(),
     );
 
-    // Apply the debounced transformer with the correct type argument
     on<ChangeUsernameEvent>(
       _onChangeUsername,
       transformer: debouncedTransformer(_debounceDuration),
@@ -51,25 +40,20 @@ class EditProfileBloc extends Bloc<EditProfileEvent, EditProfileState> {
       transformer: debouncedTransformer(_debounceDuration),
     );
 
-    // 'sequential' (the default) is fine here
     on<SelectImageEvent>(_onSelectImage);
 
-    // 'droppable' prevents spam-clicking the submit button
     on<SubmitChangesEvent>(_onSubmitChanges, transformer: droppable());
   }
 
-  // Updated handler to take the profile directly from the event
   Future<void> _onLoadInitialProfile(
     LoadInitialProfileEvent event,
     Emitter<EditProfileState> emit,
   ) async {
-    // No need to emit Loading state as data is synchronous
     final profile = event.profile;
 
-    // Immediately emit the editing state with the authenticated user's data
     emit(
       EditProfileEditing(
-        userId: profile.id, // Use profile.id instead of event.userId
+        userId: profile.id,
         initialUsername: profile.username,
         initialBio: profile.bio ?? '',
         initialImageUrl: profile.profileImageUrl,
@@ -88,7 +72,6 @@ class EditProfileBloc extends Bloc<EditProfileEvent, EditProfileState> {
     ChangeUsernameEvent event,
     Emitter<EditProfileState> emit,
   ) {
-    // 'state' is the current state of the BLoC
     if (state is EditProfileEditing) {
       final currentState = state as EditProfileEditing;
       final trimmed = event.username.trim();
@@ -100,7 +83,6 @@ class EditProfileBloc extends Bloc<EditProfileEvent, EditProfileState> {
       } else if (trimmed.length > 30) {
         error = 'Username too long';
       }
-      // 'emit' a new state instead of 'yield'
       emit(
         currentState.copyWith(
           currentUsername: event.username,
@@ -136,7 +118,6 @@ class EditProfileBloc extends Bloc<EditProfileEvent, EditProfileState> {
     if (state is EditProfileEditing) {
       final currentState = state as EditProfileEditing;
 
-      // Guard against submission if there are errors or already submitting
       if (currentState.usernameError != null ||
           currentState.bioError != null ||
           currentState.isSubmitting) {
@@ -153,7 +134,6 @@ class EditProfileBloc extends Bloc<EditProfileEvent, EditProfileState> {
 
       if (!usernameChanged && !bioChanged && !hasImage) {
         emit(currentState.copyWith(generalError: 'No changes detected.'));
-        // We need to clear the error after a moment
         await Future.delayed(const Duration(seconds: 2));
         if (state ==
             currentState.copyWith(generalError: 'No changes detected.')) {

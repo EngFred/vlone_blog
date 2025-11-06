@@ -33,14 +33,12 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
   }) : super(const UserPostsInitial()) {
     on<GetUserPostsEvent>(_onGetUserPosts);
     on<LoadMoreUserPostsEvent>(_onLoadMoreUserPosts);
-    on<RefreshUserPostsEvent>(_onRefreshUserPosts); // UPDATED
+    on<RefreshUserPostsEvent>(_onRefreshUserPosts);
     on<RemovePostFromUserPosts>(_onRemovePostFromUserPosts);
 
-    // Realtime control events
     on<StartUserPostsRealtime>(_onStartUserPostsRealtime);
     on<StopUserPostsRealtime>(_onStopUserPostsRealtime);
 
-    // Internal realtime events
     on<_RealtimeUserPostReceived>(_onRealtimeUserPostReceived);
     on<_RealtimeUserPostUpdated>(_onRealtimeUserPostUpdated);
     on<_RealtimeUserPostDeleted>(_onRealtimeUserPostDeleted);
@@ -66,10 +64,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
       return;
     }
 
-    // Get posts from *any* state that has them
-    final currentPostsSnapshot = getPostsFromState(
-      state,
-    ); // Using public getter
+    final currentPostsSnapshot = getPostsFromState(state);
 
     emit(
       UserPostsLoadingMore(
@@ -94,11 +89,10 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     _lastUserPostsCreatedAt = null;
     _lastUserPostsId = null;
 
-    // Do NOT emit UserPostsLoading, let the RefreshIndicator spin
     await _safeFetchUserPosts(
       emit,
       isRefresh: true,
-      refreshCompleter: event.refreshCompleter, // PASS COMPLETER
+      refreshCompleter: event.refreshCompleter,
     );
   }
 
@@ -106,11 +100,10 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     Emitter<UserPostsState> emit, {
     required bool isRefresh,
     List<PostEntity>? existingPosts,
-    // ADDED: Optional completer for refresh indicator
     Completer<void>? refreshCompleter,
   }) async {
     if (_isFetchingUserPosts) {
-      refreshCompleter?.complete(); // If already fetching, complete immediately
+      refreshCompleter?.complete();
       return;
     }
     _isFetchingUserPosts = true;
@@ -119,7 +112,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     if (profileId == null) {
       emit(const UserPostsError("Profile ID not set.", profileUserId: null));
       _isFetchingUserPosts = false;
-      refreshCompleter?.complete(); // Complete on error
+      refreshCompleter?.complete();
       return;
     }
 
@@ -139,7 +132,6 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
           final message = ErrorMessageMapper.getErrorMessage(failure);
           AppLogger.error('Get user posts failed for $profileId: $message');
           if (isRefresh) {
-            // Emit UserPostsError with the completer
             emit(
               UserPostsError(
                 message,
@@ -157,7 +149,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
               ),
             );
           }
-          refreshCompleter?.complete(); // COMPLETE ON ERROR
+          refreshCompleter?.complete();
         },
         (newPosts) {
           List<PostEntity> updatedPosts;
@@ -180,10 +172,10 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
               profileUserId: profileId,
               hasMore: _hasMoreUserPosts,
               isRealtimeActive: _isSubscribedToService,
-              refreshCompleter: refreshCompleter, // PASS COMPLETER
+              refreshCompleter: refreshCompleter,
             ),
           );
-          refreshCompleter?.complete(); // COMPLETE ON SUCCESS
+          refreshCompleter?.complete();
         },
       );
     } finally {
@@ -192,7 +184,6 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
   }
 
   // Helper to get posts from any state
-  // MADE PUBLIC: Renamed from _getPostsFromState to getPostsFromState
   List<PostEntity> getPostsFromState(UserPostsState state) {
     if (state is UserPostsLoaded) {
       return state.posts;
@@ -209,7 +200,6 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     Emitter<UserPostsState> emit,
     List<PostEntity> updatedPosts,
   ) {
-    // ... (logic remains the same, but uses the public getPostsFromState internally if needed)
     final currentState = state;
     if (currentState is UserPostsLoaded) {
       // Preserve the completer if it exists
@@ -252,10 +242,6 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     }
   }
 
-  // ---- Realtime handlers ----
-
-  // ... (Realtime handlers remain the same, just ensure they use the public getPostsFromState)
-
   Future<void> _onStartUserPostsRealtime(
     StartUserPostsRealtime event,
     Emitter<UserPostsState> emit,
@@ -266,7 +252,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     );
 
     final profileId = event.profileUserId;
-    _currentUserPostsProfileId = profileId; // Ensure this is set
+    _currentUserPostsProfileId = profileId;
 
     _realtimeNewPostSub = realtimeService.onNewPost.listen(
       (post) {
@@ -283,7 +269,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
         final postId = updateData['id']?.toString();
         if (postId == null) return;
 
-        // Check if the post is relevant before dispatching
+        // Checking if the post is relevant before dispatching
         final currentPosts = getPostsFromState(state);
         final post = currentPosts.firstWhere(
           (p) => p.id == postId,
@@ -311,7 +297,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
 
     _realtimePostDeletedSub = realtimeService.onPostDeleted.listen(
       (postId) {
-        // Check if the post is in our current state before dispatching
+        // Checking if the post is in our current state before dispatching
         final currentPosts = getPostsFromState(state);
         if (currentPosts.any((p) => p.id == postId)) {
           add(_RealtimeUserPostDeleted(postId));
@@ -342,7 +328,7 @@ class UserPostsBloc extends Bloc<UserPostsEvent, UserPostsState> {
     _realtimeNewPostSub = null;
     _realtimePostUpdateSub = null;
     _realtimePostDeletedSub = null;
-    _currentUserPostsProfileId = null; // Clear profile ID on stop
+    _currentUserPostsProfileId = null;
 
     if (state is UserPostsLoaded) {
       emit((state as UserPostsLoaded).copyWith(isRealtimeActive: false));

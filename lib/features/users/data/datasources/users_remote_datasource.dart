@@ -9,6 +9,11 @@ class UsersRemoteDataSource {
   final SupabaseClient client;
   UsersRemoteDataSource(this.client);
 
+  /// Fetches a paginated list of all users, excluding the `currentUserId`.
+  ///
+  /// Utilizes a Postgres RPC function (`get_users_with_follow_status`) for
+  /// efficient cursor-based pagination and injection of the `currentUserId`'s
+  /// follow status relative to each user in the list.
   Future<List<UserListModel>> getPaginatedUsers({
     required String currentUserId,
     int pageSize = 20,
@@ -41,7 +46,6 @@ class UsersRemoteDataSource {
       AppLogger.info('Fetched ${users.length} users via RPC');
       return users;
     } catch (e, stackTrace) {
-      // ... existing error handling ...
       AppLogger.error(
         'Failed to fetch paginated users via RPC: $e',
         error: e,
@@ -54,7 +58,10 @@ class UsersRemoteDataSource {
     }
   }
 
-  //Stream for new profile inserts (new users)
+  /// Provides a real-time stream of newly created user profiles (new sign-ups).
+  ///
+  /// Listens for `INSERT` events on the 'profiles' table and emits a [UserListModel]
+  /// for the new user, defaulting `is_following` to `false`.
   Stream<UserListModel> streamNewUsers(String currentUserId) {
     AppLogger.info(
       'Setting up real-time stream for new users (profiles inserts)',
@@ -62,6 +69,7 @@ class UsersRemoteDataSource {
 
     final streamController = StreamController<UserListModel>.broadcast();
 
+    // Using a dedicated channel for profiles inserts.
     final channel = client.channel('realtime:profiles:inserts');
 
     channel.onPostgresChanges(
@@ -73,13 +81,12 @@ class UsersRemoteDataSource {
           final newRec = payload.newRecord as Map<String, dynamic>?;
 
           if (newRec != null && newRec['id'] != currentUserId) {
-            // Exclude self if somehow triggered
-            // Construct from payload data directly
+            // Excluding the current user's own profile insert event.
+            // Constructing the model by merging profile data with default list properties.
             final user = UserListModel.fromMap({
               ...newRec,
               'is_following':
-                  false, // New user: current user isn't following yet
-              // followers_count defaults to 0 in table, already in newRec
+                  false, // Assumption: User is new, so current user is not following.
             });
             if (!streamController.isClosed) {
               streamController.add(user);
@@ -101,7 +108,7 @@ class UsersRemoteDataSource {
 
     channel.subscribe();
 
-    // Cleanup on cancel
+    // Cleanup logic: unsubscribe and close on stream cancellation.
     streamController.onCancel = () async {
       await channel.unsubscribe();
       await streamController.close();

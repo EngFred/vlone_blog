@@ -21,17 +21,17 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
   final MarkAsReadUseCase _markAsReadUseCase;
   final MarkAllAsReadUseCase _markAllAsReadUseCase;
   final DeleteNotificationsUseCase _deleteNotificationsUseCase;
-  // Subscriptions to the RealtimeService broadcast streams
+  final RealtimeService realtimeService;
+
   StreamSubscription<int>? _rtUnreadCountSub;
+
   // Pagination state
   static const int _pageSize = 20;
   bool _hasMore = true;
   DateTime? _lastCreatedAt;
   String? _lastId;
-  // ADDED: Private variable to store the latest unread count from the stream
+  // Private variable to store the latest unread count from the stream
   int _latestUnreadCount = 0;
-  // RealtimeService (injected)
-  final RealtimeService realtimeService;
 
   NotificationsBloc({
     required GetPaginatedNotificationsUseCase getPaginatedNotificationsUseCase,
@@ -90,7 +90,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         emit(
           NotificationsLoaded(
             notifications: newNotifications,
-            // CHANGED: Use the stored latest count
             unreadCount: _latestUnreadCount,
             hasMore: _hasMore,
           ),
@@ -182,7 +181,6 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         emit(
           NotificationsLoaded(
             notifications: newNotifications,
-            // CHANGED: Use the stored latest count
             unreadCount: _latestUnreadCount,
             hasMore: _hasMore,
           ),
@@ -234,14 +232,12 @@ class NotificationsBloc extends Bloc<NotificationsEvent, NotificationsState> {
         );
       },
       (count) {
-        // ADDED: Store the latest count
         _latestUnreadCount = count;
         AppLogger.info('Unread count stream updated: $count');
         final currentState = state;
         if (currentState is NotificationsLoaded) {
           emit(currentState.copyWith(unreadCount: count));
         } else {
-          // Added: Handle non-Loaded states by emitting initial Loaded with unread count
           emit(
             NotificationsLoaded(
               notifications: const [],

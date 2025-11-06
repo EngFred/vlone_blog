@@ -47,8 +47,6 @@ class EditProfileEditing extends EditProfileState {
     String? currentBio,
     XFile? selectedImage,
     bool? isSubmitting,
-    // 🌟🌟🌟 THE FIX: Use Object? and cast, or define a unique nullable type,
-    // to allow explicitly passing null without falling back to 'this.value'.
     Object? usernameError = const _Optional(),
     Object? bioError = const _Optional(),
     Object? generalError = const _Optional(),
@@ -62,8 +60,6 @@ class EditProfileEditing extends EditProfileState {
       currentBio: currentBio ?? this.currentBio,
       selectedImage: selectedImage ?? this.selectedImage,
       isSubmitting: isSubmitting ?? this.isSubmitting,
-      // Apply the fix here: If the value is the sentinel, use 'this.value'.
-      // Otherwise, use the passed value (which might be null).
       usernameError: usernameError is _Optional
           ? this.usernameError
           : usernameError as String?,
@@ -90,7 +86,6 @@ class EditProfileEditing extends EditProfileState {
   ];
 }
 
-// 🌟🌟🌟 Helper class to allow explicitly setting a field to null 🌟🌟🌟
 class _Optional {
   const _Optional();
 }

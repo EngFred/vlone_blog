@@ -11,7 +11,6 @@ class SignupPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use the app-level AuthBloc provided by MyApp
     return Scaffold(
       body: BlocListener<AuthBloc, AuthState>(
         listener: (context, state) {

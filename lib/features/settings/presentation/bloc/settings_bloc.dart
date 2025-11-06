@@ -31,7 +31,6 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     result.fold(
       (failure) {
         AppLogger.error('Failed to load theme mode: $failure');
-        // Keep whatever the current state.themeMode is (fallback).
         emit(SettingsLoaded(state.themeMode));
       },
       (modeStr) {
@@ -68,7 +67,6 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       (failure) {
         AppLogger.error('Failed to save theme mode: $failure');
         // If saving fails we still reflect the user's choice in UI (so user sees their change),
-        // but you could also choose to revert if you prefer.
         emit(SettingsLoaded(event.mode));
       },
       (_) {

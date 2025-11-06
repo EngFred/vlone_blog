@@ -111,7 +111,7 @@ final sl = GetIt.instance;
 // Core Services Registration
 // -------------------
 void initCoreServices() {
-  // Register MediaDownloadService as a LazySingleton
+  // Registering MediaDownloadService as a LazySingleton
   sl.registerLazySingleton<MediaDownloadService>(() => MediaDownloadService());
 }
 
@@ -461,7 +461,6 @@ Future<void> initSettings() async {
 }
 
 Future<void> initRealtime() async {
-  // Ensure the stream usecases are already registered (or register them here).
   sl.registerLazySingleton<RealtimeService>(
     () => RealtimeService(
       streamNewPostsUseCase: sl<StreamNewPostsUseCase>(),

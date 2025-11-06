@@ -7,19 +7,14 @@ abstract class NotificationsState extends Equatable {
   List<Object?> get props => [];
 }
 
-/// Initial state, before any subscription.
 class NotificationsInitial extends NotificationsState {}
 
-/// State while the initial subscription is being established.
 class NotificationsLoading extends NotificationsState {
   const NotificationsLoading();
 }
 
-/// State while loading more notifications (pagination).
 class NotificationsLoadingMore extends NotificationsState {}
 
-/// State when notifications are successfully loaded or updated.
-/// Now includes selection, deletion, and pagination states.
 class NotificationsLoaded extends NotificationsState {
   final List<NotificationEntity> notifications;
   final int unreadCount;
@@ -28,7 +23,7 @@ class NotificationsLoaded extends NotificationsState {
   final String? loadMoreError;
   final bool isSelectionMode;
   final Set<String> selectedNotificationIds;
-  final bool isDeleting; // To show a loading indicator during delete
+  final bool isDeleting;
 
   const NotificationsLoaded({
     required this.notifications,
@@ -77,7 +72,6 @@ class NotificationsLoaded extends NotificationsState {
   ];
 }
 
-/// State when an error occurs while fetching or streaming notifications.
 class NotificationsError extends NotificationsState {
   final String message;
 

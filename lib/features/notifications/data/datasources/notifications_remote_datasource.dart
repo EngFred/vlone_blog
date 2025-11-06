@@ -12,6 +12,7 @@ class NotificationsRemoteDataSource {
 
   NotificationsRemoteDataSource(this.client);
 
+  /// Helper for normalizing the dynamic list response from a Postgres RPC function.
   List _normalizeRpcList(dynamic resp) {
     if (resp == null) return <dynamic>[];
     if (resp is List) return resp;
@@ -19,7 +20,9 @@ class NotificationsRemoteDataSource {
     return <dynamic>[];
   }
 
-  /// Paginated fetch of notifications using the RPC
+  /// Fetches a paginated list of enriched notifications for a specific user using a Postgres RPC function.
+  ///
+  /// This method uses cursor-based pagination parameters (`lastCreatedAt`, `lastId`) for efficient loading.
   Future<List<NotificationModel>> getPaginatedNotifications({
     required String userId,
     int pageSize = 20,
@@ -56,8 +59,11 @@ class NotificationsRemoteDataSource {
     }
   }
 
-  /// Returns a broadcast stream giving the current user's notifications (newest-first).
-  /// Seeds initial data from `_notificationsView` and listens to table changes on `_notificationsTable`.
+  /// Provides a broadcast stream of the current user's notifications.
+  ///
+  /// It **seeds** initial data by querying the enriched `notifications_view` and then
+  /// subscribes to **real-time changes** on the underlying `notifications` table.
+  /// On any real-time event, it refetches the entire view to ensure all foreign key joins (e.g., actor details) are up to date.
   Stream<List<NotificationModel>> getNotificationsStream() {
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
@@ -74,7 +80,7 @@ class NotificationsRemoteDataSource {
 
     controller = StreamController<List<NotificationModel>>.broadcast(
       onListen: () async {
-        // Seed initial notifications by querying the view (provides actor_username, actor_image_url, etc.)
+        // 1. Seeding initial data.
         try {
           final initialResp = await client
               .from(_notificationsView)
@@ -82,7 +88,6 @@ class NotificationsRemoteDataSource {
               .eq('recipient_id', userId)
               .order('created_at', ascending: false);
 
-          // ignore: dead_code, unnecessary_type_check
           final rows = (initialResp is List) ? initialResp : <dynamic>[];
           final initial = rows
               .map((r) => NotificationModel.fromMap(r as Map<String, dynamic>))
@@ -101,10 +106,10 @@ class NotificationsRemoteDataSource {
           if (!controller.isClosed) {
             controller.addError(ServerException(e.toString()));
           }
-          // still continue to subscribe to realtime to recover
+          // Continue to subscribe to real-time events even if seeding fails.
         }
 
-        // Subscribe to actual table realtime events and refetch view on changes
+        // 2. Subscribing to real-time events.
         try {
           final realtime = client
               .from(_notificationsTable)
@@ -114,14 +119,13 @@ class NotificationsRemoteDataSource {
           sub = realtime.listen(
             (payloadList) async {
               try {
-                // On any event for this recipient, refetch the canonical view to pick up joins/metadata
+                // On any event (Insert/Update/Delete), refetch the canonical VIEW to get enriched data.
                 final resp = await client
                     .from(_notificationsView)
                     .select()
                     .eq('recipient_id', userId)
                     .order('created_at', ascending: false);
 
-                // ignore: dead_code, unnecessary_type_check
                 final rows = (resp is List) ? resp : <dynamic>[];
                 final items = rows
                     .map(
@@ -160,14 +164,14 @@ class NotificationsRemoteDataSource {
             error: e,
             stackTrace: st,
           );
-          // Already seeded earlier; expose the error to listeners
+          // Exposing the error to listeners if the subscription setup failed.
           if (!controller.isClosed && controller.hasListener) {
             controller.addError(ServerException(e.toString()));
           }
         }
       },
       onCancel: () async {
-        // small delay to avoid flapping
+        // Small delay to prevent resource flapping.
         await Future.delayed(const Duration(milliseconds: 50));
         if (!controller.hasListener) {
           AppLogger.info(
@@ -184,8 +188,9 @@ class NotificationsRemoteDataSource {
     return controller.stream;
   }
 
-  /// Stream unread count (derived) for the current user.
-  /// Seeds with a COUNT(*) query and refreshes on table events.
+  /// Provides a real-time broadcast stream of the current user's unread notification count.
+  ///
+  /// This streams **seeds** the initial count and refreshes on any real-time table event.
   Stream<int> getUnreadCountStream() {
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
@@ -202,14 +207,18 @@ class NotificationsRemoteDataSource {
       onListen: () async {
         Future<void> fetchAndAdd() async {
           try {
+            // Counting notifications where 'read_at' is NULL.
             final resp = await client
                 .from(_notificationsTable)
                 .select('id')
                 .eq('recipient_id', userId)
-                // FIX: Use .filter to avoid Dart keyword conflict with .is
-                .filter('read_at', 'is', null);
+                .filter(
+                  'read_at',
+                  'is',
+                  null,
+                ); // Using .filter for 'is' operator.
 
-            // ignore: dead_code, unnecessary_type_check
+            // ignore: dead_code
             final count = (resp is List) ? resp.length : 0;
             if (!ctrl.isClosed) ctrl.add(count);
           } catch (e, st) {
@@ -224,10 +233,10 @@ class NotificationsRemoteDataSource {
           }
         }
 
-        // initial
+        // 1. Initial count fetch.
         await fetchAndAdd();
 
-        // subscribe to table changes for this recipient and refresh on events
+        // 2. Subscribing to table changes to refresh the count on any event.
         try {
           final realtime = client
               .from(_notificationsTable)
@@ -275,7 +284,7 @@ class NotificationsRemoteDataSource {
     return ctrl.stream;
   }
 
-  /// Mark a single notification as read
+  /// Marks a single notification as read by updating its `read_at` timestamp.
   Future<void> markAsRead(String notificationId) async {
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
@@ -303,7 +312,7 @@ class NotificationsRemoteDataSource {
     }
   }
 
-  /// Mark all unread notifications as read
+  /// Marks all unread notifications for the current user as read.
   Future<void> markAllAsRead() async {
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
@@ -318,8 +327,11 @@ class NotificationsRemoteDataSource {
           .from(_notificationsTable)
           .update({'read_at': DateTime.now().toIso8601String()})
           .eq('recipient_id', userId)
-          // FIX: Use .filter to avoid Dart keyword conflict with .is
-          .filter('read_at', 'is', null);
+          .filter(
+            'read_at',
+            'is',
+            null,
+          ); // Targeting only unread notifications.
 
       AppLogger.info('All unread notifications marked as read successfully.');
     } catch (e, stackTrace) {
@@ -333,6 +345,8 @@ class NotificationsRemoteDataSource {
   }
 
   /// Deletes one or more notifications by their IDs.
+  ///
+  /// The deletion is also filtered by `recipient_id` to ensure users can only delete their own notifications.
   Future<void> deleteNotifications(List<String> notificationIds) async {
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
@@ -350,8 +364,7 @@ class NotificationsRemoteDataSource {
       await client
           .from(_notificationsTable)
           .delete()
-          // FIX: Use .filter to avoid Dart keyword conflict with .in
-          .filter('id', 'in', notificationIds)
+          .filter('id', 'in', notificationIds) // Filtering by notification IDs.
           .eq('recipient_id', userId);
 
       AppLogger.info(

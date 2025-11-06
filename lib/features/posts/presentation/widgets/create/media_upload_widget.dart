@@ -4,24 +4,20 @@ import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/utils/crop_utils.dart';
-import 'package:vlone_blog_app/core/utils/helpers.dart';
+import 'package:vlone_blog_app/core/utils/media_utils.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/media_file_type.dart';
 import 'media_picker_sheet.dart';
 import 'media_placeholder.dart';
 import 'media_preview.dart';
 import 'trimmer_view.dart';
-import 'dart:async'; // FIX: For TimeoutException
+import 'dart:async';
 
 class MediaUploadWidget extends StatefulWidget {
-  final File? selectedMediaFile; // FIX: Issue 1 - Prop from Bloc for state sync
-  final MediaType?
-  selectedMediaType; // FIX: Issue 1 - Prop from Bloc for state sync
+  final File? selectedMediaFile;
+  final MediaType? selectedMediaType;
   final Function(File?, MediaType?) onMediaSelected;
 
-  /// Optional callback used to notify parent that media processing (duration fetch,
-  /// video initialization, trimming flow) is underway. Parent should show a
-  /// full-screen overlay when true.
   final void Function(bool isProcessing)? onProcessing;
 
   const MediaUploadWidget({
@@ -45,7 +41,6 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
   @override
   void initState() {
     super.initState();
-    // FIX: Issue 1 - Initialize local state from Bloc props on mount
     _mediaFile = widget.selectedMediaFile;
     _mediaType = widget.selectedMediaType;
     _initVideoControllerIfNeeded();
@@ -54,10 +49,8 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
   @override
   void didUpdateWidget(covariant MediaUploadWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // FIX: Issue 1 - Sync local state if Bloc props change (e.g., on reselection or external updates)
     if (widget.selectedMediaFile?.path != oldWidget.selectedMediaFile?.path ||
         widget.selectedMediaType != oldWidget.selectedMediaType) {
-      // Dispose old controller if media changes or becomes null
       if (_videoController != null) {
         _videoController!.removeListener(_videoListener);
         _videoController!.dispose();
@@ -70,7 +63,6 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
     }
   }
 
-  // FIX: Issue 1 & 2 - Async init for video if pre-selected, with error handling
   Future<void> _initVideoControllerIfNeeded() async {
     if (_mediaType == MediaType.video &&
         _mediaFile != null &&
@@ -86,15 +78,12 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
         _videoController!.addListener(_videoListener);
         if (mounted) setState(() {});
       } catch (e) {
-        debugPrint(
-          'Failed to init pre-selected video: $e',
-        ); // FIX: Production logging
+        debugPrint('Failed to init pre-selected video: $e');
         if (mounted) {
           SnackbarUtils.showError(
             context,
             'Failed to load video. Try another file.',
           );
-          // FIX: Update Bloc instead of local setState to drive UI via props
           widget.onMediaSelected(null, null);
         }
       }
@@ -128,18 +117,17 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
       }
       return;
     }
-    if (pickedFile == null) return; // User cancelled
+    if (pickedFile == null) return;
     final file = File(pickedFile.path);
     final mediaType = isImage ? MediaType.image : MediaType.video;
 
     await _videoController?.dispose();
     _videoController = null;
 
-    // Notify parent that processing is starting (show full-screen overlay)
+    // Notify parent that processing is starting (showing full-screen overlay)
     widget.onProcessing?.call(true);
 
     if (mediaType == MediaType.image) {
-      // Images: Quick validation and set (no duration check needed)
       try {
         final imageBytes = await file.readAsBytes();
         await decodeImageFromList(imageBytes);
@@ -149,10 +137,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
             _mediaType = mediaType;
             _isPreviewPlaying = false;
           });
-          widget.onMediaSelected(
-            file,
-            mediaType,
-          ); // Update Bloc after local for initial set
+          widget.onMediaSelected(file, mediaType);
         }
       } catch (e) {
         debugPrint('Error loading image: $e');
@@ -235,13 +220,13 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
         );
         _videoController!.addListener(_videoListener);
       } catch (e) {
-        debugPrint('Error initializing video: $e'); // FIX: Production logging
+        debugPrint('Error initializing video: $e');
         if (mounted) {
           SnackbarUtils.showError(
             context,
             'Failed to load video. Try another file.',
           );
-          // FIX: Update Bloc instead of local setState to drive UI via props
+
           widget.onMediaSelected(null, null);
         }
       } finally {
@@ -259,7 +244,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
   }
 
   void _removeMedia() {
-    debugPrint('Removing media'); // FIX: Logging for debugging
+    debugPrint('Removing media');
     // Dispose controller and immediately update local state for responsive UI (show placeholder without waiting for BLoC rebuild)
     _videoController?.removeListener(_videoListener);
     _videoController?.dispose();
@@ -308,7 +293,7 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
           builder: (context) => TrimmerView(
             _mediaFile!,
             maxDuration: maxAllowed,
-            initialStart: 0.0, // Always start from 0 for simplicity
+            initialStart: 0.0,
             initialEnd: initialEnd,
           ),
         ),

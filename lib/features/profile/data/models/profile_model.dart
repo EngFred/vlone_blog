@@ -37,7 +37,6 @@ class ProfileModel {
     );
   }
 
-  /// Convert model to a Map matching the DB shape used elsewhere in the code.
   Map<String, dynamic> toMap() {
     return {
       'id': id,

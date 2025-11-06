@@ -19,7 +19,6 @@ class LoadMoreReelsEvent extends ReelsEvent {
 
 class RefreshReelsEvent extends ReelsEvent {
   final String userId;
-  // ADDED: Optional completer for RefreshIndicator
   final Completer<void>? refreshCompleter;
 
   const RefreshReelsEvent(this.userId, {this.refreshCompleter});

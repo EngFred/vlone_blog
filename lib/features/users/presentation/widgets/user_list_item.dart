@@ -37,19 +37,15 @@ class UserListItem extends StatelessWidget {
         ? Colors.grey[300]
         : theme.dividerColor;
 
-    // Use Padding for the margin. This ensures the tap target is only the item itself.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-      // Use Material for the card surface, color, and shape.
-      // This works correctly with the InkWell ripple.
       child: Material(
         color: colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: () => context.push('${Constants.profileRoute}/${user.id}'),
-          borderRadius: BorderRadius.circular(12), // Match Material border
+          borderRadius: BorderRadius.circular(12),
           child: Padding(
-            // Use Padding for the content, replacing the Container's padding
             padding: const EdgeInsets.symmetric(
               vertical: 10.0,
               horizontal: 8.0,

@@ -7,6 +7,12 @@ import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_ti
 import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/empty_state_widget.dart';
 
+/// A versatile widget for displaying comments associated with a specific post.
+///
+/// This widget handles the state management logic for fetching, streaming,
+/// and displaying comments using the [CommentsBloc]. It supports two primary
+/// display modes: a fixed-height, non-scrollable list (e.g., in a sheet)
+/// and a full, scrollable list with pull-to-refresh and infinite loading.
 class CommentsSection extends StatefulWidget {
   final int? commentsCount;
   final void Function(CommentEntity) onReply;
@@ -32,10 +38,13 @@ class CommentsSection extends StatefulWidget {
 class _CommentsSectionState extends State<CommentsSection> {
   bool _hasDispatchedInitial = false;
 
+  /// Dispatches the initial comments fetching and stream events if the
+  /// widget is configured to be scrollable (implying it's the main view).
   @override
   void initState() {
     super.initState();
     if (widget.scrollable && !_hasDispatchedInitial) {
+      // Deferring dispatch until after the first frame ensures the BLoC is fully available.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           context.read<CommentsBloc>().add(
@@ -95,6 +104,7 @@ class _CommentsSectionState extends State<CommentsSection> {
     );
   }
 
+  /// The main build method, routing the UI based on the [CommentsState].
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<CommentsBloc, CommentsState>(
@@ -116,11 +126,7 @@ class _CommentsSectionState extends State<CommentsSection> {
           return _buildCommentList(context, commentList, state);
         }
 
-        // Note: CommentsLoadingMore is handled *inside* _buildCommentList
-        // as an item, so we don't need a top-level check for it.
-        // We just need to make sure we don't return shrink() if
-        // the state is CommentsLoaded.
-
+        // Returning a placeholder if the state is unhandled.
         return const SizedBox.shrink();
       },
     );
@@ -199,7 +205,7 @@ class _CommentsSectionState extends State<CommentsSection> {
   Widget _buildEmpty() {
     final emptyWidget = EmptyStateWidget(
       icon: Icons.chat_bubble_outline,
-      message: 'No comments yet',
+      message: 'No comments yet. Be the first to comment',
     );
 
     if (widget.scrollable) {
@@ -225,6 +231,8 @@ class _CommentsSectionState extends State<CommentsSection> {
     );
   }
 
+  /// Builds the actual list of comments. The implementation differs based on
+  /// the `scrollable` flag to correctly handle infinite loading.
   Widget _buildCommentList(
     BuildContext context,
     List<CommentEntity> comments,
@@ -240,6 +248,7 @@ class _CommentsSectionState extends State<CommentsSection> {
       );
     }).toList();
 
+    // --- Non-Scrollable Mode (e.g., in a Bottom Sheet) ---
     Widget list = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -248,26 +257,29 @@ class _CommentsSectionState extends State<CommentsSection> {
       ],
     );
 
+    // --- Scrollable Mode (e.g., in the main post detail page) ---
     if (widget.scrollable) {
       list = RefreshIndicator(
         onRefresh: _onRefresh,
         child: ListView.builder(
           padding: EdgeInsets.zero,
+          // Total items: number of comments + (1 for header if visible) + (1 for loading indicator if hasMore)
           itemCount:
               commentTiles.length +
-              (state.hasMore ? 1 : 0) +
-              (widget.showCountHeader ? 1 : 0), // <--- FIX 1: Corrected logic
+              (state.hasMore || state.loadMoreError != null ? 1 : 0) +
+              (widget.showCountHeader ? 1 : 0),
           itemBuilder: (context, index) {
             if (widget.showCountHeader && index == 0) {
               return _buildCommentsHeader(comments.length);
             }
 
+            // Adjusting the index to account for the optional header
             final contentIndex = widget.showCountHeader ? index - 1 : index;
 
+            // The last item slot is reserved for Load More UI or Load More Error UI
             if (contentIndex == commentTiles.length) {
-              // This item is the "load more" or error slot.
-              // It is only built if state.hasMore is true.
               if (state.loadMoreError != null) {
+                // Displaying error UI with a retry button
                 return Container(
                   margin: const EdgeInsets.all(16),
                   padding: const EdgeInsets.all(16),
@@ -302,13 +314,11 @@ class _CommentsSectionState extends State<CommentsSection> {
                   ),
                 );
               }
-              // This is safe because itemCount is zero if hasMore is false
+              // Displaying the loading more indicator
               return _buildLoadingMore();
             }
 
-            // This is a regular comment tile
-            // The RangeError was here because 'contentIndex' could be out of bounds
-            // but the itemCount fix resolves this.
+            // Displaying a regular comment tile
             return commentTiles[contentIndex];
           },
         ),

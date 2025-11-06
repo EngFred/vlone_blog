@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:dartz/dartz.dart';
 import 'package:vlone_blog_app/core/domain/errors/exceptions.dart';
 import 'package:vlone_blog_app/core/domain/errors/failure.dart';
-import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/comments/data/datasources/comments_remote_datasource.dart';
 import 'package:vlone_blog_app/features/comments/domain/entities/comment_entity.dart';
 import 'package:vlone_blog_app/features/comments/domain/repositories/comments_repository.dart';
@@ -63,7 +62,7 @@ class CommentsRepositoryImpl implements CommentsRepository {
         lastCreatedAt: lastCreatedAt,
         lastId: lastId,
       );
-      // CHANGE: Append to stream cache (for realtime consistency), but *return* new models for explicit pagination in Bloc.
+      // Append to stream cache (for realtime consistency), but *return* new models for explicit pagination in Bloc.
       remoteDataSource.appendMoreComments(postId, moreModels);
       final newEntities = moreModels.map((model) => model.toEntity()).toList();
       final newTree = _buildCommentTree(
@@ -93,16 +92,11 @@ class CommentsRepositoryImpl implements CommentsRepository {
                 Right<Failure, Map<String, dynamic>>(commentEvent),
           )
           .handleError((error) {
-            AppLogger.error(
-              'Error in streamCommentEvents repo: $error',
-              error: error,
-            );
             return Left<Failure, Map<String, dynamic>>(
               ServerFailure(error.toString()),
             );
           });
     } catch (e) {
-      AppLogger.error('Exception setting up streamCommentEvents: $e', error: e);
       return Stream.value(Left(ServerFailure(e.toString())));
     }
   }
@@ -123,10 +117,10 @@ class CommentsRepositoryImpl implements CommentsRepository {
       }
     }
 
-    // Sort roots newest first (server already did this, but safe)
+    // Sorts roots newest first (server already did this, but safe)
     roots.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-    // Sort children newest first
+    // Sorts children newest first
     for (final children in childrenMap.values) {
       children.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     }

@@ -6,12 +6,13 @@ import 'package:vlone_blog_app/core/utils/app_logger.dart';
 class LikesRemoteDataSource {
   final SupabaseClient client;
 
+  // Realtime channel and controller for global like events.
   RealtimeChannel? _likesChannel;
   StreamController<Map<String, dynamic>>? _likesController;
 
   LikesRemoteDataSource(this.client);
 
-  /// Handles liking or unliking a post.
+  /// Toggles the like status for a post by inserting or deleting a record in the 'likes' table.
   Future<void> likePost({
     required String postId,
     required String userId,
@@ -23,11 +24,13 @@ class LikesRemoteDataSource {
       );
 
       if (isLiked) {
+        // Liking: Inserting a new record.
         await client.from('likes').insert({
           'post_id': postId,
           'user_id': userId,
         });
       } else {
+        // Unliking: Deleting the existing record.
         await client.from('likes').delete().match({
           'post_id': postId,
           'user_id': userId,
@@ -41,8 +44,9 @@ class LikesRemoteDataSource {
     }
   }
 
-  /// Stream for all like/unlike events.
-  /// Useful for updating UI counts on a feed.
+  /// Provides a real-time broadcast stream for all post like/unlike events.
+  ///
+  /// This is essential for updating UI elements, like post like counters, across the application instantly.
   Stream<Map<String, dynamic>> streamLikeEvents() {
     AppLogger.info('Setting up real-time stream for like events');
 
@@ -55,6 +59,7 @@ class LikesRemoteDataSource {
 
     _likesController = StreamController<Map<String, dynamic>>.broadcast();
 
+    // Using a unique channel name to prevent potential conflicts.
     final channel = client.channel(
       'likes_updates_${DateTime.now().millisecondsSinceEpoch}',
     );
@@ -68,6 +73,7 @@ class LikesRemoteDataSource {
             try {
               AppLogger.info('Like event received: ${payload.eventType}');
 
+              // Retrieving the relevant record based on the event type (oldRecord for DELETE, newRecord for INSERT/UPDATE).
               final record = payload.eventType == PostgresChangeEvent.delete
                   ? payload.oldRecord
                   : payload.newRecord;
@@ -95,6 +101,7 @@ class LikesRemoteDataSource {
         )
         .subscribe();
 
+    // Cleanup logic: unsubscribe and close resources when all listeners are gone.
     _likesController!.onCancel = () async {
       await Future.delayed(const Duration(milliseconds: 50));
       if (!(_likesController?.hasListener ?? false)) {
@@ -117,7 +124,7 @@ class LikesRemoteDataSource {
     });
   }
 
-  /// Cleanup method
+  /// Disposes of the real-time channel and stream controller.
   void dispose() {
     AppLogger.info('Disposing LikesRemoteDataSource');
     try {

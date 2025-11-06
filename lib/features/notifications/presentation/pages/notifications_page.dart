@@ -220,11 +220,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ),
           body: Stack(
             children: [
-              // Use SafeArea around the content but disable bottom to achieve
+              // Using SafeArea around the content but disable bottom to achieve
               // edge-to-edge content scrolling behind the system navigation bar.
               SafeArea(
-                top: false, // AppBar handles top inset
-                bottom: false, // <-- FIX: Do not apply bottom system inset here
+                top: false,
+                bottom: false,
                 child: BlocBuilder<NotificationsBloc, NotificationsState>(
                   builder: (context, state) {
                     if (state is NotificationsLoading ||
@@ -272,7 +272,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         onRefresh: _onRefresh,
                         child: CustomScrollView(
                           controller: _scrollController,
-                          // The content will now extend under the system bar
                           slivers: [
                             SliverList(
                               delegate: SliverChildBuilderDelegate((
@@ -293,9 +292,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
                               SliverToBoxAdapter(
                                 child: _buildLoadMoreFooter(state),
                               ),
-                            // Manually add the bottom padding (system inset) to the end
-                            // of the scrollable content to prevent the last items
-                            // from being covered by the system navigation bar.
                             SliverToBoxAdapter(
                               child: SizedBox(
                                 height: MediaQuery.of(context).padding.bottom,

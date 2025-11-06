@@ -14,7 +14,7 @@ import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
 import 'package:vlone_blog_app/features/comments/presentation/widgets/comment_input_field.dart';
 import 'package:vlone_blog_app/features/comments/presentation/widgets/comments_section.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/post_details_content.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/details/post_details_content.dart';
 
 class PostDetailsPage extends StatefulWidget {
   final String postId;
@@ -240,10 +240,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
           child: Stack(
             children: [
               Scaffold(
-                // *** FIX HERE ***
                 // Setting this to 'false' stops the Scaffold from shrinking.
-                // Your manual Padding with viewInsets.bottom will now be
-                // the only thing lifting the input field.
                 resizeToAvoidBottomInset: false,
                 backgroundColor: Theme.of(context).colorScheme.surface,
                 appBar: AppBar(
@@ -258,9 +255,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                   iconTheme: IconThemeData(
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
-                  actions: [
-                    // REMOVED BOOKMARK ICON BUTTON
-                  ],
                 ),
                 body: MultiBlocListener(
                   listeners: [
@@ -325,8 +319,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                                   ],
                                 ),
                               ),
-                              // This Padding now correctly lifts the input
-                              // field from the bottom of the *full* screen.
                               Padding(
                                 padding: EdgeInsets.only(
                                   bottom: MediaQuery.of(

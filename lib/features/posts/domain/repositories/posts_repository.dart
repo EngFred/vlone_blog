@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:dartz/dartz.dart';
 import 'package:vlone_blog_app/core/domain/errors/failure.dart';
-import 'package:vlone_blog_app/features/posts/domain/entities/media_file_type.dart'; // 💡 NEW IMPORT
+import 'package:vlone_blog_app/features/posts/domain/entities/media_file_type.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 
 abstract class PostsRepository {
@@ -11,7 +11,6 @@ abstract class PostsRepository {
     required String userId,
     String? content,
     File? mediaFile,
-    // 🔄 UPDATED: Use MediaType enum
     MediaType? mediaType,
   });
   Future<Either<Failure, Unit>> deletePost(String postId);
@@ -43,9 +42,6 @@ abstract class PostsRepository {
 
   // Action
   Future<Either<Failure, Unit>> sharePost({required String postId});
-
-  // NOTE: likePost, favoritePost, getFavorites are REMOVED and moved to
-  // LikesRepository and FavoritesRepository.
 
   // Real-Time Streams
   Stream<Either<Failure, PostEntity>> streamNewPosts();

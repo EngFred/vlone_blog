@@ -23,7 +23,7 @@ void main() async {
 
   AppLogger.info('Initializing app dependencies');
 
-  // Initialize Supabase first
+  // Initializing Supabase first
   await Supabase.initialize(
     url: Constants.supabaseUrl,
     anonKey: Constants.supabaseAnonKey,
@@ -34,7 +34,7 @@ void main() async {
   await di.initAuth(supabaseClient: Supabase.instance.client);
   await di.initRealtime();
 
-  // Parallelize other feature inits
+  // Parallelizing other feature inits
   await Future.wait([
     di.initPosts(),
     di.initLikes(),
@@ -140,7 +140,7 @@ class _MyAppState extends State<MyApp> {
                       _didInitialAuthNavigate = false;
                       appRouter.go(Constants.loginRoute);
 
-                      // Stop realtime service when user logs out
+                      // Stopping realtime service when user logs out
                       try {
                         final realtime = di.sl<RealtimeService>();
                         if (realtime.isStarted) {

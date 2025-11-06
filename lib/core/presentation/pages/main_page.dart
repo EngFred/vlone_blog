@@ -28,13 +28,13 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   final Set<int> _loadedTabs = {};
   final List<String> _tabNames = const ['Feed', 'Reels', 'Users', 'Profile'];
 
-  // Cache bloc references to avoid multiple context.read()
+  // Caching bloc references to avoid multiple context.read()
   FeedBloc? _feedBloc;
   ReelsBloc? _reelsBloc;
   ProfileBloc? _profileBloc;
   UserPostsBloc? _userPostsBloc;
 
-  // Prevent multiple simultaneous operations
+  // Prevents multiple simultaneous operations
   Completer<void>? _currentOperation;
 
   @override

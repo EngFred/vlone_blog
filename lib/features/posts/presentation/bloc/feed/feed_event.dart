@@ -26,7 +26,6 @@ class RefreshFeedEvent extends FeedEvent {
   List<Object?> get props => [userId, refreshCompleter];
 }
 
-// For reacting to PostActionsBloc (e.g., post created/deleted)
 class AddPostToFeed extends FeedEvent {
   final PostEntity post;
   const AddPostToFeed(this.post);
@@ -41,7 +40,6 @@ class RemovePostFromFeed extends FeedEvent {
   List<Object?> get props => [postId];
 }
 
-// For managing its own realtime subscription
 class StartFeedRealtime extends FeedEvent {
   const StartFeedRealtime();
 }

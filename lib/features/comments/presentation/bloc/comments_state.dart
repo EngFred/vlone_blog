@@ -13,10 +13,8 @@ class CommentsLoading extends CommentsState {
   const CommentsLoading();
 }
 
-// New: For load-more spinner.
 class CommentsLoadingMore extends CommentsState {}
 
-// Updated: Loaded with pagination fields.
 class CommentsLoaded extends CommentsState {
   final List<CommentEntity> comments;
   final bool hasMore;

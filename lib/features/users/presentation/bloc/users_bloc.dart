@@ -37,7 +37,6 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     Emitter<UsersState> emit,
   ) async {
     _currentUserId = event.currentUserId;
-    // Removed the offset check, always load on initial event
     emit(UsersLoading());
     await _fetchUsers(emit, isRefresh: true);
   }
@@ -61,12 +60,11 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     Emitter<UsersState> emit,
   ) async {
     _currentUserId = event.currentUserId;
-    // Reset cursor state for refresh
     _lastCreatedAt = null;
     _lastId = null;
     _hasMore = true;
 
-    // Do not emit UsersLoading here, RefreshIndicator handles the visual cue
+    // Dot emitting UsersLoading here, RefreshIndicator handles the visual cue
     await _fetchUsers(
       emit,
       isRefresh: true,
@@ -95,8 +93,7 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
       UsersLoaded(
         updatedUsers,
         hasMore: currentState.hasMore,
-        refreshCompleter:
-            currentState.refreshCompleter, // Pass completer through
+        refreshCompleter: currentState.refreshCompleter,
       ),
     );
   }
@@ -104,11 +101,9 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
   Future<void> _fetchUsers(
     Emitter<UsersState> emit, {
     required bool isRefresh,
-    // Added optional Completer
     Completer<void>? refreshCompleter,
   }) async {
     if (_currentUserId == null) {
-      // Pass completer on error
       emit(
         UsersError(
           'User not authenticated',
@@ -119,7 +114,6 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
       return;
     }
 
-    // Determine the cursor to pass (null on refresh, current state otherwise)
     final DateTime? cursorCreatedAt = isRefresh ? null : _lastCreatedAt;
     final String? cursorId = isRefresh ? null : _lastId;
 
@@ -127,7 +121,6 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
       GetPaginatedUsersParams(
         currentUserId: _currentUserId!,
         pageSize: _pageSize,
-        // Pass the cursor keys
         lastCreatedAt: cursorCreatedAt,
         lastId: cursorId,
       ),
@@ -143,7 +136,6 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
                   : <UserListEntity>[]);
 
         if (isRefresh) {
-          // On refresh error, emit UsersError with existing users list (if any) and the completer
           emit(
             UsersError(
               errorMessage,
@@ -152,20 +144,16 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
             ),
           );
         } else {
-          // On load more error, emit UsersLoadMoreError
           emit(UsersLoadMoreError(errorMessage, currentUsers: currentUsers));
         }
-        // Complete the refresh indicator on error
         refreshCompleter?.complete();
       },
       (newUsers) {
         final List<UserListEntity> updatedUsers;
 
         if (isRefresh) {
-          // On refresh, the new list *is* the updated list
           updatedUsers = newUsers;
         } else {
-          // On load more, append new users to current list
           final currentUsers = state is UsersLoaded
               ? (state as UsersLoaded).users
               : (state is UsersLoadingMore
@@ -175,8 +163,6 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
           updatedUsers = List<UserListEntity>.from(currentUsers)
             ..addAll(newUsers);
         }
-
-        // <<-- UPDATE CURSOR STATE FOR NEXT PAGE -->>
         if (newUsers.isNotEmpty) {
           final lastUser = newUsers.last;
           _lastCreatedAt = lastUser.createdAt;
@@ -184,7 +170,6 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
         }
 
         _hasMore = newUsers.length == _pageSize;
-        // Emit UsersLoaded with the completer
         emit(
           UsersLoaded(
             updatedUsers,
@@ -192,7 +177,6 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
             refreshCompleter: refreshCompleter,
           ),
         );
-        // Complete the refresh indicator on success
         refreshCompleter?.complete();
       },
     );
@@ -210,8 +194,7 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
           UsersLoaded(
             updatedUsers,
             hasMore: currentState.hasMore,
-            refreshCompleter:
-                currentState.refreshCompleter, // Pass completer through
+            refreshCompleter: currentState.refreshCompleter,
           ),
         );
       }

@@ -1,17 +1,17 @@
 import 'dart:async';
 import 'dart:io';
-// We use 'dart:ui' to decode images efficiently.
 import 'dart:ui' as ui;
 import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
+import 'package:video_player/video_player.dart';
 
-/// Defines a reasonable max file size (25MB) to attempt decoding in memory.
+/// Defining a reasonable maximum file size (25MB) for attempting in-memory image decoding.
 const int _maxImageSizeForDimensionCheck = 25 * 1024 * 1024; // 25 MB
 
-/// Helper to get media dimensions (width and height) from a file before upload.
+/// A helper function for retrieving media dimensions (width and height) from a file.
 ///
-/// This utility supports both image and video files by leveraging:
-/// - `dart:ui` for image decoding.
+/// This utility supports both image and video files by utilizing:
+/// - `dart:ui` for decoding image metadata.
 /// - `FFprobeKit` (part of FFmpeg) for video metadata extraction.
 Future<({int width, int height})?> getMediaDimensions(
   File file,
@@ -19,9 +19,7 @@ Future<({int width, int height})?> getMediaDimensions(
 ) async {
   if (mediaType == 'image') {
     try {
-      // ⚠️ PRODUCTION READINESS (Memory Safety):
-      // Check file size *before* reading all bytes into memory.
-      // A 50MB PNG could cause an OutOfMemoryError.
+      // Checking file size *before* reading all bytes into memory to prevent OutOfMemoryErrors with large files.
       final fileSize = await file.length();
       if (fileSize > _maxImageSizeForDimensionCheck) {
         AppLogger.warning(
@@ -30,7 +28,7 @@ Future<({int width, int height})?> getMediaDimensions(
         return null;
       }
 
-      // Use dart:ui to decode image bytes safely
+      // Using dart:ui to decode the image bytes safely.
       final bytes = await file.readAsBytes();
       final completer = Completer<ui.Image>();
       ui.decodeImageFromList(bytes, completer.complete);
@@ -42,13 +40,13 @@ Future<({int width, int height})?> getMediaDimensions(
     }
   } else if (mediaType == 'video') {
     try {
-      // Use FFprobeKit to extract video stream dimensions.
+      // Using FFprobeKit to extract video stream dimensions.
       final info = await FFprobeKit.getMediaInformation(file.path);
       final streams = info.getMediaInformation()?.getStreams() ?? [];
-      // Find the primary video stream
+      // Finding the primary video stream.
       final videoStream = streams.firstWhere(
         (stream) => stream.getType() == 'video',
-        // Throw an exception if no video stream is found
+        // Throwing an exception if no video stream is found.
         orElse: () => throw Exception('No video stream found in metadata.'),
       );
 
@@ -68,4 +66,12 @@ Future<({int width, int height})?> getMediaDimensions(
     }
   }
   return null;
+}
+
+Future<int> getVideoDuration(File videoFile) async {
+  final controller = VideoPlayerController.file(videoFile);
+  await controller.initialize();
+  final duration = controller.value.duration.inSeconds;
+  await controller.dispose();
+  return duration;
 }

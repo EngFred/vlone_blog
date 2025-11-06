@@ -18,13 +18,12 @@ class UserListModel {
   });
 
   factory UserListModel.fromMap(Map<String, dynamic> map) {
-    // Defensive parsing for 'created_at' in case the RPC doesn't return it (though it should now)
     final createdAtString = map['created_at'] as String?;
 
     final parsedCreatedAt =
         createdAtString != null && createdAtString.isNotEmpty
         ? DateTime.parse(createdAtString)
-        : DateTime(2000); // Use a safe default for non-null required field
+        : DateTime(2000);
 
     return UserListModel(
       id: map['id'] as String,

@@ -52,7 +52,7 @@ class LikeError extends LikesState {
   final String message;
   final bool shouldRevert;
   final bool previousState;
-  final int delta; // what change we optimistically applied
+  final int delta;
 
   const LikeError({
     required this.postId,

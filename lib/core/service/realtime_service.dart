@@ -15,31 +15,23 @@ import 'package:vlone_blog_app/features/notifications/domain/usecases/get_unread
 import 'package:vlone_blog_app/features/users/domain/entities/user_list_entity.dart';
 import 'package:vlone_blog_app/features/users/domain/usecases/stream_new_users_usecase.dart';
 
+/// A central service managing all global, application-wide real-time data streams
+/// sourced from the backend. It uses [StreamController]s to broadcast events
+/// to multiple parts of the application (e.g., UI, bloc/cubit layers).
 class RealtimeService {
-  // Posts
+  // --- Use Case Dependencies (Injected for data retrieval) ---
   final StreamNewPostsUseCase streamNewPostsUseCase;
   final StreamPostUpdatesUseCase streamPostUpdatesUseCase;
   final StreamPostDeletionsUseCase streamPostDeletionsUseCase;
-
-  // Likes & Favorites
   final StreamLikesUseCase streamLikesUseCase;
   final StreamFavoritesUseCase streamFavoritesUseCase;
-
-  // Profile updates
   final StreamProfileUpdatesUseCase streamProfileUpdatesUseCase;
-
-  // Notifications
   final GetNotificationsStreamUseCase streamNotificationsUseCase;
   final GetUnreadCountStreamUseCase streamUnreadCountUseCase;
-
-  // Comments (global events)
   final StreamCommentsUseCase streamCommentsUseCase;
-
   final StreamNewUsersUseCase streamNewUsersUseCase;
-  final StreamController<UserListEntity> _newUserController =
-      StreamController<UserListEntity>.broadcast();
 
-  // Broadcast controllers
+  // --- Broadcast Stream Controllers ---
   final StreamController<PostEntity> _newPostController =
       StreamController<PostEntity>.broadcast();
   final StreamController<Map<String, dynamic>> _postUpdatesController =
@@ -52,18 +44,16 @@ class RealtimeService {
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _profileUpdatesController =
       StreamController<Map<String, dynamic>>.broadcast();
-
-  // Notifications
   final StreamController<List<NotificationEntity>> _notificationsController =
       StreamController<List<NotificationEntity>>.broadcast();
   final StreamController<int> _unreadCountController =
       StreamController<int>.broadcast();
-
-  // Comments (global)
   final StreamController<Map<String, dynamic>> _commentsController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<UserListEntity> _newUserController =
+      StreamController<UserListEntity>.broadcast();
 
-  // Backing subscriptions (one set)
+  // --- Backing Subscriptions (Handles the connection to the Use Cases) ---
   StreamSubscription? _newPostsSub;
   StreamSubscription? _postUpdatesSub;
   StreamSubscription? _postDeletionsSub;
@@ -75,7 +65,7 @@ class RealtimeService {
   StreamSubscription? _commentsSub;
   StreamSubscription? _newUsersSub;
 
-  //Map for additional profile subscriptions (beyond current user)
+  // Map for tracking additional profile subscriptions (for users other than the current one).
   final Map<String, StreamSubscription?> _additionalProfileSubs = {};
 
   bool _isStarted = false;
@@ -94,7 +84,7 @@ class RealtimeService {
     required this.streamNewUsersUseCase,
   });
 
-  // Public broadcast streams
+  // --- Public Broadcast Streams (Exposed for consumers) ---
   Stream<PostEntity> get onNewPost => _newPostController.stream;
   Stream<Map<String, dynamic>> get onPostUpdate =>
       _postUpdatesController.stream;
@@ -112,7 +102,7 @@ class RealtimeService {
   bool get isStarted => _isStarted;
   String? get currentUserId => _currentUserId;
 
-  /// Check if streams are healthy (have active listeners)
+  /// Checks if any of the core streams have active listeners, indicating application health.
   bool get areStreamsHealthy {
     return _newPostController.hasListener ||
         _postUpdatesController.hasListener ||
@@ -121,8 +111,10 @@ class RealtimeService {
         _favoritesController.hasListener;
   }
 
-  /// Start the backend subscriptions for the provided userId.
-  /// Idempotent: calling start(userId) multiple times is safe.
+  /// Initiates all backend subscriptions for the provided [userId].
+  ///
+  /// This method is **idempotent**: calling it multiple times for the same user is safe.
+  /// If called for a different user, it gracefully stops the old streams first.
   Future<void> start(String userId) async {
     if (_isStarted && _currentUserId == userId) {
       AppLogger.info('RealtimeService already started for user $userId');
@@ -131,7 +123,7 @@ class RealtimeService {
 
     AppLogger.info('RealtimeService starting for user $userId');
 
-    // If started for a different user, stop first.
+    // Stopping existing streams if the service is starting for a different user.
     if (_isStarted && _currentUserId != userId) {
       await stop();
     }
@@ -140,205 +132,138 @@ class RealtimeService {
 
     try {
       // --------------------
-      // Posts streams
+      // Starting Posts streams (New, Updates, Deletions)
       // --------------------
-      AppLogger.info('RealtimeService: Starting new posts stream');
+      AppLogger.info('RealtimeService: Starting posts streams');
+
       _newPostsSub = streamNewPostsUseCase(NoParams()).listen(
-        (either) {
-          either.fold(
-            (failure) => AppLogger.error(
-              'Realtime new post failure: ${failure.message}',
-            ),
-            (post) {
-              try {
-                if (!_newPostController.isClosed) {
-                  _newPostController.add(post);
-                  AppLogger.info(
-                    'RealtimeService: New post emitted: ${post.id}',
-                  );
-                }
-              } catch (e) {
-                AppLogger.error(
-                  'Failed to add new post to controller: $e',
-                  error: e,
-                );
-              }
-            },
-          );
-        },
+        (either) => either.fold(
+          (failure) =>
+              AppLogger.error('Realtime new post failure: ${failure.message}'),
+          (post) {
+            if (!_newPostController.isClosed) {
+              _newPostController.add(post);
+              AppLogger.info('RealtimeService: New post emitted: ${post.id}');
+            }
+          },
+        ),
         onError: (err) =>
             AppLogger.error('New posts stream error: $err', error: err),
       );
 
-      AppLogger.info('RealtimeService: Starting post updates stream');
       _postUpdatesSub = streamPostUpdatesUseCase(NoParams()).listen(
-        (either) {
-          either.fold(
-            (failure) => AppLogger.error(
-              'Realtime post update failure: ${failure.message}',
-            ),
-            (updateData) {
-              try {
-                if (!_postUpdatesController.isClosed) {
-                  _postUpdatesController.add(
-                    Map<String, dynamic>.from(updateData),
-                  );
-                  AppLogger.info(
-                    'RealtimeService: Post update emitted for: ${updateData['id']}',
-                  );
-                }
-              } catch (e) {
-                AppLogger.error('Failed to forward post update: $e', error: e);
-              }
-            },
-          );
-        },
+        (either) => either.fold(
+          (failure) => AppLogger.error(
+            'Realtime post update failure: ${failure.message}',
+          ),
+          (updateData) {
+            if (!_postUpdatesController.isClosed) {
+              _postUpdatesController.add(Map<String, dynamic>.from(updateData));
+              AppLogger.info(
+                'RealtimeService: Post update emitted for: ${updateData['id']}',
+              );
+            }
+          },
+        ),
         onError: (err) =>
             AppLogger.error('Post updates stream error: $err', error: err),
       );
 
-      AppLogger.info('RealtimeService: Starting post deletions stream');
       _postDeletionsSub = streamPostDeletionsUseCase(NoParams()).listen(
-        (either) {
-          either.fold(
-            (failure) => AppLogger.error(
-              'Realtime post deletion failure: ${failure.message}',
-            ),
-            (postId) {
-              try {
-                if (!_postDeletedController.isClosed) {
-                  _postDeletedController.add(postId);
-                  AppLogger.info(
-                    'RealtimeService: Post deletion emitted: $postId',
-                  );
-                }
-              } catch (e) {
-                AppLogger.error(
-                  'Failed to forward post deletion: $e',
-                  error: e,
-                );
-              }
-            },
-          );
-        },
+        (either) => either.fold(
+          (failure) => AppLogger.error(
+            'Realtime post deletion failure: ${failure.message}',
+          ),
+          (postId) {
+            if (!_postDeletedController.isClosed) {
+              _postDeletedController.add(postId);
+              AppLogger.info('RealtimeService: Post deletion emitted: $postId');
+            }
+          },
+        ),
         onError: (err) =>
             AppLogger.error('Post deletions stream error: $err', error: err),
       );
 
       // --------------------
-      // Likes & Favorites
+      // Starting Likes & Favorites streams
       // --------------------
-      AppLogger.info('RealtimeService: Starting likes stream');
+      AppLogger.info('RealtimeService: Starting likes and favorites streams');
+
       _likesSub = streamLikesUseCase(NoParams()).listen(
-        (either) {
-          either.fold(
-            (failure) =>
-                AppLogger.error('Realtime likes failure: ${failure.message}'),
-            (likeData) {
-              try {
-                if (!_likesController.isClosed) {
-                  _likesController.add(Map<String, dynamic>.from(likeData));
-                }
-              } catch (e) {
-                AppLogger.error('Failed to forward like data: $e', error: e);
-              }
-            },
-          );
-        },
+        (either) => either.fold(
+          (failure) =>
+              AppLogger.error('Realtime likes failure: ${failure.message}'),
+          (likeData) {
+            if (!_likesController.isClosed) {
+              _likesController.add(Map<String, dynamic>.from(likeData));
+            }
+          },
+        ),
         onError: (err) =>
             AppLogger.error('Likes stream error: $err', error: err),
       );
 
-      AppLogger.info('RealtimeService: Starting favorites stream');
       _favoritesSub = streamFavoritesUseCase(NoParams()).listen(
-        (either) {
-          either.fold(
-            (failure) => AppLogger.error(
-              'Realtime favorites failure: ${failure.message}',
-            ),
-            (favData) {
-              try {
-                if (!_favoritesController.isClosed) {
-                  _favoritesController.add(Map<String, dynamic>.from(favData));
-                }
-              } catch (e) {
-                AppLogger.error(
-                  'Failed to forward favorite data: $e',
-                  error: e,
-                );
-              }
-            },
-          );
-        },
+        (either) => either.fold(
+          (failure) =>
+              AppLogger.error('Realtime favorites failure: ${failure.message}'),
+          (favData) {
+            if (!_favoritesController.isClosed) {
+              _favoritesController.add(Map<String, dynamic>.from(favData));
+            }
+          },
+        ),
         onError: (err) =>
             AppLogger.error('Favorites stream error: $err', error: err),
       );
 
       // --------------------
-      // Profile updates
+      // Starting Current User Profile updates stream
       // --------------------
       AppLogger.info('RealtimeService: Starting profile updates stream');
       _profileUpdatesSub = streamProfileUpdatesUseCase(userId).listen(
-        (either) {
-          either.fold(
-            (failure) => AppLogger.error(
-              'Realtime profile updates failure: ${failure.message}',
-            ),
-            (profileData) {
-              try {
-                if (!_profileUpdatesController.isClosed) {
-                  // NEW: Include user_id in the broadcasted data
-                  final dataWithId = {
-                    'user_id': userId,
-                    ...Map<String, dynamic>.from(profileData),
-                  };
-                  _profileUpdatesController.add(dataWithId);
-                }
-              } catch (e) {
-                AppLogger.error(
-                  'Failed to forward profile update: $e',
-                  error: e,
-                );
-              }
-            },
-          );
-        },
+        (either) => either.fold(
+          (failure) => AppLogger.error(
+            'Realtime profile updates failure: ${failure.message}',
+          ),
+          (profileData) {
+            if (!_profileUpdatesController.isClosed) {
+              // Including the user_id in the broadcasted data for context.
+              final dataWithId = {
+                'user_id': userId,
+                ...Map<String, dynamic>.from(profileData),
+              };
+              _profileUpdatesController.add(dataWithId);
+            }
+          },
+        ),
         onError: (err) =>
             AppLogger.error('Profile updates stream error: $err', error: err),
       );
 
       // --------------------
-      // Notifications (batch) & unread count
+      // Starting Notifications (batch) & unread count streams
       // --------------------
-      AppLogger.info('RealtimeService: Starting notifications stream');
+      AppLogger.info('RealtimeService: Starting notification streams');
+
       _notificationsSub = streamNotificationsUseCase(NoParams()).listen(
-        (either) {
-          either.fold(
-            (failure) {
-              AppLogger.error(
-                'Realtime notifications failure: ${failure.message}',
-              );
-              try {
-                if (!_notificationsController.isClosed) {
-                  _notificationsController.addError(failure);
-                }
-              } catch (_) {}
-            },
-            (notifications) {
-              try {
-                if (!_notificationsController.isClosed) {
-                  final list = List<NotificationEntity>.from(notifications);
-                  _notificationsController.add(list);
-                }
-              } catch (e) {
-                AppLogger.error(
-                  'Failed to forward notifications batch: $e',
-                  error: e,
-                );
-              }
-            },
-          );
-        },
+        (either) => either.fold(
+          (failure) {
+            AppLogger.error(
+              'Realtime notifications failure: ${failure.message}',
+            );
+            if (!_notificationsController.isClosed) {
+              _notificationsController.addError(failure);
+            }
+          },
+          (notifications) {
+            if (!_notificationsController.isClosed) {
+              final list = List<NotificationEntity>.from(notifications);
+              _notificationsController.add(list);
+            }
+          },
+        ),
         onError: (err) {
           AppLogger.error('Notifications stream error: $err', error: err);
           if (!_notificationsController.isClosed) {
@@ -347,31 +272,22 @@ class RealtimeService {
         },
       );
 
-      AppLogger.info('RealtimeService: Starting unread count stream');
       _unreadCountSub = streamUnreadCountUseCase(NoParams()).listen(
-        (either) {
-          either.fold(
-            (failure) {
-              AppLogger.error(
-                'Realtime unread count failure: ${failure.message}',
-              );
-              try {
-                if (!_unreadCountController.isClosed) {
-                  _unreadCountController.addError(failure);
-                }
-              } catch (_) {}
-            },
-            (count) {
-              try {
-                if (!_unreadCountController.isClosed) {
-                  _unreadCountController.add(count);
-                }
-              } catch (e) {
-                AppLogger.error('Failed to forward unread count: $e', error: e);
-              }
-            },
-          );
-        },
+        (either) => either.fold(
+          (failure) {
+            AppLogger.error(
+              'Realtime unread count failure: ${failure.message}',
+            );
+            if (!_unreadCountController.isClosed) {
+              _unreadCountController.addError(failure);
+            }
+          },
+          (count) {
+            if (!_unreadCountController.isClosed) {
+              _unreadCountController.add(count);
+            }
+          },
+        ),
         onError: (err) {
           AppLogger.error('Unread count stream error: $err', error: err);
           if (!_unreadCountController.isClosed) {
@@ -381,66 +297,46 @@ class RealtimeService {
       );
 
       // --------------------
-      // Comments (global events)
+      // Starting Global Comments and New Users streams
       // --------------------
-      AppLogger.info('RealtimeService: Starting comments stream');
+      AppLogger.info(
+        'RealtimeService: Starting comments and new users streams',
+      );
+
       _commentsSub = streamCommentsUseCase(NoParams()).listen(
-        (either) {
-          either.fold(
-            (failure) => AppLogger.error(
-              'Realtime comments failure: ${failure.message}',
-            ),
-            (commentData) {
-              try {
-                if (!_commentsController.isClosed) {
-                  _commentsController.add(
-                    Map<String, dynamic>.from(commentData),
-                  );
-                }
-              } catch (e) {
-                AppLogger.error('Failed to forward comment data: $e', error: e);
-              }
-            },
-          );
-        },
+        (either) => either.fold(
+          (failure) =>
+              AppLogger.error('Realtime comments failure: ${failure.message}'),
+          (commentData) {
+            if (!_commentsController.isClosed) {
+              _commentsController.add(Map<String, dynamic>.from(commentData));
+            }
+          },
+        ),
         onError: (err) =>
             AppLogger.error('Comments stream error: $err', error: err),
+      );
+
+      // The new users stream requires the current user ID to track follow status.
+      _newUsersSub = streamNewUsersUseCase(userId).listen(
+        (either) => either.fold(
+          (failure) =>
+              AppLogger.error('Realtime new user failure: ${failure.message}'),
+          (user) {
+            if (!_newUserController.isClosed) {
+              _newUserController.add(user);
+              AppLogger.info('RealtimeService: New user emitted: ${user.id}');
+            }
+          },
+        ),
+        onError: (err) =>
+            AppLogger.error('New users stream error: $err', error: err),
       );
 
       _isStarted = true;
       AppLogger.info('RealtimeService started successfully for user $userId');
       AppLogger.info(
         'RealtimeService streams health: ${areStreamsHealthy ? "HEALTHY" : "NO LISTENERS"}',
-      );
-
-      // Starting new users stream
-      AppLogger.info('RealtimeService: Starting new users stream');
-      _newUsersSub = streamNewUsersUseCase(userId).listen(
-        // Pass userId for follow status
-        (either) {
-          either.fold(
-            (failure) => AppLogger.error(
-              'Realtime new user failure: ${failure.message}',
-            ),
-            (user) {
-              try {
-                if (!_newUserController.isClosed) {
-                  _newUserController.add(user);
-                  AppLogger.info(
-                    'RealtimeService: New user emitted: ${user.id}',
-                  );
-                }
-              } catch (e) {
-                AppLogger.error(
-                  'Failed to add new user to controller: $e',
-                  error: e,
-                );
-              }
-            },
-          );
-        },
-        onError: (err) =>
-            AppLogger.error('New users stream error: $err', error: err),
       );
     } catch (e, st) {
       AppLogger.error(
@@ -453,7 +349,8 @@ class RealtimeService {
     }
   }
 
-  /// Stop backing subscriptions but keep controllers open for future starts.
+  /// Stops all backing subscriptions but keeps the broadcast controllers open
+  /// to allow the service to be restarted later.
   Future<void> stop() async {
     if (!_isStarted) {
       AppLogger.info('RealtimeService.stop called but not started.');
@@ -468,6 +365,7 @@ class RealtimeService {
     AppLogger.info('RealtimeService stopped');
   }
 
+  /// Manages the cancellation of all main stream subscriptions.
   Future<void> _cancelAll() async {
     try {
       await _newPostsSub?.cancel();
@@ -496,7 +394,9 @@ class RealtimeService {
     }
   }
 
-  /// Fully dispose the service (close controllers).
+  /// Fully disposes of the service by stopping all subscriptions and closing
+  /// all broadcast controllers. This should be called only when the service is
+  /// no longer needed (e.g., application shutdown).
   Future<void> dispose() async {
     AppLogger.info('RealtimeService disposing');
     await _cancelAll();
@@ -511,17 +411,21 @@ class RealtimeService {
       await _notificationsController.close();
       await _unreadCountController.close();
       await _commentsController.close();
+      await _newUserController.close();
       AppLogger.info('RealtimeService disposed successfully');
     } catch (e) {
       AppLogger.warning('Failed to close controllers: $e');
     }
   }
 
-  //Public method to subscribe to a specific user's profile updates
+  // --- External Profile Subscriptions ---
+
+  /// Subscribes to profile updates for a user other than the currently logged-in one.
+  /// This is useful for screens showing another user's profile detail.
   Future<void> subscribeToProfile(String userId) async {
     if (userId == _currentUserId) {
       AppLogger.info('Already subscribed to current user profile: $userId');
-      return; // Current user is already handled in start()
+      return;
     }
 
     if (_additionalProfileSubs.containsKey(userId)) {
@@ -532,31 +436,22 @@ class RealtimeService {
     AppLogger.info('Subscribing to additional profile updates for: $userId');
     try {
       final sub = streamProfileUpdatesUseCase(userId).listen(
-        (either) {
-          either.fold(
-            (failure) => AppLogger.error(
-              'Realtime profile update failure for $userId: ${failure.message}',
-            ),
-            (profileData) {
-              try {
-                if (!_profileUpdatesController.isClosed) {
-                  //Include user_id in the broadcasted data
-                  final dataWithId = {
-                    'user_id': userId,
-                    ...Map<String, dynamic>.from(profileData),
-                  };
-                  _profileUpdatesController.add(dataWithId);
-                  AppLogger.info('Profile update emitted for user: $userId');
-                }
-              } catch (e) {
-                AppLogger.error(
-                  'Failed to forward profile update for $userId: $e',
-                  error: e,
-                );
-              }
-            },
-          );
-        },
+        (either) => either.fold(
+          (failure) => AppLogger.error(
+            'Realtime profile update failure for $userId: ${failure.message}',
+          ),
+          (profileData) {
+            if (!_profileUpdatesController.isClosed) {
+              // Including the user_id in the broadcasted data for consumer context.
+              final dataWithId = {
+                'user_id': userId,
+                ...Map<String, dynamic>.from(profileData),
+              };
+              _profileUpdatesController.add(dataWithId);
+              AppLogger.info('Profile update emitted for user: $userId');
+            }
+          },
+        ),
         onError: (err) => AppLogger.error(
           'Profile updates stream error for $userId: $err',
           error: err,
@@ -568,7 +463,7 @@ class RealtimeService {
     }
   }
 
-  //Public method to unsubscribe
+  /// Unsubscribes from profile updates for a specific user.
   Future<void> unsubscribeFromProfile(String userId) async {
     if (userId == _currentUserId ||
         !_additionalProfileSubs.containsKey(userId)) {
@@ -580,7 +475,7 @@ class RealtimeService {
     _additionalProfileSubs.remove(userId);
   }
 
-  //Cancel additional profile subs
+  /// Cancels all stored profile subscriptions for non-current users.
   Future<void> _cancelAdditionalProfileSubs() async {
     for (final sub in _additionalProfileSubs.values) {
       await sub?.cancel();

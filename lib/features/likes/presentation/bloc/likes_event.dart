@@ -10,8 +10,8 @@ abstract class LikesEvent extends Equatable {
 class LikePostEvent extends LikesEvent {
   final String postId;
   final String userId;
-  final bool isLiked; // the target state the user requested
-  final bool previousState; // explicit UI state before the tap
+  final bool isLiked;
+  final bool previousState;
 
   const LikePostEvent({
     required this.postId,

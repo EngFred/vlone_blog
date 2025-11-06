@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:dartz/dartz.dart';
 import 'package:vlone_blog_app/core/domain/errors/exceptions.dart';
 import 'package:vlone_blog_app/core/domain/errors/failure.dart';
-import 'package:vlone_blog_app/core/utils/app_logger.dart';
 import 'package:vlone_blog_app/features/auth/data/datasources/auth_remote_datasource.dart';
 import 'package:vlone_blog_app/features/auth/domain/entities/user_entity.dart';
 import 'package:vlone_blog_app/features/auth/domain/repositories/auth_repository.dart';
@@ -24,10 +23,6 @@ class AuthRepositoryImpl implements AuthRepository {
       );
       return Right(userModel.toEntity());
     } on ServerException catch (e) {
-      AppLogger.error(
-        'ServerException in signup repository: ${e.message}',
-        error: e,
-      );
       return Left(ServerFailure(e.message));
     }
   }
@@ -44,10 +39,6 @@ class AuthRepositoryImpl implements AuthRepository {
       );
       return Right(userModel.toEntity());
     } on ServerException catch (e) {
-      AppLogger.error(
-        'ServerException in login repository: ${e.message}',
-        error: e,
-      );
       return Left(ServerFailure(e.message));
     }
   }
@@ -58,10 +49,6 @@ class AuthRepositoryImpl implements AuthRepository {
       await remoteDataSource.logout();
       return const Right(unit);
     } on ServerException catch (e) {
-      AppLogger.error(
-        'ServerException in logout repository: ${e.message}',
-        error: e,
-      );
       return Left(ServerFailure(e.message));
     }
   }
@@ -72,17 +59,10 @@ class AuthRepositoryImpl implements AuthRepository {
       final userModel = await remoteDataSource.getCurrentUser();
       return Right(userModel.toEntity());
     } on NetworkException catch (e) {
-      AppLogger.warning(
-        'NetworkException in getCurrentUser repository: ${e.message}',
-      );
       return Left(NetworkFailure(e.message));
     } on ServerException catch (e) {
-      AppLogger.error(
-        'ServerException in getCurrentUser repository: ${e.message}',
-      );
       return Left(ServerFailure(e.message));
-    } on SocketException catch (e) {
-      AppLogger.warning('SocketException in getCurrentUser repository: $e');
+    } on SocketException catch (_) {
       return Left(NetworkFailure('No internet connection'));
     }
   }
@@ -93,10 +73,6 @@ class AuthRepositoryImpl implements AuthRepository {
       final restored = await remoteDataSource.restoreSession();
       return Right(restored);
     } on ServerException catch (e) {
-      AppLogger.error(
-        'ServerException in restoreSession repository: ${e.message}',
-        error: e,
-      );
       return Left(ServerFailure(e.message));
     }
   }

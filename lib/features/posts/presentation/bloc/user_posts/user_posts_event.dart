@@ -42,7 +42,6 @@ class RemovePostFromUserPosts extends UserPostsEvent {
   List<Object?> get props => [postId];
 }
 
-// Add these to user_posts_event.dart (keep existing events)
 class StartUserPostsRealtime extends UserPostsEvent {
   final String profileUserId;
   const StartUserPostsRealtime({required this.profileUserId});

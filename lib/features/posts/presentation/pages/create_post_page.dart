@@ -1,11 +1,10 @@
-// create_post_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vlone_blog_app/core/utils/snackbar_utils.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/loading_overlay.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/media_upload_widget.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/create/media_upload_widget.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'dart:ui';
 
@@ -24,20 +23,20 @@ class _CreatePostPageState extends State<CreatePostPage> {
   void initState() {
     super.initState();
 
-    // FIX: Issue 3 - Reset form state on page entry for fresh UI
+    // Resetting form state on page entry for fresh UI
     context.read<PostActionsBloc>().add(const ResetForm());
 
-    // Initialize controller with bloc value if any (after reset, it'll be empty)
+    // Initializing controller with bloc value if any (after reset, it'll be empty)
     final bloc = context.read<PostActionsBloc>();
     final formState = bloc.state is PostFormState
         ? (bloc.state as PostFormState)
         : null;
     if (formState != null && formState.content.isNotEmpty) {
-      // set initial text *before* adding the listener to avoid firing
+      // setting initial text *before* adding the listener to avoid firing
       _contentController.text = formState.content;
     }
 
-    // Dispatch ContentChanged on text changes (debounce not needed here).
+    // Dispatching ContentChanged on text changes (debounce not needed here).
     _contentController.addListener(_onContentControllerChanged);
   }
 
@@ -50,14 +49,13 @@ class _CreatePostPageState extends State<CreatePostPage> {
 
   @override
   void dispose() {
-    // remove the named listener properly
     _contentController.removeListener(_onContentControllerChanged);
     _contentController.dispose();
     super.dispose();
   }
 
   void _submit(String userId) {
-    // In the UI we simply dispatch CreatePostEvent without repeating content/media
+    // Here we simply dispatch CreatePostEvent without repeating content/media
     // so the bloc uses current PostFormState values (or fallback to event values if provided).
     context.read<PostActionsBloc>().add(CreatePostEvent(userId: userId));
   }
@@ -69,10 +67,8 @@ class _CreatePostPageState extends State<CreatePostPage> {
 
     return BlocListener<PostActionsBloc, PostActionsState>(
       listener: (context, state) {
-        // Listen for the PostCreatedSuccess state
         if (state is PostCreatedSuccess) {
           SnackbarUtils.showSuccess(context, 'Post created!');
-          // Immediately pop the page once created
           if (context.mounted) context.pop();
         } else if (state is PostActionError) {
           SnackbarUtils.showError(context, state.message);
@@ -80,7 +76,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
       },
       child: Scaffold(
         resizeToAvoidBottomInset:
-            false, // Added: Prevent resizing when keyboard opens for overlay stability
+            false, // Added to Prevent resizing when keyboard opens for overlay stability
         appBar: AppBar(
           title: const Text('Create Post'),
           centerTitle: false,
@@ -120,9 +116,9 @@ class _CreatePostPageState extends State<CreatePostPage> {
             final form = state is PostFormState ? state : const PostFormState();
             final hasMedia = form.mediaFile != null;
 
-            // Keep controller in sync if the form.content changed externally (e.g. optimistic resets)
+            // Keeps controller in sync if the form.content changed externally (e.g. optimistic resets)
             if (_contentController.text != form.content) {
-              // avoid moving cursor if possible and avoid firing listener
+              // avoids moving cursor if possible and avoid firing listener
               final selection = _contentController.selection;
               _isProgrammaticControllerChange = true;
               _contentController.text = form.content;
@@ -133,7 +129,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
               _isProgrammaticControllerChange = false;
             }
 
-            // Define the caption widget (TextField + counter + error) for reuse in both layouts
             Widget captionWidget = Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -142,7 +137,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
                   decoration: InputDecoration(
                     hintText: hasMedia
                         ? 'Add a caption...'
-                        : "What's on your mind?", // Changed: Caption-specific hint when media selected
+                        : "What's on your mind?",
                     hintStyle: hasMedia
                         ? TextStyle(color: Colors.white.withOpacity(0.7))
                         : null,
@@ -192,12 +187,8 @@ class _CreatePostPageState extends State<CreatePostPage> {
                       vertical: 12,
                     ),
                   ),
-                  style: hasMedia
-                      ? const TextStyle(color: Colors.white)
-                      : null, // Changed: White text for contrast on blurred overlay
-                  maxLines: hasMedia
-                      ? null
-                      : 8, // Changed: Allow dynamic expansion for caption
+                  style: hasMedia ? const TextStyle(color: Colors.white) : null,
+                  maxLines: hasMedia ? null : 8,
                   minLines: hasMedia ? 1 : 3,
                   maxLength: null,
                 ),
@@ -247,9 +238,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
 
             return Stack(
               children: [
-                // Conditional layout based on media selection
                 if (!hasMedia)
-                  // No media: Original scrollable column layout
                   SafeArea(
                     top: true,
                     bottom: false,
@@ -265,7 +254,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
                           captionWidget,
                           const SizedBox(height: 20),
                           MediaUploadWidget(
-                            // FIX: Issue 1 - Pass Bloc media for sync on remount
                             selectedMediaFile: form.mediaFile,
                             selectedMediaType: form.mediaType,
                             onMediaSelected: (file, type) {
@@ -285,7 +273,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
                     ),
                   )
                 else
-                  // Media selected: Full-screen stack with overlaid caption
                   SafeArea(
                     top: true,
                     bottom: false,
@@ -293,7 +280,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
                       fit: StackFit.expand,
                       children: [
                         MediaUploadWidget(
-                          // FIX: Issue 1 - Pass Bloc media for sync on remount
                           selectedMediaFile: form.mediaFile,
                           selectedMediaType: form.mediaType,
                           onMediaSelected: (file, type) {
@@ -313,9 +299,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
                           bottom: 0,
                           child: Padding(
                             padding: EdgeInsets.only(
-                              bottom: MediaQuery.of(context)
-                                  .viewInsets
-                                  .bottom, // Added: Handle keyboard by padding bottom
+                              bottom: MediaQuery.of(context).viewInsets.bottom,
                             ),
                             child: ClipRRect(
                               borderRadius: const BorderRadius.vertical(
@@ -325,12 +309,12 @@ class _CreatePostPageState extends State<CreatePostPage> {
                                 filter: ImageFilter.blur(
                                   sigmaX: 20,
                                   sigmaY: 20,
-                                ), // Added: Glassmorphism blur for premium overlay
+                                ),
                                 child: Container(
                                   padding: const EdgeInsets.all(16),
                                   color: theme.colorScheme.surface.withOpacity(
                                     0.2,
-                                  ), // Semi-transparent for depth
+                                  ),
                                   child: captionWidget,
                                 ),
                               ),

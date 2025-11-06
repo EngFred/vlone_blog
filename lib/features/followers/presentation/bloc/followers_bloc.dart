@@ -46,7 +46,7 @@ class FollowersBloc extends Bloc<FollowersEvent, FollowersState> {
     }
     _processingFollowIds.add(event.followingId);
 
-    // Preserve current list/context so we can update it and never lose the list UI.
+    // Preserving current list/context so we can update it and never lose the list UI.
     final current = state;
     List<UserListEntity> currentUsers = [];
     bool currentHasMore = true;

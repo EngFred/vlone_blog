@@ -41,12 +41,11 @@ class UserGreetingTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    // Use a single BlocSelector to get all needed user data
     return BlocSelector<AuthBloc, AuthState, _AuthData>(
       selector: (state) {
         if (state is AuthAuthenticated) {
           return _AuthData(
-            userId: state.user.id, // Now selecting userId
+            userId: state.user.id,
             username: state.user.username,
             profileImageUrl: state.user.profileImageUrl,
           );
@@ -54,7 +53,6 @@ class UserGreetingTitle extends StatelessWidget {
         return _AuthData();
       },
       builder: (context, authData) {
-        // The userId is crucial for navigation to the profile page
         final String? userId = authData.userId;
         final String? username = authData.username;
         final String? profileImageUrl = authData.profileImageUrl;

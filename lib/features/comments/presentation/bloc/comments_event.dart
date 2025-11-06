@@ -6,7 +6,6 @@ abstract class CommentsEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-// CHANGE: Renamed from GetCommentsEvent to GetInitialCommentsEvent for clarity.
 class GetInitialCommentsEvent extends CommentsEvent {
   final String postId;
   const GetInitialCommentsEvent(this.postId);
@@ -14,13 +13,11 @@ class GetInitialCommentsEvent extends CommentsEvent {
   List<Object?> get props => [postId];
 }
 
-// For loading older comments.
 class LoadMoreCommentsEvent extends CommentsEvent {
   final String postId;
   const LoadMoreCommentsEvent(this.postId);
 }
 
-// For pull-to-refresh.
 class RefreshCommentsEvent extends CommentsEvent {
   final String postId;
   const RefreshCommentsEvent(this.postId);

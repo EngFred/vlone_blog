@@ -12,11 +12,12 @@ class ProfileRemoteDataSource {
   final SupabaseClient client;
   ProfileRemoteDataSource(this.client);
 
-  // Cached controllers & subscriptions keyed by userId
+  // Cached controllers & subscriptions keyed by userId to manage real-time updates efficiently.
   final Map<String, StreamController<Map<String, dynamic>>>
   _profileControllers = {};
   final Map<String, RealtimeChannel> _profileChannels = {};
 
+  /// Fetches a single user profile from the 'profiles' table.
   Future<ProfileModel> getProfile(String userId) async {
     AppLogger.info('Fetching profile for user: $userId');
     try {
@@ -37,8 +38,11 @@ class ProfileRemoteDataSource {
     }
   }
 
-  /// Updates bio, username and/or profile image. Any parameter that is null is skipped.
-  /// Returns the fresh ProfileModel using an atomic update + select.
+  /// Updates bio, username, and/or profile image.
+  ///
+  /// - Handles image compression and Supabase Storage upload if a new [profileImage] is provided.
+  /// - Deletes temporary compressed files after upload.
+  /// - Uses an atomic update and select to return the fresh [ProfileModel].
   Future<ProfileModel> updateProfile({
     required String userId,
     String? username,
@@ -50,16 +54,16 @@ class ProfileRemoteDataSource {
     );
     try {
       String? profileImageUrl;
-      File? compressedTempFile; // keep track to cleanup later
+      File? compressedTempFile; // Keeping track of a temporary file for cleanup
 
       if (profileImage != null) {
         AppLogger.info('Preparing profile image for upload for user: $userId');
 
         final file = File(profileImage.path);
         File fileToUpload = file;
-
-        // Decide whether to attempt compression (fast stat)
         bool shouldAttemptCompression = false;
+
+        // Checking file size to decide on compression
         try {
           final bytes = await file.length();
           shouldAttemptCompression =
@@ -74,12 +78,11 @@ class ProfileRemoteDataSource {
           shouldAttemptCompression = true;
         }
 
+        // 1. Image Compression
         if (shouldAttemptCompression) {
           try {
-            // Compress silently; ImageCompressor will log its own details.
             final compressed = await ImageCompressor.compressIfNeeded(file);
 
-            // If compressor returned a different file and it's smaller, use it.
             if (compressed.path != file.path) {
               AppLogger.info(
                 'Profile image compressed: ${file.path} -> ${compressed.path}',
@@ -103,6 +106,7 @@ class ProfileRemoteDataSource {
           );
         }
 
+        // 2. Storage Upload
         final fileExt = fileToUpload.path.split('.').last;
         final fileName = '${const Uuid().v4()}.$fileExt';
         final uploadPath = 'profiles/$userId/$fileName';
@@ -129,7 +133,7 @@ class ProfileRemoteDataSource {
           }
           throw ServerException(e.toString());
         } finally {
-          // Best-effort cleanup of temporary compressed file if it exists and is different from original
+          // Best-effort cleanup of temporary compressed file
           if (compressedTempFile != null) {
             try {
               if (await compressedTempFile.exists()) {
@@ -147,6 +151,7 @@ class ProfileRemoteDataSource {
         }
       }
 
+      // 3. Database Update
       final updates = <String, dynamic>{};
       if (username != null) updates['username'] = username;
       if (bio != null) updates['bio'] = bio;
@@ -156,7 +161,7 @@ class ProfileRemoteDataSource {
 
       if (updates.isNotEmpty) {
         AppLogger.info('Applying profile updates for $userId: $updates');
-        // Return updated row in one roundtrip
+        // Update and return the fresh profile data.
         final updated = await client
             .from('profiles')
             .update(updates)
@@ -168,7 +173,7 @@ class ProfileRemoteDataSource {
         return ProfileModel.fromMap(updated);
       } else {
         AppLogger.warning('No profile updates provided for user: $userId');
-        // Just return current profile if nothing to update
+        // Return current profile if nothing was updated.
         return await getProfile(userId);
       }
     } catch (e, stackTrace) {
@@ -181,12 +186,15 @@ class ProfileRemoteDataSource {
     }
   }
 
-  /// Stream for profile updates (username, bio, profile_image_url, counts etc.)
-  /// Returns a cached broadcast stream per userId.
+  /// Provides a real-time broadcast stream for profile updates for a specific user.
+  ///
+  /// - **Caches** the stream controller and channel per `userId` for efficient reuse.
+  /// - **Seeds** the stream with the current profile data upon the first listener attaching.
+  /// - Listens for `UPDATE` events on the 'profiles' table filtered by the `userId`.
   Stream<Map<String, dynamic>> streamProfileUpdates(String userId) {
     AppLogger.info('Requesting profile updates stream for user: $userId');
 
-    // Return cached controller if present
+    // Returning cached stream if it exists.
     if (_profileControllers.containsKey(userId)) {
       AppLogger.info(
         'Returning existing profile updates stream for user: $userId',
@@ -194,13 +202,12 @@ class ProfileRemoteDataSource {
       return _profileControllers[userId]!.stream;
     }
 
-    // FIX: Declare 'controller' first using 'late final' to allow self-reference in callbacks.
     late final StreamController<Map<String, dynamic>> controller;
 
     controller = StreamController<Map<String, dynamic>>.broadcast(
       onListen: () async {
         AppLogger.info('Listener attached to profile stream for user: $userId');
-        // Seed with current profile
+        // Seeding with current profile data.
         try {
           final profile = await getProfile(userId);
           if (!controller.isClosed) controller.add(profile.toMap());
@@ -216,7 +223,7 @@ class ProfileRemoteDataSource {
         }
       },
       onCancel: () async {
-        // Delay slightly and cleanup if no listeners
+        // Cleanup logic: close channel and remove cache entries if no listeners remain.
         await Future.delayed(const Duration(milliseconds: 50));
         if (!controller.hasListener) {
           AppLogger.info(
@@ -236,7 +243,7 @@ class ProfileRemoteDataSource {
       },
     );
 
-    // Setup realtime channel using Supabase Realtime "onPostgresChanges" for profile id filter
+    // Setup real-time channel subscription.
     try {
       final channel = client.channel(
         'profile_updates_${userId}_${DateTime.now().millisecondsSinceEpoch}',
@@ -287,7 +294,7 @@ class ProfileRemoteDataSource {
     }
   }
 
-  /// Global cleanup helper (call on app dispose if needed)
+  /// Global cleanup method to dispose of all cached profile streams and channels.
   Future<void> disposeAllProfileStreams() async {
     AppLogger.info('Disposing all profile streams');
     for (final channel in _profileChannels.values) {

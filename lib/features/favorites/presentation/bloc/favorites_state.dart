@@ -13,12 +13,11 @@ class FavoritesStreamStarted extends FavoritesState {}
 
 class FavoritesStreamStopped extends FavoritesState {}
 
-/// Optimistic update **and** server-driven correction
 class FavoriteUpdated extends FavoritesState {
   final String postId;
   final String userId;
   final bool isFavorited;
-  final int delta; // +1 / -1 for optimistic, 0 for server correction
+  final int delta;
 
   const FavoriteUpdated({
     required this.postId,
@@ -31,7 +30,6 @@ class FavoriteUpdated extends FavoritesState {
   List<Object?> get props => [postId, userId, isFavorited, delta];
 }
 
-/// Final success after the server confirmed the operation
 class FavoriteSuccess extends FavoritesState {
   final String postId;
   final String userId;
@@ -47,13 +45,12 @@ class FavoriteSuccess extends FavoritesState {
   List<Object?> get props => [postId, userId, isFavorited];
 }
 
-/// Something went wrong
 class FavoriteError extends FavoritesState {
   final String postId;
   final String message;
   final bool shouldRevert;
   final bool previousState;
-  final int delta; // the optimistic delta we applied
+  final int delta;
 
   const FavoriteError({
     required this.postId,

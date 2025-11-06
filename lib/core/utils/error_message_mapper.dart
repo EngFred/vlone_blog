@@ -1,9 +1,10 @@
 class ErrorMessageMapper {
-  /// Maps technical error messages to user-friendly messages
+  /// Maps technical error messages to user-friendly, non-technical messages.
+  /// This improves the user experience by providing actionable feedback.
   static String mapToUserMessage(String technicalMessage) {
     final lowerMessage = technicalMessage.toLowerCase();
 
-    // Network-related errors
+    // --- Network-related errors ---
     if (lowerMessage.contains('socketexception') ||
         lowerMessage.contains('failed host lookup') ||
         lowerMessage.contains('no internet connection') ||
@@ -11,7 +12,7 @@ class ErrorMessageMapper {
       return 'Please check your internet connection and try again.';
     }
 
-    // Authentication errors
+    // --- Authentication errors ---
     if (lowerMessage.contains('invalid login credentials') ||
         lowerMessage.contains('invalid credentials')) {
       return 'Invalid email or password. Please try again.';
@@ -31,7 +32,7 @@ class ErrorMessageMapper {
       return 'Please log in to continue.';
     }
 
-    // Profile/Update errors
+    // --- Profile/Update errors ---
     if (lowerMessage.contains('username') && lowerMessage.contains('taken')) {
       return 'This username is already taken. Please choose another.';
     }
@@ -40,7 +41,7 @@ class ErrorMessageMapper {
       return 'Failed to upload image. Please try again.';
     }
 
-    // Database/Server errors
+    // --- Database/Server errors ---
     if (lowerMessage.contains('timeout')) {
       return 'Request timed out. Please try again.';
     }
@@ -59,11 +60,12 @@ class ErrorMessageMapper {
       return 'You do not have permission to perform this action.';
     }
 
-    // Generic fallback
+    // --- Generic fallback ---
     return 'An unexpected error occurred. Please try again.';
   }
 
-  /// Returns a user-friendly message for specific error types
+  /// Retrieves a user-friendly message by passing the raw error object (or string)
+  /// through the mapping function.
   static String getErrorMessage(dynamic error) {
     if (error == null) return 'An unknown error occurred.';
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/post_card.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/common/post_card.dart';
 
 class FeedList extends StatelessWidget {
   final List<PostEntity> posts;
@@ -80,8 +80,8 @@ class FeedList extends StatelessWidget {
       child: const Center(
         child: Column(
           children: [
-            LoadingIndicator(size: 20), // <-- Made const
-            SizedBox(height: 12), // <-- Made const
+            LoadingIndicator(size: 20),
+            SizedBox(height: 12),
             Text(
               'Loading more posts...',
               style: TextStyle(fontSize: 14, color: Colors.grey),

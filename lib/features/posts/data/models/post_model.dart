@@ -133,7 +133,6 @@ class PostModel {
       avatarUrl: avatarUrl,
       mediaWidth: mediaWidth,
       mediaHeight: mediaHeight,
-      // REMOVED: uploadStatus: uploadStatus,
     );
   }
 }

@@ -21,7 +21,6 @@ class UserPostsLoading extends UserPostsState {
 
 class UserPostsError extends UserPostsState {
   final String message;
-  // ADDED: Optional completer for RefreshIndicator
   final Completer<void>? refreshCompleter;
 
   const UserPostsError(
@@ -38,7 +37,6 @@ class UserPostsLoaded extends UserPostsState {
   final List<PostEntity> posts;
   final bool hasMore;
   final bool isRealtimeActive;
-  // ADDED: Optional completer for RefreshIndicator
   final Completer<void>? refreshCompleter;
 
   const UserPostsLoaded(
@@ -62,7 +60,7 @@ class UserPostsLoaded extends UserPostsState {
     List<PostEntity>? posts,
     bool? hasMore,
     bool? isRealtimeActive,
-    String? profileUserId, // Though this shouldn't typically change
+    String? profileUserId,
     Completer<void>? refreshCompleter,
   }) {
     return UserPostsLoaded(
@@ -76,7 +74,6 @@ class UserPostsLoaded extends UserPostsState {
 }
 
 class UserPostsLoadingMore extends UserPostsState {
-  // RENAMED for consistency
   final List<PostEntity> posts;
 
   const UserPostsLoadingMore({
@@ -90,7 +87,6 @@ class UserPostsLoadingMore extends UserPostsState {
 
 class UserPostsLoadMoreError extends UserPostsState {
   final String message;
-  // RENAMED for consistency
   final List<PostEntity> posts;
 
   const UserPostsLoadMoreError(

@@ -9,7 +9,7 @@ import 'package:vlone_blog_app/core/presentation/widgets/error_widget.dart';
 import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/reels/reels_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/reel_item.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/reels/reel_item.dart';
 import 'package:vlone_blog_app/features/posts/utils/video_playback_manager.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -59,10 +59,9 @@ class _ReelsPageState extends State<ReelsPage>
       if (mounted) setState(() => _isPageChanging = false);
     });
 
-    // Get the *current* state directly from the BLoC
     final currentState = context.read<ReelsBloc>().state;
 
-    // Determine if we can load more from the BLoC state
+    // Determining if we can load more from the BLoC state
     List<PostEntity> currentPosts = context.read<ReelsBloc>().getPostsFromState(
       currentState,
     );
@@ -72,7 +71,7 @@ class _ReelsPageState extends State<ReelsPage>
       hasMoreReels = currentState.hasMore;
     } else if (currentState is ReelsLoadingMore ||
         currentState is ReelsLoadMoreError) {
-      hasMoreReels = true; // Assume true if we're loading/retrying
+      hasMoreReels = true;
     }
 
     if (index >= currentPosts.length - 2 && hasMoreReels && !_isLoadingMore) {
@@ -99,7 +98,6 @@ class _ReelsPageState extends State<ReelsPage>
     }
   }
 
-  // NEW: Implement RefreshIndicator logic using Completer
   Future<void> _onRefresh(String userId) async {
     final completer = Completer<void>();
     context.read<ReelsBloc>().add(
@@ -231,7 +229,6 @@ class _ReelsPageState extends State<ReelsPage>
           child: RefreshIndicator(
             backgroundColor: Colors.black,
             color: Colors.white,
-            // UPDATED: Call the new _onRefresh method
             onRefresh: () => _onRefresh(currentUserId),
             child: Builder(
               builder: (context) {
@@ -246,8 +243,6 @@ class _ReelsPageState extends State<ReelsPage>
                     reelsState is ReelsLoadingMore ||
                     reelsState is ReelsLoadMoreError ||
                     reelsState is ReelsError) {
-                  // Include ReelsError for list retrieval
-
                   // Extract data using the public BLoC method
                   final List<PostEntity> posts = context
                       .read<ReelsBloc>()
@@ -293,7 +288,7 @@ class _ReelsPageState extends State<ReelsPage>
 
                       return ReelItem(
                         key: ValueKey(post.id),
-                        post: post, // Pass the post from the BLoC state
+                        post: post,
                         userId: currentUserId,
                         isActive: isCurrentPage && _isPageVisible,
                         isPrevious: index == _currentPage - 1,

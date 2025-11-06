@@ -6,7 +6,7 @@ import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bl
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/comments_overlay.dart';
+import 'package:vlone_blog_app/features/comments/presentation/widgets/comments_overlay.dart';
 
 class PostActions extends StatefulWidget {
   final PostEntity post;
@@ -201,7 +201,6 @@ class _PostActionsState extends State<PostActions> {
               AppLogger.info(
                 'PostActions (PostActionsBloc) received PostOptimisticallyUpdated for post: ${state.post.id}. Updating local state.',
               );
-              // This is the key: We call setState INSIDE PostActions
               setState(() {
                 _currentPost = state.post;
               });
@@ -233,7 +232,7 @@ class _PostActionsState extends State<PostActions> {
                     return false;
                   },
                   builder: (context, state) {
-                    // Use _currentPost.isLiked as the source of truth
+                    // Using _currentPost.isLiked as the source of truth
                     bool isLiked = _currentPost.isLiked;
 
                     // The BlocBuilder *only* handles icon state

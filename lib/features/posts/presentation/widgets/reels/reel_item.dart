@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/post_header.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/reel_video_player.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/reel_actions.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/common/post_header.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/reels/reel_video_player.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/reels/reel_actions.dart';
 
 class ReelItem extends StatefulWidget {
   final PostEntity post;

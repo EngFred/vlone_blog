@@ -18,17 +18,15 @@ class ProfileDataLoaded extends ProfileState {
   final ProfileEntity profile;
   final String userId;
   final bool isRealtimeActive;
-  // ADDED: Optional completer for RefreshIndicator
   final Completer<void>? refreshCompleter;
 
   const ProfileDataLoaded({
     required this.profile,
     required this.userId,
-    this.isRealtimeActive = false, // Default to false
+    this.isRealtimeActive = false,
     this.refreshCompleter,
   });
 
-  // Helper method for easy state updates
   ProfileDataLoaded copyWith({
     ProfileEntity? profile,
     String? userId,
@@ -54,7 +52,6 @@ class ProfileDataLoaded extends ProfileState {
 
 class ProfileError extends ProfileState {
   final String message;
-  // ADDED: Optional completer for RefreshIndicator
   final Completer<void>? refreshCompleter;
 
   const ProfileError(this.message, {this.refreshCompleter});

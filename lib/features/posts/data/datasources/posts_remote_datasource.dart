@@ -7,35 +7,49 @@ import 'package:uuid/uuid.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 import 'package:vlone_blog_app/core/domain/errors/exceptions.dart';
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
-import 'package:vlone_blog_app/core/utils/helpers.dart';
-import 'package:vlone_blog_app/core/utils/media_dimensions_util.dart';
+import 'package:vlone_blog_app/core/utils/media_utils.dart';
 import 'package:vlone_blog_app/features/posts/data/models/post_model.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:vlone_blog_app/core/utils/video_compressor.dart';
 import 'package:vlone_blog_app/core/utils/image_compressor.dart';
 import 'package:vlone_blog_app/core/utils/media_progress_notifier.dart';
 
+/// A data source responsible for handling all remote operations related to posts,
+/// including creation, media uploads, fetching data via RPCs, and managing
+/// real-time Supabase subscriptions.
 class PostsRemoteDataSource {
   final SupabaseClient client;
-  // Store channel references for cleanup
+
+  // Real-time Channel References for tracking active subscriptions.
   RealtimeChannel? _postsUpdatesChannel;
   RealtimeChannel? _postDeletionsChannel;
   RealtimeChannel? _postsInsertsChannel;
-  // Stream controllers (single broadcast controllers reused by callers)
+
+  // Stream Controllers (Broadcast controllers reused by callers for real-time events)
   StreamController<Map<String, dynamic>>? _postsController;
   StreamController<String>? _postDeletionsController;
   StreamController<PostModel>? _newPostsController;
 
-  /// Client-side batch and debounce tuning
-  static const int _maxBatchSize = 50; // maximum IDs per batch RPC
+  /// Client-side batch and debounce tuning constants used for Realtime post inserts.
+  static const int _maxBatchSize = 50;
   static const Duration _coalesceWindow = Duration(milliseconds: 300);
   static const int _rpcMaxAttempts = 3;
 
+  /// Initializes the remote data source with the Supabase client.
   PostsRemoteDataSource(this.client);
 
   // =========================================================================
-  // 1. `createPost` (Called by the UI) - UPDATED WITH STRICT SIZE LIMITS
+  //                             POST CREATION & MEDIA UPLOAD
   // =========================================================================
+
+  /// Creates a new post, managing the entire media pipeline. This process involves:
+  /// 1. **Validation & Compression:** Checking file size/duration limits and compressing the media.
+  /// 2. **Final Size Check:** Strictly enforcing size limits after compression.
+  /// 3. **Media Upload:** Uploading the media and generating/uploading a thumbnail (for videos).
+  /// 4. **Database Insertion:** Creating the final post record in the database.
+  /// 5. **Cleanup:** Deleting any temporary compressed files used in the process.
+  ///
+  /// Throws a [ServerException] if any validation, compression, or upload step fails.
   Future<void> createPost({
     required String userId,
     String? content,
@@ -63,15 +77,13 @@ class PostsRemoteDataSource {
           'Initial file size: $initialBytes bytes, Max allowed: $maxSize bytes',
         );
 
-        // CRITICAL: Check if file is too large even before compression
         if (initialBytes > maxSize) {
           AppLogger.warning(
             'File exceeds maximum size limit before compression: $initialBytes bytes',
           );
-          // Still attempt compression - it might reduce the size enough
         }
 
-        // --- Duration Check (Fail Fast) ---
+        // --- Duration Check (Fail Fast) for video ---
         if (mediaType == 'video') {
           try {
             final duration = await getVideoDuration(fileToProcess);
@@ -85,14 +97,14 @@ class PostsRemoteDataSource {
               throw ServerException('Video duration exceeds 1 minute limit');
             }
           } catch (e) {
-            AppLogger.warning('getVideoDuration probe failed: $e');
+            AppLogger.warning('The getVideoDuration probe failed: $e');
           }
         }
 
         // --- Compression ---
         bool shouldAttemptCompression = true;
         try {
-          // **OPTIMIZATION**: Re-use 'initialBytes' instead of reading file length again
+          // Re-using 'initialBytes' instead of reading file length again.
           final threshold = mediaType == 'video'
               ? VideoCompressor.defaultMinSizeBytes
               : ImageCompressor.defaultMaxSizeBytes;
@@ -118,7 +130,7 @@ class PostsRemoteDataSource {
             );
           }
 
-          // CRITICAL: Update file reference if compression was successful
+          // Updating the file reference if the compression was successful.
           if (compressedFile != null &&
               compressedFile.path != fileToProcess.path) {
             AppLogger.info('Using compressed file at ${compressedFile.path}');
@@ -146,12 +158,12 @@ class PostsRemoteDataSource {
           throw ServerException(errorMessage);
         }
 
-        // --- Get Dimensions (MANDATORY) ---
+        // --- Getting Dimensions (MANDATORY) ---
         final dimensions = await getMediaDimensions(fileToProcess, mediaType);
         if (dimensions == null ||
             dimensions.width <= 0 ||
             dimensions.height <= 0) {
-          // CRITICAL: Media dimensions are required for proper UI rendering
+          // Media dimensions are required for proper UI rendering.
           AppLogger.error('Failed to get media dimensions for post creation');
           MediaProgressNotifier.notifyError('Failed to read media dimensions');
           throw ServerException(
@@ -172,18 +184,18 @@ class PostsRemoteDataSource {
         AppLogger.info('Uploading media...');
         MediaProgressNotifier.notifyUploading(0.0);
 
-        // This function is not defined in the prompt, assuming it exists
+        // Uploading media and getting public URLs.
         final urls = await _uploadMediaAndGetUrls(
           userId: userId,
           mediaFile: fileToProcess,
           mediaType: mediaType,
-          fileExt: mediaFileExt ?? 'file', // Use original extension
+          fileExt: mediaFileExt ?? 'file', // Using the original extension.
         );
         mediaUrl = urls['mediaUrl'];
         thumbnailUrl = urls['thumbnailUrl'];
       }
 
-      // --- 3. Create Post Record in Database ---
+      // --- 3. Creating Post Record in Database ---
       final postData = {
         'user_id': userId,
         'content': content,
@@ -208,10 +220,12 @@ class PostsRemoteDataSource {
     } catch (e, st) {
       AppLogger.error('Post creation failed: $e', error: e, stackTrace: st);
 
-      // Re-throw with more specific error messages when possible
+      // Re-throwing with more specific error messages when possible.
       if (e is ServerException) {
-        MediaProgressNotifier.notifyError(e.message); // Show specific error
-        rethrow; // Preserve original server exception
+        MediaProgressNotifier.notifyError(
+          e.message,
+        ); // Showing the specific error.
+        rethrow; // Preserving the original server exception.
       } else {
         MediaProgressNotifier.notifyError('Post creation failed');
         throw ServerException('Post creation failed: ${e.toString()}');
@@ -219,135 +233,26 @@ class PostsRemoteDataSource {
     }
   }
 
-  /// [Private Helper] Uploads media and returns the public URLs.
-  Future<Map<String, String?>> _uploadMediaAndGetUrls({
-    required String userId,
-    required File mediaFile,
-    required String mediaType,
-    required String fileExt,
-  }) async {
-    // Generate unique file path *once*
-    final fileName = '${const Uuid().v4()}.$fileExt';
-    final mediaUploadPath = 'posts/media/$userId/$fileName';
-    String? mediaUrl;
-    String? thumbnailUrl;
-
+  /// Deletes a post from the database using its ID.
+  ///
+  /// Throws a [ServerException] on database error.
+  Future<void> deletePost(String postId) async {
     try {
-      // --- 1. Upload Main Media ---
-      mediaUrl = await _uploadFileToStorage(
-        file: mediaFile,
-        uploadPath: mediaUploadPath,
-      );
-
-      // --- 2. Generate & Upload Thumbnail (for video) ---
-      if (mediaType == 'video') {
-        final thumbFile = await _generateThumbnailFile(mediaFile);
-        if (thumbFile != null) {
-          final thumbExt = thumbFile.path.split('.').last;
-          final thumbFileName = '${const Uuid().v4()}.$thumbExt';
-          final thumbUploadPath = 'posts/thumbnails/$userId/$thumbFileName';
-
-          thumbnailUrl = await _uploadFileToStorage(
-            file: thumbFile,
-            uploadPath: thumbUploadPath,
-          );
-          // Clean up local temp thumbnail
-          try {
-            await thumbFile.delete();
-          } catch (_) {}
-        }
-      }
-      return {'mediaUrl': mediaUrl, 'thumbnailUrl': thumbnailUrl};
+      AppLogger.info('Attempting to delete post: $postId');
+      await client.from('posts').delete().eq('id', postId);
+      AppLogger.info('Post deleted successfully: $postId');
     } catch (e) {
-      AppLogger.error('Media processing failed during upload phase: $e');
-      throw ServerException('Media upload failed: $e');
-    }
-  }
-
-  /// [Private Helper] A simple, "do-or-die" uploader.
-  Future<String> _uploadFileToStorage({
-    required File file,
-    required String uploadPath,
-  }) async {
-    try {
-      final fileSize = await file.length();
-      AppLogger.info(
-        'Uploading file to path: $uploadPath (size=$fileSize bytes)',
-      );
-      await client.storage.from('posts').upload(uploadPath, file);
-      final url = client.storage.from('posts').getPublicUrl(uploadPath);
-      AppLogger.info('File uploaded successfully, url: $url');
-      return url;
-    } catch (e, st) {
-      AppLogger.error(
-        'Upload failed for path: $uploadPath',
-        error: e,
-        stackTrace: st,
-      );
-      throw ServerException('File upload failed: $e');
-    }
-  }
-
-  /// [Private Helper] Generates a thumbnail file.
-  Future<File?> _generateThumbnailFile(File videoFile) async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final thumbPath = await VideoThumbnail.thumbnailFile(
-        video: videoFile.path,
-        thumbnailPath: tempDir.path,
-        imageFormat: ImageFormat.JPEG,
-        quality: 75,
-        maxHeight: 720,
-      );
-      if (thumbPath == null) {
-        throw Exception('Thumbnail generation returned null');
-      }
-      AppLogger.info('Thumbnail generated at: $thumbPath');
-      return File(thumbPath);
-    } catch (e, st) {
-      AppLogger.error(
-        'Thumbnail generation failed: $e',
-        error: e,
-        stackTrace: st,
-      );
-      return null;
-    }
-  }
-
-  // ------------------ RPC helpers ------------------
-  List _normalizeRpcList(dynamic resp) {
-    if (resp == null) return <dynamic>[];
-    if (resp is List) return resp;
-    if (resp is Map) return [resp];
-    return <dynamic>[];
-  }
-
-  Future<dynamic> _callRpcWithRetry(
-    String name, {
-    Map<String, dynamic>? params,
-  }) async {
-    int attempt = 0;
-    int delayMs = 200;
-    while (true) {
-      try {
-        attempt++;
-        if (params != null) {
-          return await client.rpc(name, params: params);
-        } else {
-          return await client.rpc(name);
-        }
-      } catch (e) {
-        if (attempt >= _rpcMaxAttempts) rethrow;
-        AppLogger.warning(
-          'RPC $name failed on attempt $attempt: $e — retrying in ${delayMs}ms',
-        );
-        await Future.delayed(Duration(milliseconds: delayMs));
-        delayMs *= 2; // exponential backoff
-      }
+      AppLogger.error('Error deleting post: $e', error: e);
+      throw ServerException(e.toString());
     }
   }
 
   // ==================== RPC for Feed Retrieval ====================
+
+  /// Fetches the user's main feed of posts using the `get_feed_with_user_status` RPC.
+  ///
+  /// This method implements cursor-based pagination using `lastCreatedAt` and `lastId`.
+  /// Throws a [ServerException] on failure.
   Future<List<PostModel>> getFeed({
     required String currentUserId,
     int pageSize = 20,
@@ -376,6 +281,10 @@ class PostsRemoteDataSource {
     }
   }
 
+  /// Fetches video posts (Reels) using the `get_posts_with_user_status` RPC, explicitly filtered by media type 'video'.
+  ///
+  /// This method uses cursor-based pagination.
+  /// Throws a [ServerException] on failure.
   Future<List<PostModel>> getReels({
     required String currentUserId,
     int pageSize = 20,
@@ -405,6 +314,10 @@ class PostsRemoteDataSource {
     }
   }
 
+  /// Fetches posts belonging to a specific user profile using the `get_user_posts_with_status` RPC.
+  ///
+  /// This supports cursor-based pagination and includes the interaction status of the `currentUserId`.
+  /// Throws a [ServerException] on failure.
   Future<List<PostModel>> getUserPosts({
     required String profileUserId,
     required String currentUserId,
@@ -416,7 +329,7 @@ class PostsRemoteDataSource {
       final response = await _callRpcWithRetry(
         'get_user_posts_with_status',
         params: {
-          'p_profile_user_id': profileUserId, // ← CHANGED from p_post_user_id
+          'p_profile_user_id': profileUserId,
           'p_current_user_id': currentUserId,
           'page_size': pageSize,
           if (lastCreatedAt != null)
@@ -428,7 +341,7 @@ class PostsRemoteDataSource {
       final rows = _normalizeRpcList(response);
       if (rows.isEmpty) return [];
 
-      // Debug logging to verify dimensions
+      // Debug logging for verifying dimensions.
       if (rows.isNotEmpty) {
         final firstPost = rows.first as Map<String, dynamic>;
         AppLogger.info(
@@ -447,6 +360,9 @@ class PostsRemoteDataSource {
     }
   }
 
+  /// Fetches a single post by ID using the `get_post_with_profile` RPC, which includes user interaction status.
+  ///
+  /// Throws a [ServerException] if the post is not found or the request fails.
   Future<PostModel> getPost({
     required String postId,
     required String currentUserId,
@@ -470,6 +386,10 @@ class PostsRemoteDataSource {
   }
 
   // ==================== Share Count ====================
+
+  /// Initiates the native share process and, if successful, increments the post's share count via RPC.
+  ///
+  /// Throws a [ServerException] if the count increment RPC fails.
   Future<void> sharePost({required String postId}) async {
     try {
       AppLogger.info('Attempting to share post: $postId');
@@ -493,20 +413,11 @@ class PostsRemoteDataSource {
     }
   }
 
-  Future<void> deletePost(String postId) async {
-    try {
-      AppLogger.info('Attempting to delete post: $postId');
-      await client.from('posts').delete().eq('id', postId);
-      AppLogger.info('Post deleted successfully: $postId');
-    } catch (e) {
-      AppLogger.error('Error deleting post: $e', error: e);
-      throw ServerException(e.toString());
-    }
-  }
-
   // ==================== Realtime streams ====================
 
-  /// Stream for new posts being created.
+  /// Provides a real-time stream for newly created posts.
+  ///
+  /// Realtime events are **coalesced** and fetched in batches using an RPC to minimize latency and database load.
   Stream<PostModel> streamNewPosts() {
     AppLogger.info('Setting up real-time stream for new posts (coalesced)');
     final currentUserId = client.auth.currentUser?.id;
@@ -525,6 +436,8 @@ class PostsRemoteDataSource {
     final List<String> idBuffer = [];
     Timer? flushTimer;
     bool isFlushing = false;
+
+    /// A function for fetching all currently buffered post IDs in batches using the RPC.
     Future<void> flushIds() async {
       if (isFlushing) return;
       isFlushing = true;
@@ -622,7 +535,7 @@ class PostsRemoteDataSource {
     _newPostsController!.onCancel = () async {
       try {
         flushTimer?.cancel();
-        await flushIds(); // Flush any remaining IDs
+        await flushIds(); // Flushing any remaining IDs.
         if (!(_newPostsController?.hasListener ?? false)) {
           await _postsInsertsChannel?.unsubscribe();
           _postsInsertsChannel = null;
@@ -638,7 +551,9 @@ class PostsRemoteDataSource {
     return _newPostsController!.stream;
   }
 
-  /// Stream for post updates (likes_count, comments_count, etc.)
+  /// Provides a real-time stream for updates to existing posts (e.g., changes to likes_count, comments_count).
+  ///
+  /// The payload includes essential update fields like counts and media URLs.
   Stream<Map<String, dynamic>> streamPostUpdates() {
     AppLogger.info('Setting up real-time stream for post updates');
     if (_postsController != null && !_postsController!.isClosed) {
@@ -697,7 +612,7 @@ class PostsRemoteDataSource {
     return _postsController!.stream;
   }
 
-  /// Stream for post deletions
+  /// Provides a real-time stream for post deletions, yielding the ID of the deleted post.
   Stream<String> streamPostDeletions() {
     AppLogger.info('Setting up real-time stream for post deletions');
     if (_postDeletionsController != null &&
@@ -747,7 +662,9 @@ class PostsRemoteDataSource {
     return _postDeletionsController!.stream;
   }
 
-  /// Cleanup method to unsubscribe from all channels
+  /// Cleans up all resources used by the data source.
+  ///
+  /// This unsubscribes from all Supabase Realtime channels and closes all stream controllers.
   void dispose() {
     AppLogger.info('Disposing PostsRemoteDataSource - cleaning up channels');
     try {
@@ -768,5 +685,147 @@ class PostsRemoteDataSource {
     try {
       _newPostsController?.close();
     } catch (_) {}
+  }
+
+  // ------------------ PRIVATE HELPERS ------------------
+
+  /// [Private Helper] Uploads media and returns the public URLs for the media and its thumbnail (if video).
+  ///
+  /// Throws a [ServerException] if the upload process fails.
+  Future<Map<String, String?>> _uploadMediaAndGetUrls({
+    required String userId,
+    required File mediaFile,
+    required String mediaType,
+    required String fileExt,
+  }) async {
+    // Generating a unique file path once.
+    final fileName = '${const Uuid().v4()}.$fileExt';
+    final mediaUploadPath = 'posts/media/$userId/$fileName';
+    String? mediaUrl;
+    String? thumbnailUrl;
+
+    try {
+      // --- 1. Uploading Main Media ---
+      mediaUrl = await _uploadFileToStorage(
+        file: mediaFile,
+        uploadPath: mediaUploadPath,
+      );
+
+      // --- 2. Generating & Uploading Thumbnail (for video) ---
+      if (mediaType == 'video') {
+        final thumbFile = await _generateThumbnailFile(mediaFile);
+        if (thumbFile != null) {
+          final thumbExt = thumbFile.path.split('.').last;
+          final thumbFileName = '${const Uuid().v4()}.$thumbExt';
+          final thumbUploadPath = 'posts/thumbnails/$userId/$thumbFileName';
+
+          thumbnailUrl = await _uploadFileToStorage(
+            file: thumbFile,
+            uploadPath: thumbUploadPath,
+          );
+          // Cleaning up the local temporary thumbnail file.
+          try {
+            await thumbFile.delete();
+          } catch (_) {}
+        }
+      }
+      return {'mediaUrl': mediaUrl, 'thumbnailUrl': thumbnailUrl};
+    } catch (e) {
+      AppLogger.error('Media processing failed during upload phase: $e');
+      throw ServerException('Media upload failed: $e');
+    }
+  }
+
+  /// [Private Helper] Handles the direct upload of a file to Supabase Storage.
+  ///
+  /// Returns the public URL of the uploaded file.
+  /// Throws a [ServerException] on upload failure.
+  Future<String> _uploadFileToStorage({
+    required File file,
+    required String uploadPath,
+  }) async {
+    try {
+      final fileSize = await file.length();
+      AppLogger.info(
+        'Uploading file to path: $uploadPath (size=$fileSize bytes)',
+      );
+      await client.storage.from('posts').upload(uploadPath, file);
+      final url = client.storage.from('posts').getPublicUrl(uploadPath);
+      AppLogger.info('File uploaded successfully, url: $url');
+      return url;
+    } catch (e, st) {
+      AppLogger.error(
+        'Upload failed for path: $uploadPath',
+        error: e,
+        stackTrace: st,
+      );
+      throw ServerException('File upload failed: $e');
+    }
+  }
+
+  /// [Private Helper] Generates a JPEG thumbnail file from a given video file.
+  ///
+  /// Returns the temporary [File] object of the thumbnail, or null on generation failure.
+  Future<File?> _generateThumbnailFile(File videoFile) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final thumbPath = await VideoThumbnail.thumbnailFile(
+        video: videoFile.path,
+        thumbnailPath: tempDir.path,
+        imageFormat: ImageFormat.JPEG,
+        quality: 75,
+        maxHeight: 720,
+      );
+      if (thumbPath == null) {
+        throw Exception('Thumbnail generation returned null');
+      }
+      AppLogger.info('Thumbnail generated at: $thumbPath');
+      return File(thumbPath);
+    } catch (e, st) {
+      AppLogger.error(
+        'Thumbnail generation failed: $e',
+        error: e,
+        stackTrace: st,
+      );
+      return null;
+    }
+  }
+
+  // ------------------ RPC helpers ------------------
+
+  /// [Private Helper] Normalizing a dynamic Supabase RPC response into a [List] of dynamic objects.
+  static List _normalizeRpcList(dynamic resp) {
+    if (resp == null) return <dynamic>[];
+    if (resp is List) return resp;
+    if (resp is Map) return [resp];
+    return <dynamic>[];
+  }
+
+  /// [Private Helper] Calling a Supabase RPC with an exponential backoff retry mechanism.
+  ///
+  /// This method retries up to [_rpcMaxAttempts] times on failure before re-throwing the error.
+  Future<dynamic> _callRpcWithRetry(
+    String name, {
+    Map<String, dynamic>? params,
+  }) async {
+    int attempt = 0;
+    int delayMs = 200;
+    while (true) {
+      try {
+        attempt++;
+        if (params != null) {
+          return await client.rpc(name, params: params);
+        } else {
+          return await client.rpc(name);
+        }
+      } catch (e) {
+        if (attempt >= _rpcMaxAttempts) rethrow;
+        AppLogger.warning(
+          'RPC $name failed on attempt $attempt: $e — retrying in ${delayMs}ms',
+        );
+        await Future.delayed(Duration(milliseconds: delayMs));
+        delayMs *= 2; // Applying exponential backoff.
+      }
+    }
   }
 }

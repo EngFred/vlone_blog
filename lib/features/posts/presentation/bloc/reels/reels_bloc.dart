@@ -29,7 +29,7 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     : super(const ReelsInitial()) {
     on<GetReelsEvent>(_onGetReels);
     on<LoadMoreReelsEvent>(_onLoadMoreReels);
-    on<RefreshReelsEvent>(_onRefreshReels); // UPDATED
+    on<RefreshReelsEvent>(_onRefreshReels);
 
     on<StartReelsRealtime>(_onStartReelsRealtime);
     on<StopReelsRealtime>(_onStopReelsRealtime);
@@ -58,11 +58,8 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
       return;
     }
 
-    final currentPostsSnapshot = getPostsFromState(
-      state,
-    ); // Using public getter
+    final currentPostsSnapshot = getPostsFromState(state);
 
-    // Use 'posts' for consistent state
     emit(ReelsLoadingMore(posts: currentPostsSnapshot));
     await _safeFetchReels(
       emit,
@@ -79,11 +76,10 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     _hasMoreReels = true;
     _lastReelsCreatedAt = null;
     _lastReelsId = null;
-    // Do not emit ReelsLoading, let the RefreshIndicator spin
     await _safeFetchReels(
       emit,
       isRefresh: true,
-      refreshCompleter: event.refreshCompleter, // PASS COMPLETER
+      refreshCompleter: event.refreshCompleter,
     );
   }
 
@@ -91,7 +87,6 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     Emitter<ReelsState> emit, {
     required bool isRefresh,
     List<PostEntity>? existingPosts,
-    // ADDED: Optional completer for refresh indicator
     Completer<void>? refreshCompleter,
   }) async {
     if (_isFetchingReels) return;
@@ -111,13 +106,12 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
           final message = ErrorMessageMapper.getErrorMessage(failure);
           AppLogger.error('Get reels failed: $message');
           if (isRefresh) {
-            // Emit ReelsError with the completer
             emit(ReelsError(message, refreshCompleter: refreshCompleter));
           } else {
             final currentPosts = existingPosts ?? [];
             emit(ReelsLoadMoreError(message, posts: currentPosts));
           }
-          refreshCompleter?.complete(); // COMPLETE ON ERROR
+          refreshCompleter?.complete();
         },
         (newPosts) {
           List<PostEntity> updatedPosts;
@@ -139,11 +133,11 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
               updatedPosts,
               hasMore: _hasMoreReels,
               isRealtimeActive: _isSubscribedToService,
-              refreshCompleter: refreshCompleter, // PASS COMPLETER
+              refreshCompleter: refreshCompleter,
             ),
           );
           AppLogger.info('Reels loaded with ${updatedPosts.length} posts');
-          refreshCompleter?.complete(); // COMPLETE ON SUCCESS
+          refreshCompleter?.complete();
         },
       );
     } finally {
@@ -173,8 +167,6 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
       emit(ReelsLoadMoreError(currentState.message, posts: updatedPosts));
     }
   }
-
-  // --- Realtime Handlers ---
 
   Future<void> _onStartReelsRealtime(
     StartReelsRealtime event,
@@ -241,11 +233,9 @@ class ReelsBloc extends Bloc<ReelsEvent, ReelsState> {
     _RealtimeReelsPostDeleted event,
     Emitter<ReelsState> emit,
   ) {
-    // This logic is now robust and handles all states
     add(RemovePostFromReels(event.postId));
   }
 
-  // MADE PUBLIC: Renamed from _getPostsFromState to getPostsFromState
   List<PostEntity> getPostsFromState(ReelsState state) {
     if (state is ReelsLoaded) {
       return state.posts;

@@ -31,7 +31,7 @@ class _TrimmerViewState extends State<TrimmerView>
   double _endValue = 0.0;
   double _fullDurationMs = 0.0;
   bool _isPlaying = false;
-  bool _progressVisibility = false; // Controls the saving overlay visibility
+  bool _progressVisibility = false;
 
   // A tiny tolerance so floating rounding doesn't produce a false-negative.
   static const double _toleranceMs = 100.0;
@@ -43,7 +43,6 @@ class _TrimmerViewState extends State<TrimmerView>
       widget.maxDuration ?? _defaultMaxDurationSeconds;
   double get _maxDurationMs => _effectiveMaxDurationSeconds * 1000.0;
 
-  /// Save enabled only when trim duration > 0 and <= maxDuration (within tiny tolerance)
   bool get _isSaveEnabled {
     return _trimDurationMs > 0 &&
         _trimDurationMs <= (_maxDurationMs + _toleranceMs);
@@ -135,7 +134,6 @@ class _TrimmerViewState extends State<TrimmerView>
     super.dispose();
   }
 
-  // Utility: ms -> mm:ss (or hh:mm:ss if long)
   String _formatMsToTime(double ms) {
     final int totalSeconds = (ms / 1000).round();
     final int hours = totalSeconds ~/ 3600;
@@ -153,7 +151,6 @@ class _TrimmerViewState extends State<TrimmerView>
     final theme = Theme.of(context);
     final mediaQuery = MediaQuery.of(context);
 
-    // dynamic highlight color for trim handles / border
     final Color trimHighlightColor = _isOverMax
         ? theme.colorScheme.error
         : theme.colorScheme.primary;
@@ -212,7 +209,6 @@ class _TrimmerViewState extends State<TrimmerView>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Live duration indicator / warning
                 _buildEnhancedDurationIndicator(context, trimHighlightColor),
                 const SizedBox(height: 12),
                 // Trimmer scrubber
@@ -284,7 +280,6 @@ class _TrimmerViewState extends State<TrimmerView>
                 foregroundColor: Colors.white,
                 disabledForegroundColor: Colors.white38,
               ),
-              // Always show 'Save' in the top bar per your request.
               child: const Text('Save'),
             ),
           ),
@@ -293,7 +288,6 @@ class _TrimmerViewState extends State<TrimmerView>
     );
   }
 
-  // Add this enhanced duration indicator method to replace the existing one:
   Widget _buildEnhancedDurationIndicator(
     BuildContext context,
     Color highlightColor,

@@ -28,7 +28,7 @@ class SavingLoadingOverlay extends StatelessWidget {
     return Container(
       width: double.infinity,
       height: double.infinity,
-      color: Colors.black54, // dark translucent backdrop
+      color: Colors.black54,
       child: Center(
         child: Container(
           width: 300,
@@ -40,7 +40,6 @@ class SavingLoadingOverlay extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Circular progress indicator (same size in both cases)
               SizedBox(
                 width: 72,
                 height: 72,
@@ -56,7 +55,6 @@ class SavingLoadingOverlay extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              // Combined message + percent (e.g. "Compressing video... 25%")
               Text(
                 showPercent ? '$message ${shownPercent.round()}%' : message,
                 textAlign: TextAlign.center,

@@ -33,9 +33,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
   final MediaDownloadService _downloadService = sl<MediaDownloadService>();
   bool _isDownloading = false;
   double _downloadProgress = 0.0;
-
-  // --- NEW: State for mute ---
-  // Default to unmuted on this page
   bool _isMuted = false;
 
   @override
@@ -59,8 +56,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
         return;
       }
 
-      // --- MODIFIED: Set volume on init ---
-      // Ensure it's unmuted (or respects state) when loading
       await ctrl.setVolume(_isMuted ? 0.0 : 1.0);
 
       ctrl.addListener(_videoListener);
@@ -88,8 +83,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
       VideoPlaybackManager.pause();
       setState(() {});
     } else {
-      // --- MODIFIED: Set volume on play ---
-      // Ensure volume is correct when playback starts
       _videoController!.setVolume(_isMuted ? 0.0 : 1.0);
 
       VideoPlaybackManager.play(_videoController!, () {
@@ -99,7 +92,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
     }
   }
 
-  // --- NEW: Mute toggle function ---
   void _toggleMute() {
     if (_videoController == null || !_initialized) return;
     setState(() {
@@ -124,7 +116,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
     }
   }
 
-  // ---Download handler (unchanged) ---
   Future<void> _handleDownload() async {
     if (_isDownloading) return;
 
@@ -164,7 +155,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
       _isDownloading = false;
     });
 
-    // 👇 Reworked feedback using the extended SnackbarUtils
     switch (result.status) {
       case DownloadResultStatus.success:
         SnackbarUtils.showSuccess(context, 'Media saved to gallery!');
@@ -185,28 +175,26 @@ class _FullMediaPageState extends State<FullMediaPage> {
         break;
 
       case DownloadResultStatus.permissionPermanentlyDenied:
-        // Now using showWarning with the custom action!
         SnackbarUtils.showWarning(
           context,
           'Permission denied. Please enable storage access in app settings.',
           action: SnackBarAction(
             label: 'SETTINGS',
             textColor: Colors.white,
-            onPressed: openAppSettings, // Function from permission_handler
+            onPressed: openAppSettings,
           ),
         );
         break;
     }
   }
 
-  // --- Download button widget (unchanged) ---
   Widget _buildDownloadButton() {
     if (_isDownloading) {
       return Padding(
-        padding: const EdgeInsets.all(8.0), // Match IconButton tap area
+        padding: const EdgeInsets.all(8.0),
         child: SizedBox(
-          width: 24, // Icon size
-          height: 24, // Icon size
+          width: 24,
+          height: 24,
           child: CircularProgressIndicator(
             value: _downloadProgress > 0 ? _downloadProgress : null,
             color: Colors.white,
@@ -222,7 +210,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
     );
   }
 
-  // --- (All scrubbing methods remain unchanged) ---
   void _onScrubStart(double value) {
     if (_videoController == null || !_initialized) return;
     _isScrubbing = true;
@@ -235,7 +222,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
   }
 
   void _onScrubUpdate(double value) {
-    // ... (no changes)
     if (_videoController == null || !_initialized) return;
     _scrubValue = _videoController!.value.duration * value;
     setState(() {});
@@ -277,7 +263,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
         });
   }
 
-  // --- build() (unchanged) ---
   @override
   Widget build(BuildContext context) {
     final media = widget.post;
@@ -307,7 +292,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
                 ),
               ),
             ),
-            // --- ADDED: Download Button Positioned ---
             Positioned(
               top: 12,
               right: 12,
@@ -327,7 +311,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
     );
   }
 
-  // --- _buildInteractiveImage() (unchanged) ---
   Widget _buildInteractiveImage(PostEntity media) {
     return InteractiveViewer(
       panEnabled: true,
@@ -392,7 +375,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
     );
   }
 
-  // --- MODIFIED: _buildVideoControls() ---
   Widget _buildVideoControls() {
     if (_videoController == null || !_initialized) {
       return Container(
@@ -468,7 +450,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
               ),
             ],
           ),
-          // const SizedBox(height: 6), // Removed to make controls more compact
           // Play/pause and Mute controls
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -491,7 +472,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
                       ? Icons.pause_circle_filled
                       : Icons.play_circle_filled,
                   color: Colors.white,
-                  size: 42, // Made larger to be the primary control
+                  size: 42,
                 ),
                 onPressed: () => Debouncer.instance.throttle(
                   'full_media_toggle_${widget.post.id}',
@@ -499,9 +480,7 @@ class _FullMediaPageState extends State<FullMediaPage> {
                   _togglePlayPause,
                 ),
               ),
-
-              // Empty Sized Box for spacing to balance the row
-              const SizedBox(width: 48), // approx width of an IconButton
+              const SizedBox(width: 48),
             ],
           ),
         ],
@@ -509,7 +488,6 @@ class _FullMediaPageState extends State<FullMediaPage> {
     );
   }
 
-  // --- dispose() (unchanged) ---
   @override
   void dispose() {
     _isDisposed = true;

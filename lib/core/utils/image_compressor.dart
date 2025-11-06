@@ -9,26 +9,27 @@ import 'package:vlone_blog_app/core/utils/app_logger.dart';
 
 typedef CompressionProgressCallback = void Function(double percent);
 
-/// A utility class for compressing images to reduce file size while maintaining acceptable quality.
-/// Compression is applied if the input file exceeds the size threshold.
-/// Supports JPEG encoding with configurable quality and max dimensions for resizing.
+/// A utility class managing the compression of image files to reduce their size
+/// while maintaining acceptable visual quality.
+/// Compression is initiated only if the input file size exceeds a predefined threshold.
 class ImageCompressor {
-  /// Default maximum bytes to trigger compression. Default: 1 MB.
+  /// The default maximum size (in bytes) that triggers a compression attempt. Default: 1 MB.
   static const int defaultMaxSizeBytes = 1 * 1024 * 1024;
 
-  /// Default maximum dimension (width or height) for resizing. Default: 1080px.
+  /// The default maximum dimension (width or height) used for resizing the image. Default: 1080px.
   static const double defaultMaxDimension = 1080.0;
 
-  /// Default JPEG quality (0-100, higher is better). Default: 85.
+  /// The default JPEG quality setting (0-100, where higher means better quality/larger file). Default: 85.
   static const int defaultQuality = 85;
 
-  /// Compress the given image file if it exceeds the size threshold.
+  /// Compressing the given image file only if it is larger than the size threshold.
   ///
-  /// - Resizes the image if any dimension exceeds [maxDimension] while preserving aspect ratio.
-  /// - Encodes to JPEG format for consistent compression.
-  /// - `onProgress`: Optional callback for progress updates (0.0 to 100.0). For images,
-  ///   this is invoked at 0% before processing and 100% after, as operations are fast.
-  /// - Returns the compressed [File] (in temp dir) or the original if no compression was needed/possible.
+  /// - The image is resized if any dimension exceeds [maxDimension], while preserving its aspect ratio.
+  /// - The final output is encoded to the JPEG format for consistent size reduction.
+  /// - `onProgress`: An optional callback for progress updates (0.0 to 100.0). For image operations,
+  ///   this is invoked at 0% before processing and 100% after, since the operation is typically very fast.
+  /// - The method returns the **compressed** [File] in the temporary directory. If no size reduction
+  ///   was achieved, the **original** file is returned.
   static Future<File> compressIfNeeded(
     File input, {
     int maxSizeBytes = defaultMaxSizeBytes,
@@ -49,7 +50,7 @@ class ImageCompressor {
     );
 
     if (inputBytes <= maxSizeBytes) {
-      AppLogger.info('ImageCompressor: skip compression (below threshold)');
+      AppLogger.info('ImageCompressor: skipping compression (below threshold)');
       return input;
     }
 
@@ -67,7 +68,7 @@ class ImageCompressor {
         'ImageCompressor: original dimensions ${image.width}x${image.height}',
       );
 
-      // Calculate scale factor if resizing is needed
+      // Calculating the scale factor if resizing is necessary.
       double scale = 1.0;
       if (image.width > maxDimension || image.height > maxDimension) {
         scale = image.width > image.height
@@ -76,7 +77,7 @@ class ImageCompressor {
         AppLogger.info('ImageCompressor: applying scale factor $scale');
       }
 
-      // Resize if scale < 1.0
+      // Resizing the image if the scale factor is less than 1.0.
       if (scale < 1.0) {
         final int newWidth = (image.width * scale).round();
         final int newHeight = (image.height * scale).round();
@@ -86,10 +87,10 @@ class ImageCompressor {
         );
       }
 
-      // Encode to JPEG with specified quality
+      // Encoding the image to JPEG with the specified quality.
       final Uint8List encoded = img_lib.encodeJpg(image, quality: quality);
 
-      // Write to temporary file
+      // Writing the encoded data to a temporary file.
       final Directory tempDir = await getTemporaryDirectory();
       final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
       final String outName = 'compressed_image_$timestamp.jpg';
@@ -103,11 +104,11 @@ class ImageCompressor {
         'ImageCompressor: output size=$outputBytes bytes (reduction: ${reductionPercent.toStringAsFixed(1)}%)',
       );
 
-      // Only return compressed if smaller than original
+      // Only returning the new file if it is smaller than the original.
       if (outputBytes < inputBytes) {
         return outFile;
       } else {
-        // Cleanup and return original
+        // Cleaning up the temporary file and returning the original since no size reduction occurred.
         try {
           await outFile.delete();
         } catch (e) {

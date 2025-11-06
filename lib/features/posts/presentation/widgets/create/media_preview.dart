@@ -175,7 +175,7 @@ class MediaPreview extends StatelessWidget {
                           DialogActions.createPrimaryButton(
                             context,
                             label: 'Remove',
-                            onPressed: () {}, // removal handled after pop
+                            onPressed: () {},
                           ),
                         ],
                         isDismissible: true,

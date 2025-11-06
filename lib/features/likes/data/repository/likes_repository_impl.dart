@@ -38,7 +38,6 @@ class LikesRepositoryImpl implements LikesRepository {
     try {
       AppLogger.info('Repository: Setting up likes stream');
 
-      // streamLikeEvents is the method name in LikesRemoteDataSource
       return remoteDataSource
           .streamLikeEvents()
           .map((likeEvent) => Right<Failure, Map<String, dynamic>>(likeEvent))

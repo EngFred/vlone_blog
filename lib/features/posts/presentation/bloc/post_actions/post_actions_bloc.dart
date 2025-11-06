@@ -1,4 +1,3 @@
-// post_actions_bloc.dart
 import 'dart:async';
 import 'dart:io';
 import 'package:equatable/equatable.dart';
@@ -30,23 +29,20 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
     required this.deletePostUseCase,
     required this.sharePostUseCase,
   }) : super(const PostFormState()) {
-    // Core action handlers
     on<CreatePostEvent>(_onCreatePost);
     on<GetPostEvent>(_onGetPost);
     on<DeletePostEvent>(_onDeletePost);
     on<SharePostEvent>(_onSharePost);
     on<OptimisticPostUpdate>(_onOptimisticPostUpdate);
 
-    // UI/form handlers
     on<ContentChanged>(_onContentChanged);
-    // 🔄 UPDATED: Handler for MediaSelected event
     on<MediaSelected>(_onMediaSelected);
     on<ProcessingChanged>(_onProcessingChanged);
     on<ResetForm>(_onResetForm);
 
     // Subscribe to MediaProgressNotifier to keep processing status in bloc
     _mediaProgressSub = MediaProgressNotifier.stream.listen((progress) {
-      // Map notifier progress to ProcessingChanged events
+      // Mapping notifier progress to ProcessingChanged events
       switch (progress.stage) {
         case MediaProcessingStage.compressing:
           add(
@@ -104,15 +100,12 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
     return super.close();
   }
 
-  // FIX: Issue 3 - Reset to initial form state
   Future<void> _onResetForm(
     ResetForm event,
     Emitter<PostActionsState> emit,
   ) async {
     emit(const PostFormState());
   }
-
-  // ---------- Other Event handlers (updated where needed) ----------
 
   Future<void> _onContentChanged(
     ContentChanged event,
@@ -135,7 +128,6 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
     emit(newForm);
   }
 
-  // 🔄 UPDATED: Handler now receives MediaType
   Future<void> _onMediaSelected(
     MediaSelected event,
     Emitter<PostActionsState> emit,
@@ -150,7 +142,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
 
     final newForm = prev.copyWith(
       mediaFile: event.file,
-      mediaType: event.type, // 🔄 UPDATED: Using enum
+      mediaType: event.type,
       isPostButtonEnabled: isEnabled,
     );
 
@@ -176,12 +168,10 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
         event.message != null &&
         event.message!.toLowerCase().contains('error')) {
       emit(PostActionError(event.message!));
-      // after signalling error, re-emit form state
       emit(newForm);
     }
   }
 
-  // 🔄 UPDATED: Handler now uses MediaType in the use case parameters
   Future<void> _onCreatePost(
     CreatePostEvent event,
     Emitter<PostActionsState> emit,
@@ -229,7 +219,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
         userId: event.userId,
         content: contentToUse,
         mediaFile: mediaFileToUse,
-        mediaType: mediaTypeToUse, // This now correctly passes MediaType?
+        mediaType: mediaTypeToUse,
       ),
     );
 
@@ -238,7 +228,7 @@ class PostActionsBloc extends Bloc<PostActionsEvent, PostActionsState> {
         final friendlyMessage = ErrorMessageMapper.getErrorMessage(failure);
         AppLogger.error('Create post failed: $friendlyMessage');
         emit(PostActionError(friendlyMessage));
-        // Reset processing and re-emit form state on failure
+        // Resetting processing and re-emitting form state on failure
         emit(
           form.copyWith(
             isProcessing: false,

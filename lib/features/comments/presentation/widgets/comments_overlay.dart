@@ -65,7 +65,7 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context); // Get the theme here
+    final theme = Theme.of(context);
     return BlocSelector<AuthBloc, AuthState, (String?, String?)>(
       selector: (state) => state is AuthAuthenticated
           ? (state.user.username, state.user.profileImageUrl)
@@ -94,7 +94,6 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
                     top: Radius.circular(20),
                   ),
                   child: Container(
-                    // FIX: Replaced hardcoded dark gradient with theme-aware color
                     color: theme.colorScheme.surface,
                     child: Column(
                       children: [
@@ -102,7 +101,6 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
                         Container(
                           height: 80,
                           decoration: BoxDecoration(
-                            // FIX: Replaced Colors.grey[900]! with theme.colorScheme.surface
                             color: theme.colorScheme.surface,
                             borderRadius: const BorderRadius.vertical(
                               top: Radius.circular(20),
@@ -115,7 +113,6 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
                                 width: 36,
                                 height: 4,
                                 decoration: BoxDecoration(
-                                  // FIX: Replaced Colors.grey[500] with theme-aware color
                                   color: theme.colorScheme.onSurface
                                       .withOpacity(0.4),
                                   borderRadius: BorderRadius.circular(2),
@@ -150,7 +147,6 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
                                                     .textTheme
                                                     .titleMedium
                                                     ?.copyWith(
-                                                      // FIX: Ensure text color is theme-aware
                                                       color: theme
                                                           .colorScheme
                                                           .onSurface,
@@ -165,7 +161,6 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
                                       width: 40,
                                       height: 40,
                                       decoration: BoxDecoration(
-                                        // FIX: Replaced Colors.grey[800] with theme-aware color
                                         color: theme
                                             .colorScheme
                                             .surfaceContainerHighest,
@@ -174,7 +169,6 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
                                       child: IconButton(
                                         icon: Icon(
                                           Icons.close,
-                                          // FIX: Ensure icon color is theme-aware
                                           color: theme.colorScheme.onSurface,
                                           size: 20,
                                         ),
@@ -189,7 +183,6 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
                             ],
                           ),
                         ),
-                        // FIX: Replaced Colors.grey with theme.colorScheme.outline
                         Divider(
                           height: 1,
                           color: theme.colorScheme.outline.withOpacity(0.2),
@@ -220,11 +213,9 @@ class _CommentsOverlayState extends State<CommentsOverlay> {
                           top: false,
                           child: Container(
                             decoration: BoxDecoration(
-                              // FIX: Replaced Colors.grey[900] with theme.colorScheme.surface
                               color: theme.colorScheme.surface,
                               border: Border(
                                 top: BorderSide(
-                                  // FIX: Replaced Colors.grey[700]! with theme.colorScheme.outline
                                   color: theme.colorScheme.outline.withOpacity(
                                     0.5,
                                   ),

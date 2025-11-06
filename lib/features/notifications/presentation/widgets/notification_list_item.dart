@@ -157,20 +157,16 @@ class NotificationListItem extends StatelessWidget {
   }
 
   void _showDeleteConfirmationDialog(BuildContext context) {
-    // Replaced the AlertDialog with the custom showCustomDialog function
     showCustomDialog<bool>(
       context: context,
       title: 'Delete Notification?',
       content: const Text('This action cannot be undone.'),
       actions: [
-        // Using the reusable Cancel button
         DialogActions.createCancelButton(context, label: 'Cancel'),
-        // Using the reusable Primary button, customizing its style for 'Delete'
         DialogActions.createPrimaryButton(
           context,
           label: 'Delete',
           onPressed: () {
-            // This onPressed is executed *after* the dialog pops
             context.read<NotificationsBloc>().add(
               NotificationsDeleteOne(notification.id),
             );

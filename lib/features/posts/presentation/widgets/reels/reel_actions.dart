@@ -10,7 +10,7 @@ import 'package:vlone_blog_app/features/favorites/presentation/bloc/favorites_bl
 import 'package:vlone_blog_app/features/likes/presentation/bloc/likes_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/post_actions/post_actions_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/comments_overlay.dart';
+import 'package:vlone_blog_app/features/comments/presentation/widgets/comments_overlay.dart';
 
 class ReelActions extends StatefulWidget {
   final PostEntity post;

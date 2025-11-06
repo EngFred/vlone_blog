@@ -13,7 +13,7 @@ class UserListView extends StatelessWidget {
   final String? loadMoreError;
   final Set<String> loadingUserIds;
   final String currentUserId;
-  final bool isLoadingMore; // if you want to show a separate state
+  final bool isLoadingMore;
   final FollowToggleCallback onFollowToggle;
   final VoidCallback? onRetryLoadMore;
 

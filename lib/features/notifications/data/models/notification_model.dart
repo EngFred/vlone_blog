@@ -26,7 +26,7 @@ class NotificationModel extends NotificationEntity {
 
   /// Creates a [NotificationModel] from a Supabase database map (JSON).
   factory NotificationModel.fromMap(Map<String, dynamic> map) {
-    // parse metadata robustly (could be stringified JSON or map)
+    // parse metadata
     Map<String, dynamic>? metadata;
     try {
       final rawMeta = map['metadata'];

@@ -1,5 +1,5 @@
 import 'package:equatable/equatable.dart';
-import 'package:vlone_blog_app/core/utils/extensions.dart';
+import 'package:vlone_blog_app/core/utils/date_utils.dart';
 
 class CommentEntity extends Equatable {
   final String id;
@@ -11,8 +11,6 @@ class CommentEntity extends Equatable {
   final String? username;
   final String? avatarUrl;
   final String? parentUsername;
-
-  //server-provided quick replies count (may be null)
   final int? repliesCount;
 
   final List<CommentEntity> replies;

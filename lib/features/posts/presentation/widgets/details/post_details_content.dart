@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/post_actions.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/post_header.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/post_media.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/common/post_actions.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/common/post_header.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/common/post_media.dart';
 
 class PostDetailsContent extends StatelessWidget {
   final PostEntity post;

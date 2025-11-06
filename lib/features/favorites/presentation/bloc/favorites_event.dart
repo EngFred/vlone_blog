@@ -11,8 +11,8 @@ abstract class FavoritesEvent extends Equatable {
 class FavoritePostEvent extends FavoritesEvent {
   final String postId;
   final String userId;
-  final bool isFavorited; // target state the user wants
-  final bool previousState; // UI state *before* the tap
+  final bool isFavorited;
+  final bool previousState;
 
   const FavoritePostEvent({
     required this.postId,

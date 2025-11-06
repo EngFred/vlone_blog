@@ -128,7 +128,6 @@ class CommentTileState extends State<CommentTile> {
                     ),
                     child: CircleAvatar(
                       radius: avatarRadius - 1,
-                      // FIX: Ensure the background color respects the current theme
                       backgroundColor: theme.colorScheme.surface,
                       child: CircleAvatar(
                         radius: avatarRadius - 2,
@@ -153,7 +152,6 @@ class CommentTileState extends State<CommentTile> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Header with username and time
                       Row(
                         children: [
                           GestureDetector(

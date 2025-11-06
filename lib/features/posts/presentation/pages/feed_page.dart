@@ -11,10 +11,10 @@ import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart'
 import 'package:vlone_blog_app/features/notifications/presentation/bloc/notifications_bloc.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/feed/feed_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/feed_list.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/notification_icon_with_badge.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/feed/feed_list.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/feed/notification_icon_with_badge.dart';
 import 'package:vlone_blog_app/features/auth/presentation/bloc/auth_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/user_greeting_title.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/feed/user_greeting_title.dart';
 
 class FeedPage extends StatefulWidget {
   const FeedPage({super.key});
@@ -45,7 +45,7 @@ class _FeedPageState extends State<FeedPage>
         context.read<NotificationsBloc>().add(
           NotificationsSubscribeUnreadCountStream(),
         );
-        // Initial load check can be simplified or rely on FeedBloc being initialized/provided
+
         if (context.read<FeedBloc>().state is FeedInitial) {
           context.read<FeedBloc>().add(GetFeedEvent(_userId!));
         }
@@ -67,15 +67,14 @@ class _FeedPageState extends State<FeedPage>
           'load_more_feed',
           _loadMoreDebounceDuration,
           () {
-            // Get the *current* state directly from the BLoC
             final currentState = context.read<FeedBloc>().state;
 
-            // Determine if we can load more from the BLoC state
+            // Determining if we can load more from the BLoC state
             final bool hasMore = (currentState is FeedLoaded)
                 ? currentState.hasMore
                 : (currentState is FeedLoadingMore ||
                       currentState is FeedLoadMoreError)
-                ? true // We assume we can retry if we're in these states
+                ? true
                 : false;
 
             if (!hasMore) return;
@@ -109,7 +108,6 @@ class _FeedPageState extends State<FeedPage>
     }
   }
 
-  /// NEW: Implement RefreshIndicator logic using Completer
   Future<void> _onRefresh() async {
     final authState = context.read<AuthBloc>().state;
     final userId = _extractUserId(authState);
@@ -132,7 +130,6 @@ class _FeedPageState extends State<FeedPage>
   Widget build(BuildContext context) {
     super.build(context);
     if (_userId == null) {
-      // ... (Initial loading widget remains the same)
       return Scaffold(
         body: Center(
           child: Column(
@@ -197,10 +194,9 @@ class _FeedPageState extends State<FeedPage>
           onRefresh: _onRefresh,
           child: Builder(
             builder: (context) {
-              // We watch the BLoC state directly in the build method.
               final feedState = context.watch<FeedBloc>().state;
 
-              // Do not show full-screen loading if we are refreshing or loading more
+              // Not showing full-screen loading if we are refreshing or loading more
               if (feedState is FeedLoading || feedState is FeedInitial) {
                 if (feedState is FeedLoading &&
                     context.read<FeedBloc>().state is! FeedLoaded) {
@@ -252,7 +248,7 @@ class _FeedPageState extends State<FeedPage>
                     ? feedState.hasMore
                     : (feedState is FeedLoadMoreError ||
                           feedState is FeedLoadingMore)
-                    ? true // Keep "load more" active if we're in a loading/error state
+                    ? true // Keeps "load more" active if we're in a loading/error state
                     : false;
 
                 final bool isRealtimeActive = (feedState is FeedLoaded)
@@ -271,7 +267,7 @@ class _FeedPageState extends State<FeedPage>
                   );
                 }
 
-                // Pass the BLoC's data *directly* to the FeedList
+                // Passing the BLoC's data *directly* to the FeedList
                 return FeedList(
                   posts: posts,
                   userId: _userId!,

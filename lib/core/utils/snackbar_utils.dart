@@ -12,7 +12,6 @@ class SnackbarUtils {
   }) {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
-    // Determine text/icon color based on background brightness
     final brightness = Theme.of(context).brightness;
     final textColor = brightness == Brightness.dark
         ? Colors.white

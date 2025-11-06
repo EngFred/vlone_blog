@@ -12,9 +12,16 @@ class AuthRemoteDataSource {
 
   static const String _cachedUserKey = 'cached_user_profile';
 
+  /// Initializes the data source with a Supabase client and secure storage.
+  /// The secure storage defaults to a new instance if not provided (for testing).
   AuthRemoteDataSource(this.client, [FlutterSecureStorage? secureStorage])
     : _secureStorage = secureStorage ?? const FlutterSecureStorage();
 
+  /// Attempts to sign up a new user via email and password.
+  ///
+  /// Upon successful creation, it fetches the corresponding 'profiles' table entry
+  /// (which is assumed to be created by a database trigger) and caches it.
+  /// Throws [ServerException] if Supabase authentication or profile fetching fails.
   Future<UserModel> signUp({
     required String email,
     required String password,
@@ -35,8 +42,7 @@ class AuthRemoteDataSource {
 
       final userId = authResponse.user!.id;
 
-      //Database trigger creates profile, we just fetch it
-      // Removed client-side profile insertion for reliability
+      // The user profile is created via a database trigger for reliability.
       AppLogger.info(
         'Profile created by DB trigger. Fetching profile for ID: $userId',
       );
@@ -49,7 +55,7 @@ class AuthRemoteDataSource {
 
       final userModel = UserModel.fromMap(profileData);
 
-      // ✅ Cache immediately for offline access
+      // Caching the user profile immediately for offline access.
       await _cacheUserProfile(userModel);
 
       AppLogger.info('Signup successful for user ID: $userId');
@@ -71,6 +77,10 @@ class AuthRemoteDataSource {
     }
   }
 
+  /// Attempts to log in an existing user with email and password.
+  ///
+  /// On success, it fetches the user's profile from the database and caches it.
+  /// Throws [ServerException] on authentication or profile fetching failure.
   Future<UserModel> login({
     required String email,
     required String password,
@@ -97,7 +107,7 @@ class AuthRemoteDataSource {
 
       final userModel = UserModel.fromMap(profileData);
 
-      //Cache immediately for offline access
+      // Caching the user profile immediately for offline access.
       await _cacheUserProfile(userModel);
 
       AppLogger.info('Login successful for user ID: $userId');
@@ -119,13 +129,16 @@ class AuthRemoteDataSource {
     }
   }
 
+  /// Signs out the current user and clears all locally cached session and profile data.
   Future<void> logout() async {
     try {
       AppLogger.info('Attempting logout');
       await client.auth.signOut();
-      //Clear all cached data
+
+      // Clearing all cached data for a complete logout state.
       await _secureStorage.delete(key: 'supabase_persisted_session');
       await _secureStorage.delete(key: _cachedUserKey);
+
       AppLogger.info('Logout successful');
     } catch (e, stackTrace) {
       AppLogger.error(
@@ -137,6 +150,11 @@ class AuthRemoteDataSource {
     }
   }
 
+  /// Fetches the profile of the currently logged-in user from the database.
+  ///
+  /// On network error ([SocketException] or other network issues), it attempts
+  /// to return the cached user profile for offline access before throwing a
+  /// [NetworkException].
   Future<UserModel> getCurrentUser() async {
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
@@ -154,7 +172,7 @@ class AuthRemoteDataSource {
 
       final userModel = UserModel.fromMap(profileData);
 
-      // ✅ Update cache with latest data
+      // Updating the cache with the latest data from the server.
       await _cacheUserProfile(userModel);
 
       AppLogger.info('Current user fetched successfully for ID: $userId');
@@ -163,7 +181,7 @@ class AuthRemoteDataSource {
       AppLogger.warning(
         'Network error fetching user, trying cached profile: $e',
       );
-      //Return cached profile for offline mode
+
       final cachedUser = await _getCachedUserProfile();
       if (cachedUser != null) {
         AppLogger.info('Returning cached user profile for offline access');
@@ -175,7 +193,7 @@ class AuthRemoteDataSource {
     } catch (e) {
       AppLogger.error('Error fetching current user: $e');
 
-      // ✅ Check if it's a network-related error
+      // Checking if the error is network-related to enable offline fallback.
       if (_isNetworkError(e)) {
         final cachedUser = await _getCachedUserProfile();
         if (cachedUser != null) {
@@ -191,22 +209,25 @@ class AuthRemoteDataSource {
     }
   }
 
-  /// Check existing session synchronously first
-  /// This avoids unnecessary async calls when session already exists
+  /// Restores a previously persisted Supabase session.
+  ///
+  /// This first performs a quick synchronous check for an active session. If none
+  /// is found, it attempts to recover the session using the key stored in secure storage.
+  /// Returns `true` if a session is found or successfully restored, `false` otherwise.
   Future<bool> restoreSession() async {
     try {
       AppLogger.info(
         'Attempting to restore session - checking currentSession first',
       );
 
-      //  Quick synchronous check
+      // Quick synchronous check avoids unnecessary async I/O if the session is active.
       if (client.auth.currentSession != null &&
           client.auth.currentUser != null) {
         AppLogger.info('Session already present in Supabase client');
         return true;
       }
 
-      // ✅ Only try to recover if no session exists
+      // Only attempting to recover if no session exists in memory.
       final persisted = await _secureStorage.read(
         key: 'supabase_persisted_session',
       );
@@ -234,8 +255,9 @@ class AuthRemoteDataSource {
     }
   }
 
-  /// ✅ OPTIMIZATION: Cache user profile for offline access
-  /// Stores essential user data in secure storage
+  /// Caches the essential user profile data into secure storage.
+  ///
+  /// This is an optimization for fast access and robust offline mode.
   Future<void> _cacheUserProfile(UserModel user) async {
     try {
       final userJson = jsonEncode({
@@ -256,7 +278,8 @@ class AuthRemoteDataSource {
     }
   }
 
-  /// ✅ Retrieve cached user profile for offline mode
+  /// Retrieves the cached user profile from secure storage.
+  /// Returns the [UserModel] or `null` if no cached data is found or decoding fails.
   Future<UserModel?> _getCachedUserProfile() async {
     try {
       final cachedJson = await _secureStorage.read(key: _cachedUserKey);
@@ -270,7 +293,7 @@ class AuthRemoteDataSource {
     }
   }
 
-  ///Helper to detect network-related errors
+  /// Helper function to broadly detect network-related errors based on the error object or string representation.
   bool _isNetworkError(dynamic error) {
     final errorString = error.toString().toLowerCase();
     return errorString.contains('socketexception') ||

@@ -4,7 +4,7 @@ import 'package:vlone_blog_app/core/presentation/widgets/empty_state_widget.dart
 import 'package:vlone_blog_app/core/presentation/widgets/loading_indicator.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/post_entity.dart';
 import 'package:vlone_blog_app/features/posts/presentation/bloc/user_posts/user_posts_bloc.dart';
-import 'package:vlone_blog_app/features/posts/presentation/widgets/post_card.dart';
+import 'package:vlone_blog_app/features/posts/presentation/widgets/common/post_card.dart';
 
 class ProfilePostsList extends StatelessWidget {
   final List<PostEntity> posts;

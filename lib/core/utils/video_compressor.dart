@@ -9,29 +9,29 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:vlone_blog_app/core/utils/app_logger.dart';
-import 'package:vlone_blog_app/core/utils/helpers.dart';
+import 'package:vlone_blog_app/core/utils/media_utils.dart';
 
 typedef CompressionProgressCallback = void Function(double percent);
 
-/// A small local enum to represent quality levels (keeps API shape similar
-/// to prior implementations).
+/// A small local enum representing video quality levels, keeping the API shape
+/// similar to prior implementations.
 enum VideoQuality { veryHigh, high, medium, low, veryLow }
 
 class VideoCompressor {
-  /// Minimum bytes to attempt compression. Default: 2 MB.
+  /// The minimum size (in bytes) of a video file that will trigger a compression attempt. Default: 2 MB.
   static const int defaultMinSizeBytes = 2 * 1024 * 1024;
 
-  /// Default quality
+  /// The default quality setting being used for compression.
   static const VideoQuality defaultQuality = VideoQuality.medium;
 
-  /// Track the last running FFmpeg session id (so we can cancel).
+  /// Tracking the last running FFmpeg session ID, allowing for cancellation.
   static int? _lastSessionId;
 
-  /// Keep a reference to the last progress timer/subscription if needed.
+  /// Holding a reference to the last progress timer or subscription if needed.
   static StreamSubscription<dynamic>? _lastProgressSub;
 
-  /// Map our VideoQuality to an appropriate CRF value (lower CRF => better quality).
-  /// These values are a sensible default — tweak if you want different size/quality tradeoffs.
+  /// Maps a [VideoQuality] level to an appropriate CRF (Constant Rate Factor) value.
+  /// A lower CRF value results in better quality but a larger file size.
   static int _crfForQuality(VideoQuality q) {
     switch (q) {
       case VideoQuality.veryHigh:
@@ -47,11 +47,11 @@ class VideoCompressor {
     }
   }
 
-  /// Compress the given file if it is worth compressing.
+  /// Compressing the given file only if its size exceeds the minimum threshold.
   ///
-  /// - `onProgress`: optional callback receiving progress as 0..100 double.
-  /// - Returns the compressed File (in temp dir) or original file if compression
-  ///   skipped/failed/produced no savings.
+  /// - `onProgress`: An optional callback receiving the compression progress as a 0..100 double.
+  /// - The method returns the **compressed** [File] located in the temporary directory. If compression
+  ///   was skipped, failed, or produced no size savings, the **original** file is returned.
   static Future<File> compressIfNeeded(
     File input, {
     int minSizeBytes = defaultMinSizeBytes,
@@ -76,17 +76,19 @@ class VideoCompressor {
       );
 
       if (inputBytes <= minSizeBytes) {
-        AppLogger.info('VideoCompressor: skip compression (below threshold)');
+        AppLogger.info(
+          'VideoCompressor: skipping compression (below threshold)',
+        );
         return input;
       }
 
       final tempDir = await getTemporaryDirectory();
 
-      // Try to obtain real duration early (from original file). This avoids
-      // copying and makes progress computation accurate in the Statistics callback.
+      // Attempting to obtain the real duration early from the original file. This ensures
+      // accurate progress computation in the Statistics callback, avoiding unnecessary copying first.
       double durationSeconds = 0.0;
       try {
-        // getVideoDuration is a project helper (returns seconds as int/double)
+        // getVideoDuration is a project helper (returns seconds as int/double).
         final d = await getVideoDuration(input);
         if (d > 0) {
           durationSeconds = d.toDouble();
@@ -104,17 +106,15 @@ class VideoCompressor {
         );
       }
 
-      // Copy input to stable temp path (workaround for some file access issues).
-      // Some platform implementations of FFmpegKit require a local app-dir path
-      // we control; copying ensures predictable behavior. We keep the copy step
-      // but attempted to read duration above to avoid unnecessary work where possible.
+      // Copying the input to a stable temp path (workaround for potential file access issues).
+      // This step ensures predictable behavior on all platforms.
       srcCopyPath = p.join(
         tempDir.path,
         'ff_src_${const Uuid().v4()}${p.extension(input.path)}',
       );
       await input.copy(srcCopyPath);
 
-      // If we didn't have duration from original, try again on copied file.
+      // If the duration wasn't available from the original file, trying again on the copied file.
       if (durationSeconds <= 0) {
         try {
           final d2 = await getVideoDuration(File(srcCopyPath));
@@ -131,51 +131,47 @@ class VideoCompressor {
         }
       }
 
-      // Prepare output path
+      // Preparing the output path.
       final outFileName = 'ff_out_${const Uuid().v4()}.mp4';
       outPath = p.join(tempDir.path, outFileName);
 
-      // Determine CRF from quality
+      // Determining the CRF value based on the chosen quality.
       final crf = _crfForQuality(quality);
 
-      // Build ffmpeg command pieces:
-      // - re-encode video using libx264 with chosen CRF and a reasonable preset
-      // - try to copy audio (fast). If that fails, we'll retry with audio re-encode.
-      // - -movflags +faststart helps playback streaming
-      // - scaling limit to max height 480 while preserving aspect ratio
+      // The FFmpeg scale filter limits the max height to 480px while preserving the aspect ratio.
       const scaleFilter =
-          '-vf scale=-2:480'; // -2:480 means max height 480px, width calculated to preserve aspect ratio
+          '-vf scale=-2:480'; // -2:480 means max height 480px, width calculated to preserve aspect ratio.
 
-      // Two audio modes: 'copy' (fast) and 'aac' (fallback)
+      // Defining two audio modes: 'copy' (fastest) and 'aac' (a more compatible fallback).
       String buildCommand({required bool audioCopy}) {
         final audioPart = audioCopy ? '-c:a copy' : '-c:a aac -b:a 128k';
-        // Use explicit video codec selection
+        // Using explicit video codec selection.
         return '-y -i "$srcCopyPath" -c:v libx264 -preset veryfast -crf $crf $scaleFilter -movflags +faststart $audioPart "$outPath"';
       }
 
       AppLogger.info('VideoCompressor: will run ffmpeg with CRF=$crf');
 
-      // Progress state
+      // State variable for progress tracking.
       double lastReported = 0.0;
 
-      // Helper to run ffmpeg and return success/failure.
+      // A helper function for running ffmpeg and reporting success/failure.
       Future<bool> runFfmpegWithAudioCopy({required bool audioCopy}) async {
         final completer = Completer<bool>();
 
-        // Reset last session id before launching
+        // Resetting the last session ID before launching a new session.
         _lastSessionId = null;
 
         AppLogger.info(
           'VideoCompressor: executing ffmpeg (audioCopy=$audioCopy)',
         );
 
-        // Execute FFmpeg asynchronously with callbacks.
-        // We rely on the onComplete callback to resolve the completer.
+        // Executing FFmpeg asynchronously with callbacks.
+        // Relying on the onComplete callback to resolve the completer.
         FFmpegKit.executeAsync(
           buildCommand(audioCopy: audioCopy),
           (session) async {
             try {
-              // store session id if available
+              // Storing the session ID if available.
               try {
                 _lastSessionId = session.getSessionId();
               } catch (_) {
@@ -207,20 +203,20 @@ class VideoCompressor {
               if (!completer.isCompleted) completer.complete(false);
             }
           },
-          // log callback
+          // Log callback (optional, uncomment for deeper debugging)
           (log) {
-            // Optional: you can enable this for deeper debugging
             // AppLogger.debug('FFMPEG LOG: ${log.getMessage()}');
           },
-          // statistics callback
+          // Statistics callback for progress updates.
           (Statistics stats) {
             try {
-              // stats.getTime() returns milliseconds of processed input
-              final processedMs = stats.getTime(); // may be 0 initially
+              // stats.getTime() returns milliseconds of processed input.
+              final processedMs = stats.getTime(); // may be 0 initially.
 
               if (durationSeconds > 0) {
                 final percent = (processedMs / (durationSeconds * 1000)) * 100;
                 final clipped = percent.clamp(0.0, 100.0);
+                // Reporting progress only if a significant change occurred.
                 if (onProgress != null &&
                     (clipped - lastReported).abs() >= 0.5) {
                   lastReported = clipped;
@@ -229,8 +225,9 @@ class VideoCompressor {
                   } catch (_) {}
                 }
               } else {
-                // Heuristic fallback when duration unknown (soft cap at 99.0)
-                const heuristicDenom = 30 * 1000; // 30s
+                // Applying a heuristic fallback when the video duration is unknown (soft cap at 99.0).
+                const heuristicDenom =
+                    30 * 1000; // Assuming ~30s for the heuristic.
                 final heuristic = ((processedMs / heuristicDenom) * 100).clamp(
                   0.0,
                   99.0,
@@ -250,14 +247,14 @@ class VideoCompressor {
           },
         );
 
-        // Wait for ffmpeg completion (success/failure)
+        // Waiting for FFmpeg completion (success or failure).
         return completer.future;
       }
 
-      // 1) Try with audio copy (fast).
+      // 1) Trying with audio copy (the fastest option).
       bool success = await runFfmpegWithAudioCopy(audioCopy: true);
 
-      // 2) If failed, try again with audio re-encode (more compatible).
+      // 2) If the first attempt failed, retrying with audio re-encode (more compatible).
       if (!success) {
         AppLogger.info(
           'VideoCompressor: retrying ffmpeg with audio re-encode (aac)',
@@ -265,14 +262,14 @@ class VideoCompressor {
         success = await runFfmpegWithAudioCopy(audioCopy: false);
       }
 
-      // Final progress push (100% on success)
+      // Pushing the final progress (100% upon success).
       if (onProgress != null && success) {
         try {
           onProgress(100.0);
         } catch (_) {}
       }
 
-      // If output doesn't exist or failed, cleanup and return original
+      // If the output file doesn't exist or FFmpeg failed, cleaning up and returning the original.
       outFile = File(outPath);
       if (!success || !await outFile.exists()) {
         AppLogger.warning(
@@ -281,14 +278,14 @@ class VideoCompressor {
         return input;
       }
 
-      // Compare sizes
+      // Comparing the file sizes.
       final int compressedBytes = await outFile.length();
       AppLogger.info(
         'VideoCompressor: compressed size=$compressedBytes bytes (orig=$inputBytes)',
       );
 
       if (compressedBytes < inputBytes) {
-        // Move to a guaranteed temporary path we control and return it
+        // Moving the output to a guaranteed temporary path and returning the new File reference.
         final ext = p.extension(outFile.path).isNotEmpty
             ? p.extension(outFile.path)
             : '.mp4';
@@ -301,14 +298,14 @@ class VideoCompressor {
           'VideoCompressor: moved compressed file to ${moved.path}',
         );
 
-        // Delete intermediate out file if different
+        // Deleting the intermediate output file if the location is different from the moved target.
         if (!p.equals(outFile.path, moved.path)) {
           try {
             await outFile.delete();
           } catch (_) {}
         }
 
-        // Optionally delete original if requested and compressed is smaller
+        // Optionally deleting the original file if requested and the compressed file is smaller.
         if (deleteOrigin) {
           try {
             await input.delete();
@@ -320,7 +317,7 @@ class VideoCompressor {
 
         return moved;
       } else {
-        // compressed not smaller — cleanup and return original
+        // Since the compressed file was not smaller, cleaning it up and returning the original.
         try {
           if (await outFile.exists()) await outFile.delete();
         } catch (_) {}
@@ -337,7 +334,7 @@ class VideoCompressor {
       );
       return input;
     } finally {
-      // Robust cleanup: attempt to remove the copied src and transient outPath if present.
+      // Robust cleanup: attempting to remove the copied source and transient output path if they still exist.
       try {
         if (srcCopyPath != null) {
           final f = File(srcCopyPath);
@@ -346,23 +343,22 @@ class VideoCompressor {
       } catch (e) {
         AppLogger.warning('VideoCompressor: failed to cleanup src copy: $e');
       }
-      // outFile may have been moved; avoid deleting the moved location. Only delete the intermediate if still exists and it's not the moved target.
+      // Avoiding the deletion of the moved file. Only deleting the intermediate output file if it still exists.
       try {
         if (outPath != null) {
           final f = File(outPath);
           if (await f.exists()) await f.delete();
         }
       } catch (e) {
-        // ignore
+        // Ignoring cleanup errors.
       }
     }
   }
 
-  /// Cancel any ongoing compression
+  /// Requesting the cancellation of any ongoing FFmpeg compression session.
   static Future<void> cancel() async {
     try {
-      // Cancels all running sessions if session id is not available.
-      // FFmpegKit supports cancelling all or a specific session; we try to cancel last session id if we have it.
+      // Trying to cancel the last specific session ID if available.
       if (_lastSessionId != null) {
         try {
           await FFmpegKit.cancel(_lastSessionId!);
@@ -370,19 +366,21 @@ class VideoCompressor {
             'VideoCompressor: requested FFmpeg cancel for session id=$_lastSessionId',
           );
         } catch (e) {
-          // Fallback to global cancel if per-session fails
+          // Falling back to a global cancel if the per-session cancel fails.
           await FFmpegKit.cancel();
           AppLogger.info(
             'VideoCompressor: requested FFmpeg global cancel after session-cancel fallback',
           );
         }
       } else {
+        // Performing a global cancel if no session ID was tracked.
         await FFmpegKit.cancel();
         AppLogger.info('VideoCompressor: requested FFmpeg global cancel');
       }
     } catch (e) {
       AppLogger.warning('VideoCompressor: cancel failed: $e');
     }
+    // Cancelling the progress subscription and clearing references.
     try {
       await _lastProgressSub?.cancel();
     } catch (_) {}

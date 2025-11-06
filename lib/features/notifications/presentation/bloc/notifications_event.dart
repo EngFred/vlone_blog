@@ -1,4 +1,3 @@
-// features/notifications/presentation/bloc/notifications_event.dart
 part of 'notifications_bloc.dart';
 
 abstract class NotificationsEvent extends Equatable {
@@ -8,27 +7,22 @@ abstract class NotificationsEvent extends Equatable {
   List<Object> get props => [];
 }
 
-/// Event to load the initial batch of notifications.
 class GetNotificationsEvent extends NotificationsEvent {
   const GetNotificationsEvent();
 }
 
-/// Event to load more notifications (pagination).
 class LoadMoreNotificationsEvent extends NotificationsEvent {
   const LoadMoreNotificationsEvent();
 }
 
-/// Event to refresh notifications (pull-to-refresh).
 class RefreshNotificationsEvent extends NotificationsEvent {
   const RefreshNotificationsEvent();
 }
 
-/// Event to start subscribing to the unread count stream.
 class NotificationsSubscribeUnreadCountStream extends NotificationsEvent {
   const NotificationsSubscribeUnreadCountStream();
 }
 
-/// Event to mark a single notification as read.
 class NotificationsMarkOneAsRead extends NotificationsEvent {
   final String notificationId;
 
@@ -38,12 +32,10 @@ class NotificationsMarkOneAsRead extends NotificationsEvent {
   List<Object> get props => [notificationId];
 }
 
-/// Event to mark all unread notifications as read.
 class NotificationsMarkAllAsRead extends NotificationsEvent {
   const NotificationsMarkAllAsRead();
 }
 
-/// Event to delete a single notification (e.g., from a long-press dialog).
 class NotificationsDeleteOne extends NotificationsEvent {
   final String notificationId;
 
@@ -53,12 +45,10 @@ class NotificationsDeleteOne extends NotificationsEvent {
   List<Object> get props => [notificationId];
 }
 
-/// Event to delete all currently selected notifications.
 class NotificationsDeleteSelected extends NotificationsEvent {
   const NotificationsDeleteSelected();
 }
 
-/// Event to enter selection mode (e.g., on long-press).
 class NotificationsEnterSelectionMode extends NotificationsEvent {
   final String firstNotificationId;
 
@@ -68,12 +58,10 @@ class NotificationsEnterSelectionMode extends NotificationsEvent {
   List<Object> get props => [firstNotificationId];
 }
 
-/// Event to exit selection mode (e.g., on cancel button press).
 class NotificationsExitSelectionMode extends NotificationsEvent {
   const NotificationsExitSelectionMode();
 }
 
-/// Event to toggle the selection state of a single notification.
 class NotificationsToggleSelection extends NotificationsEvent {
   final String notificationId;
 
@@ -83,7 +71,6 @@ class NotificationsToggleSelection extends NotificationsEvent {
   List<Object> get props => [notificationId];
 }
 
-/// Internal event for new data from the unread count stream.
 class _UnreadCountStreamUpdated extends NotificationsEvent {
   final Either<Failure, int> update;
 

@@ -2,195 +2,254 @@ import 'dart:async';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:video_player/video_player.dart';
 
-/// Caches `VideoPlayerController` instances and reference counts them.
-/// Adds a simple LRU eviction to bound memory usage on low-end devices.
-/// Also dedupes concurrent initializations for the same post id.
+/// Manages and caches [VideoPlayerController] instances globally.
 ///
-/// Supports short-lived "hold for navigation" to prevent immediate release
-/// when a source widget is disposed during a hero / route transition.
+/// This manager uses:
+/// 1. **Reference Counting:** Ensures a controller is only disposed when all widgets
+///    using it have called [releaseController].
+/// 2. **LRU Eviction:** Implements a simple Least Recently Used policy to release
+///    unused controllers when the [maxControllers] limit is reached, limiting
+///    memory footprint. Only controllers with a reference count of zero are evicted.
+/// 3. **Deduplication:** Prevents multiple widgets from concurrently initializing
+///    the same video controller.
+/// 4. **Caching:** Uses [flutter_cache_manager] to serve video files from the local
+///    cache or fall back to network streaming, prioritizing cached files.
+/// 5. **Navigation Hold:** Provides a mechanism ([holdForNavigation]) to temporarily
+///    keep a controller alive during short route transitions (e.g., Hero animations).
 class VideoControllerManager {
-  VideoControllerManager._({
-    this.maxControllers = 20,
-  }); // Increased to 20 to reduce eviction pressure
+  /// The maximum number of controllers the manager will keep in memory.
+  final int maxControllers;
+
+  // Private constructor for the Singleton pattern.
+  VideoControllerManager._({this.maxControllers = 20});
+
   static VideoControllerManager? _instance;
+
+  /// Provides the Singleton instance of the manager.
   factory VideoControllerManager({int maxControllers = 20}) {
+    // Ensuring the manager is instantiated only once.
     _instance ??= VideoControllerManager._(maxControllers: maxControllers);
     return _instance!;
   }
-  final int maxControllers;
-  // Controllers keyed by postId
+
+  /// Stores active controllers, keyed by `postId`.
   final Map<String, VideoPlayerController> _controllers = {};
-  // Reference counts per postId
+
+  /// Stores the number of active references for each controller.
   final Map<String, int> _refCounts = {};
-  // LRU ordering: front = least recently used, back = most recently used
+
+  /// Manages the Least Recently Used order. The front is the least recently used,
+  /// and the back is the most recently used.
   final List<String> _lru = [];
-  // Ongoing initialization futures to dedupe concurrent getController calls
+
+  /// Stores ongoing initialization futures to deduplicate concurrent requests for the same video.
   final Map<String, Future<VideoPlayerController>> _ongoingInits = {};
-  // Hold-timers keyed by postId to keep controller alive across short navigations
+
+  /// Stores timers for controllers temporarily held alive during navigation.
   final Map<String, Timer> _holdTimers = {};
 
-  /// Returns a controller for [postId], downloading/caching the [url] if needed.
-  /// The returned controller is reference-counted; call [releaseController] when done.
+  /// Retrieves or initializes a controller for the given [postId] and [url].
+  ///
+  /// This function automatically increments the reference count. [releaseController]
+  /// must be called when the consumer is done with the controller.
   Future<VideoPlayerController> getController(String postId, String url) async {
-    // If present, bump refcount and LRU position
+    // Checking if the controller is already loaded.
     if (_controllers.containsKey(postId)) {
+      // Bumping the reference count and updating the LRU position.
       _refCounts[postId] = (_refCounts[postId] ?? 0) + 1;
       _touchLru(postId);
       return _controllers[postId]!;
     }
-    // If an initialization is already in progress for this post, return the same Future
+
+    // Checking if initialization is already running to avoid duplication.
     if (_ongoingInits.containsKey(postId)) {
       try {
         final ctrl = await _ongoingInits[postId]!;
-        // ensure we bump refcount if returned successfully
+        // Ensuring the reference count is bumped upon successful return.
         _refCounts[postId] = (_refCounts[postId] ?? 0) + 1;
         _touchLru(postId);
         return ctrl;
       } catch (e) {
-        // If the ongoing init failed, remove it and fall through to attempt again
+        // Removing the future if initialization failed, allowing a retry.
         _ongoingInits.remove(postId);
+        rethrow;
       }
     }
-    // Evict least recently used controllers with refCount == 0 until we have space.
+
+    // Attempting to evict unreferenced controllers if the limit is exceeded.
     await _evictIfNeeded();
-    // Start initialization and store the future to dedupe
+
+    // Starting the initialization process and storing the future for deduplication.
     final initFuture = _initializeController(postId, url);
     _ongoingInits[postId] = initFuture;
+
     try {
       final controller = await initFuture;
-      // Register controller and set ref count
+      // Registering the successfully initialized controller and setting the initial reference count.
       _controllers[postId] = controller;
       _refCounts[postId] = (_refCounts[postId] ?? 0) + 1;
       _touchLru(postId);
       return controller;
     } finally {
+      // Removing the future, whether initialization succeeded or failed.
       _ongoingInits.remove(postId);
     }
   }
 
+  /// Handles the actual creation and initialization of the [VideoPlayerController].
+  ///
+  /// This method checks the cache before falling back to a network URL.
   Future<VideoPlayerController> _initializeController(
     String postId,
     String url,
   ) async {
     VideoPlayerController controller;
     final cacheManager = DefaultCacheManager();
-    // Check if the file is already cached
+
+    // Attempting to retrieve the file from the local cache.
     final fileInfo = await cacheManager.getFileFromCache(url);
+
     if (fileInfo != null && fileInfo.file.existsSync()) {
-      // Use local file if cached for instant playback
+      // Using the local file if it is cached, enabling instant playback.
       controller = VideoPlayerController.file(fileInfo.file);
     } else {
-      // Use network for progressive streaming if not cached
+      // Using a network controller for progressive streaming if not cached.
       controller = VideoPlayerController.networkUrl(Uri.parse(url));
-      // Trigger background caching for future use (fire-and-forget)
+
+      // Triggering background caching for future use (fire-and-forget).
       cacheManager
           .downloadFile(url)
           .then<void>(
             (_) {},
             onError: (_) {
-              // Silently handle caching errors to not affect playback
+              // Silently handling caching errors to avoid impacting current playback.
             },
           );
     }
+
     try {
       await controller.initialize();
       controller.setLooping(true);
       return controller;
     } catch (e) {
-      // Clean up on failure
+      // Cleaning up the controller on failure.
       controller.dispose();
       rethrow;
     }
   }
 
-  /// Decrement refcount and dispose controller when count reaches zero.
+  /// Decrements the reference count for a given [postId].
+  ///
+  /// If the reference count drops to zero, the controller is immediately disposed and removed.
   void releaseController(String postId) {
     if (!_controllers.containsKey(postId) && !_refCounts.containsKey(postId)) {
-      // nothing to do
+      // Ignoring if the controller or ref count is not registered.
       return;
     }
+
     _refCounts[postId] = (_refCounts[postId] ?? 1) - 1;
+
     if ((_refCounts[postId] ?? 0) <= 0) {
-      // Dispose and remove immediately to free memory, and remove from LRU.
+      // Disposing and removing the controller immediately as it is no longer referenced.
       try {
         _controllers[postId]?.dispose();
-      } catch (_) {}
+      } catch (_) {
+        // Ignoring disposal errors.
+      }
       _controllers.remove(postId);
       _refCounts.remove(postId);
       _removeFromLru(postId);
     } else {
-      // Still referenced; touch LRU so it's treated as recently used.
+      // Touching LRU to signify it was recently interacted with (still referenced).
       _touchLru(postId);
     }
   }
 
-  /// Hold the controller for a short duration (TTL) to avoid immediate release.
-  /// Use this before navigation (hero/route) to the full media page so the
-  /// source widget's dispose doesn't remove the controller before the dest re-uses it.
+  /// Temporarily prevents a controller from being released when its consuming widget
+  /// is disposed, useful for route/hero transitions.
+  ///
+  /// This function increases the reference count and schedules a timer to release
+  /// that synthetic hold after the specified time-to-live ([ttl]).
   void holdForNavigation(String postId, Duration ttl) {
-    // Cancel any existing hold timer so we restart TTL
+    // Cancelling any existing hold timer to reset the TTL.
     _holdTimers[postId]?.cancel();
-    // Bump a synthetic refcount so releaseController won't dispose while held.
+
+    // Bumping a synthetic refcount to prevent disposal while the hold is active.
     _refCounts[postId] = (_refCounts[postId] ?? 0) + 1;
     _touchLru(postId);
-    // Schedule a timer to decrement when TTL elapses.
+
+    // Scheduling a timer to release the synthetic hold when the TTL expires.
     _holdTimers[postId] = Timer(ttl, () {
       _holdTimers.remove(postId);
-      // Release the synthetic hold
+      // Releasing the synthetic reference.
       releaseController(postId);
     });
   }
 
-  /// Force dispose all (call on app shutdown).
+  /// Forces the disposal of all managed controllers and clears all state.
+  ///
+  /// This method should be called when the application is shutting down.
   void disposeAll() {
     for (final c in _controllers.values) {
       try {
         c.dispose();
-      } catch (_) {}
+      } catch (_) {
+        // Ignoring disposal errors.
+      }
     }
     _controllers.clear();
     _refCounts.clear();
     _lru.clear();
-    // Cancel any ongoing inits by just clearing references — the underlying futures
-    // will still complete, but we won't retain or reuse their controllers.
-    _ongoingInits.clear();
+
+    // Cancelling all pending navigation hold timers.
     for (final t in _holdTimers.values) {
       t.cancel();
     }
     _holdTimers.clear();
+
+    // Clearing ongoing initialization futures. The underlying Future may complete,
+    // but the resulting controller will not be stored or used.
+    _ongoingInits.clear();
   }
 
-  // --- LRU helpers ---
+  // --- LRU Internal Helpers ---
+
+  /// Moves the key to the most recently used position (back of the list).
   void _touchLru(String key) {
     _removeFromLru(key);
     _lru.add(key);
   }
 
+  /// Removes the key from the LRU list.
   void _removeFromLru(String key) {
     _lru.removeWhere((k) => k == key);
   }
 
+  /// Disposes and removes least recently used controllers that have a zero reference
+  /// count until the total number of controllers is below [maxControllers].
   Future<void> _evictIfNeeded() async {
-    // Try to evict until below maxControllers.
     while (_controllers.length >= maxControllers) {
-      // Find least recently used with refCount == 0
+      // Finding the least recently used controller with no active references.
       final candidate = _lru.firstWhere(
         (k) => (_refCounts[k] ?? 0) <= 0,
         orElse: () => '',
       );
+
       if (candidate.isEmpty) {
-        // No zero-ref candidates — do NOT force evict referenced ones; treat max as soft limit to avoid disposal races
+        // Exiting if all current controllers are still referenced (refCount > 0).
         break;
       } else {
-        // Dispose candidate and remove
+        // Disposing and removing the candidate.
         try {
           _controllers[candidate]?.dispose();
-        } catch (_) {}
+        } catch (_) {
+          // Ignoring disposal errors.
+        }
         _controllers.remove(candidate);
         _refCounts.remove(candidate);
         _removeFromLru(candidate);
       }
-      // Yield a microtask to avoid blocking synchronous callers if eviction is heavy
+      // Yielding a microtask to prevent blocking the thread if many evictions are needed.
       await Future<void>.delayed(Duration.zero);
     }
   }

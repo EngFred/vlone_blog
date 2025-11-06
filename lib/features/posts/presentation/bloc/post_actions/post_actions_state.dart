@@ -10,7 +10,6 @@ class PostActionsInitial extends PostActionsState {
   const PostActionsInitial();
 }
 
-/// standard loading/error/success states for actions
 class PostActionLoading extends PostActionsState {
   const PostActionLoading();
 }
@@ -71,7 +70,6 @@ class PostDeleteError extends PostActionsState {
   List<Object?> get props => [postId, message];
 }
 
-/// NEW: Form state that holds all UI related data for create-post
 class PostFormState extends PostActionsState {
   final String content;
   final File? mediaFile;
@@ -114,8 +112,7 @@ class PostFormState extends PostActionsState {
   /// copyWith supports explicit clearing by passing null for nullable fields.
   PostFormState copyWith({
     String? content,
-    // Note: Object? is used here to enable the "no change" sentinel logic.
-    // This is what forces the cast in the BLOC.
+    // Object? is used here to enable the "no change" sentinel logic.
     Object? mediaFile = _noChange,
     Object? mediaType = _noChange,
     bool? isProcessing,

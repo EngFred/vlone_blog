@@ -15,16 +15,11 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   final GetProfileUseCase getProfileUseCase;
   final RealtimeService realtimeService;
 
-  // Stream subscription for real-time profile updates (per bloc instance)
   StreamSubscription<Map<String, dynamic>>? _profileUpdatesSub;
 
-  ProfileBloc({
-    required this.getProfileUseCase,
-    // Removed: required this.updateProfileUseCase,
-    required this.realtimeService,
-  }) : super(ProfileInitial()) {
+  ProfileBloc({required this.getProfileUseCase, required this.realtimeService})
+    : super(ProfileInitial()) {
     on<GetProfileDataEvent>(_onGetProfile);
-    // Removed: on<UpdateProfileEvent>(_onUpdateProfile);
     on<StartProfileRealtimeEvent>(_onStartProfileRealtime);
     on<StopProfileRealtimeEvent>(_onStopProfileRealtime);
     on<_RealtimeProfileUpdatedEvent>(_onRealtimeProfileUpdated);
@@ -34,12 +29,11 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     GetProfileDataEvent event,
     Emitter<ProfileState> emit,
   ) async {
-    // Check and save current realtime status before transition to loading
     final bool wasRealtimeActive = (state is ProfileDataLoaded)
         ? (state as ProfileDataLoaded).isRealtimeActive
         : false;
 
-    // Do NOT emit ProfileLoading if it's a refresh event (has a completer)
+    // NOT emitting ProfileLoading if it's a refresh event (has a completer)
     if (event.refreshCompleter == null) {
       emit(ProfileLoading());
     }
@@ -56,7 +50,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
             refreshCompleter: event.refreshCompleter,
           ),
         );
-        event.refreshCompleter?.complete(); // COMPLETE ON ERROR
+        event.refreshCompleter?.complete();
       },
       (profile) {
         // Load the data, preserving the realtime status and passing the completer
@@ -65,15 +59,13 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
             profile: profile,
             userId: event.userId,
             isRealtimeActive: wasRealtimeActive,
-            refreshCompleter: event.refreshCompleter, // PASS COMPLETER
+            refreshCompleter: event.refreshCompleter,
           ),
         );
-        event.refreshCompleter?.complete(); // COMPLETE ON SUCCESS
+        event.refreshCompleter?.complete();
       },
     );
   }
-
-  // ... (rest of the methods are the same)
 
   Future<void> _onStartProfileRealtime(
     StartProfileRealtimeEvent event,
@@ -149,7 +141,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       // Create updated profile from data (expecting a map shape)
       try {
         final updateData = event.updateData;
-        final updateUserId = updateData['user_id'] as String?; //Extract user_id
+        final updateUserId = updateData['user_id'] as String?;
         final updatedProfile = ProfileModel.fromMap(
           // Remove 'user_id' if present to parse the rest
           Map.from(updateData)..remove('user_id'),
@@ -162,7 +154,6 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
             currentState.copyWith(
               profile: updatedProfile,
               userId: updateUserId,
-              // refreshCompleter is implicitly preserved by copyWith if not passed
             ),
           );
           AppLogger.info(

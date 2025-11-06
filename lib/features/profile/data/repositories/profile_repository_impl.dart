@@ -40,8 +40,6 @@ class ProfileRepositoryImpl implements ProfileRepository {
     }
   }
 
-  // ==================== REAL-TIME STREAMS ====================
-
   @override
   Stream<Either<Failure, Map<String, dynamic>>> streamProfileUpdates(
     String userId,

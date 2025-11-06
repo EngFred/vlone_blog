@@ -18,11 +18,10 @@ class _AuthFormState extends State<AuthForm>
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  // NEW: Controller for Confirm Password
   final _confirmPasswordController = TextEditingController();
 
   bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true; // NEW: Visibility for Confirm Password
+  bool _obscureConfirmPassword = true;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
@@ -54,7 +53,6 @@ class _AuthFormState extends State<AuthForm>
     });
   }
 
-  // Toggle visibility for Confirm Password
   void _toggleConfirmPasswordVisibility() {
     setState(() {
       _obscureConfirmPassword = !_obscureConfirmPassword;
@@ -63,10 +61,10 @@ class _AuthFormState extends State<AuthForm>
 
   void _submit() {
     if (_formKey.currentState!.validate()) {
-      // Validate again for signup to ensure passwords match *right before* submission
+      // Validating again for signup to ensure passwords match *right before* submission
       if (!widget.isLogin &&
           _passwordController.text != _confirmPasswordController.text) {
-        // This check is redundant if the field validator works, but it's a good fail-safe
+        // This check is redundant though that's if the field validator works, but it's a good fail-safe
         return;
       }
 

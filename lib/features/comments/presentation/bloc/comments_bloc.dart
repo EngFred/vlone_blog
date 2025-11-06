@@ -77,7 +77,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
         emit(CommentsError(friendly));
       },
       (rootComments) {
-        // CHANGE: Reset pagination cursors on initial load.
+        // Resetting pagination cursors on initial load.
         _lastCreatedAt = rootComments.isNotEmpty
             ? rootComments.last.createdAt
             : null;
@@ -95,7 +95,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     LoadMoreCommentsEvent event,
     Emitter<CommentsState> emit,
   ) async {
-    // FIX 2a: Add null checks for cursors to prevent crash
+    // Adding null checks for cursors to prevent crash
     if (!_hasMore ||
         state is CommentsLoadingMore ||
         _lastCreatedAt == null ||
@@ -123,7 +123,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
         );
       },
       (newRootComments) {
-        // Append new roots to existing (chronological order: newer at top, older appended).
+        // Appending new roots to existing (chronological order: newer at top, older appended).
         final updatedComments = [...currentState.comments, ...newRootComments];
         _lastCreatedAt = newRootComments.isNotEmpty
             ? newRootComments.last.createdAt
@@ -148,7 +148,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     RefreshCommentsEvent event,
     Emitter<CommentsState> emit,
   ) async {
-    //Reset pagination and reload initial.
+    //Reseting pagination and reload initial.
     _hasMore = true;
     _lastCreatedAt = null;
     _lastId = null;
@@ -175,7 +175,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
       }
     }
 
-    // Create temporary comment
+    // Creating temporary comment
     final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
     final tempComment = CommentEntity(
       id: tempId,
@@ -186,19 +186,19 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
       text: event.text,
       createdAt: DateTime.now(),
       replies: [],
-      repliesCount: null, // Use replies.length for count
+      repliesCount: null,
       parentCommentId: event.parentCommentId,
       parentUsername: parentUsername,
     );
 
-    // Optimistically add to the comments tree
+    // Optimistically adding to the comments tree
     final updatedComments = _addOptimisticComment(
       currentState.comments,
       tempComment,
     );
     emit(currentState.copyWith(comments: updatedComments));
 
-    // Perform the actual add operation
+    // Performing the actual add operation
     final result = await addCommentUseCase(
       AddCommentParams(
         postId: event.postId,
@@ -213,13 +213,13 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
         final friendly = ErrorMessageMapper.mapToUserMessage(failure.message);
         AppLogger.error('Add comment failed: ${failure.message} -> $friendly');
 
-        // Remove the temporary comment on failure
+        // Removing the temporary comment on failure
         final cleanedComments = _removeCommentById(updatedComments, tempId);
         emit(currentState.copyWith(comments: cleanedComments));
       },
       (_) {
         AppLogger.info('Comment added successfully. Stream will update UI.');
-        // No need to do anything; real-time stream will refresh the list
+        // Not doing anything here; real-time stream will refresh the list
       },
     );
   }
@@ -228,7 +228,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     StartCommentsStreamEvent event,
     Emitter<CommentsState> emit,
   ) async {
-    // Prevent re-subscribing to the same post
+    // Preventing re-subscribing to the same post
     if (_currentPostId == event.postId && _commentsStreamSubscription != null) {
       return;
     }
@@ -255,7 +255,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
             emit(CommentsError(friendly));
           },
         );
-    // CHANGE: Keep global realtime sub for notifications (unchanged).
+
     _rtCommentsSub?.cancel();
     _rtCommentsSub = realtimeService.onComment.listen(
       (commentData) {
@@ -294,7 +294,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
     await _rtCommentsSub?.cancel();
     _rtCommentsSub = null;
     _currentPostId = null;
-    //Reset pagination on stop (for re-init).
+    //Reseting pagination on stop (for re-init).
     _hasMore = true;
     _lastCreatedAt = null;
     _lastId = null;
@@ -310,7 +310,7 @@ class CommentsBloc extends Bloc<CommentsEvent, CommentsState> {
       final current = state as CommentsLoaded;
       emit(current.copyWith(comments: event.comments));
     } else {
-      // FIX 2b: Preserve the BLoC's _hasMore state, not the
+      // Preserving the BLoC's _hasMore state, not the
       // constructor default (which is true), to prevent infinite loader.
       emit(CommentsLoaded(comments: event.comments, hasMore: _hasMore));
     }

@@ -1,14 +1,17 @@
-// lib/core/presentation/theme/app_theme.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vlone_blog_app/core/constants/constants.dart';
 
-/// Centralized class for managing light and dark themes using Material 3.
+/// Centralized class for defining and managing the application's light and dark themes
+/// based on the Material 3 design system and a single brand seed color.
 class AppTheme {
-  // Use a single seed color for brand consistency across both themes.
+  /// The primary color used as the seed for generating the entire color scheme.
   static final Color _seedColor = Constants.primaryColor;
 
-  /// Light Theme
+  /// Generates the complete Light ThemeData configuration.
+  ///
+  /// This includes a custom ColorScheme, and tailored styles for AppBar, Card,
+  /// Buttons, and Input Fields.
   static ThemeData lightTheme() {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: _seedColor,
@@ -41,7 +44,7 @@ class AppTheme {
         ),
       ),
 
-      // Use CardThemeData (Material 3) to match ThemeData API
+      /// Customizing card appearance with elevation, margin, and border radius.
       cardTheme: CardThemeData(
         color: colorScheme.surface,
         elevation: 2,
@@ -54,6 +57,7 @@ class AppTheme {
         ),
       ),
 
+      /// Adjusting text styles for better readability and hierarchy.
       textTheme: base.textTheme.copyWith(
         bodyLarge: TextStyle(color: colorScheme.onSurface),
         bodyMedium: TextStyle(color: colorScheme.onSurface.withOpacity(0.85)),
@@ -63,6 +67,7 @@ class AppTheme {
         ),
       ),
 
+      /// Customizing text field appearance with borders and fill color.
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(Constants.radiusMedium),
@@ -75,6 +80,7 @@ class AppTheme {
         filled: true,
       ),
 
+      /// Defining the default style for primary elevated buttons.
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: colorScheme.primary,
@@ -87,6 +93,7 @@ class AppTheme {
         ),
       ),
 
+      /// Defining the default style for secondary outlined buttons.
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           side: BorderSide(color: colorScheme.outline),
@@ -98,6 +105,7 @@ class AppTheme {
         ),
       ),
 
+      /// Styling for the application's bottom navigation bar.
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: colorScheme.surface,
         selectedItemColor: colorScheme.primary,
@@ -106,6 +114,7 @@ class AppTheme {
         elevation: 8,
       ),
 
+      /// Styling for the main Floating Action Button.
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
@@ -113,6 +122,7 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
 
+      /// Customizing the appearance of dividers.
       dividerTheme: DividerThemeData(
         color: Constants.lightDivider,
         thickness: 0.8,
@@ -122,7 +132,10 @@ class AppTheme {
     );
   }
 
-  /// Dark Theme
+  /// Generates the complete Dark ThemeData configuration.
+  ///
+  /// This includes a custom ColorScheme, and tailored styles for AppBar, Card,
+  /// Buttons, and Input Fields, optimized for dark backgrounds.
   static ThemeData darkTheme() {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: _seedColor,
@@ -156,7 +169,7 @@ class AppTheme {
         ),
       ),
 
-      // Use CardThemeData here as well
+      /// Customizing card appearance with elevation, margin, and border radius.
       cardTheme: CardThemeData(
         color: colorScheme.surface,
         elevation: 2,
@@ -169,6 +182,7 @@ class AppTheme {
         ),
       ),
 
+      /// Adjusting text styles for better readability and hierarchy in dark mode.
       textTheme: base.textTheme.copyWith(
         bodyLarge: TextStyle(color: colorScheme.onSurface.withOpacity(0.9)),
         bodyMedium: TextStyle(color: colorScheme.onSurface.withOpacity(0.75)),
@@ -178,6 +192,7 @@ class AppTheme {
         ),
       ),
 
+      /// Customizing text field appearance with borders and fill color.
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(Constants.radiusMedium),
@@ -190,6 +205,7 @@ class AppTheme {
         filled: true,
       ),
 
+      /// Defining the default style for primary elevated buttons.
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: colorScheme.primary,
@@ -202,6 +218,7 @@ class AppTheme {
         ),
       ),
 
+      /// Defining the default style for secondary outlined buttons.
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           side: BorderSide(color: colorScheme.outline),
@@ -213,6 +230,7 @@ class AppTheme {
         ),
       ),
 
+      /// Styling for the application's bottom navigation bar.
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: colorScheme.surface,
         selectedItemColor: colorScheme.primary,
@@ -221,6 +239,7 @@ class AppTheme {
         elevation: 8,
       ),
 
+      /// Styling for the main Floating Action Button.
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
@@ -228,6 +247,7 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
 
+      /// Customizing the appearance of dividers.
       dividerTheme: DividerThemeData(
         color: Constants.darkDivider,
         thickness: 0.8,
@@ -237,7 +257,10 @@ class AppTheme {
     );
   }
 
-  /// Helper for Reels / fullscreen black backgrounds
+  /// Sets the system status bar style to light icons on a dark background.
+  ///
+  /// This is typically used for full-screen media or Reels content to ensure
+  /// status bar visibility against a black background.
   static void setStatusBarForReels() {
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
@@ -248,7 +271,9 @@ class AppTheme {
     );
   }
 
-  /// Restore default status bar style based on current theme brightness
+  /// Restores the system status bar style to match the current application theme's brightness.
+  ///
+  /// This reverts any temporary system overlay changes (like those made for Reels).
   static void restoreDefaultStatusBar(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     SystemChrome.setSystemUIOverlayStyle(

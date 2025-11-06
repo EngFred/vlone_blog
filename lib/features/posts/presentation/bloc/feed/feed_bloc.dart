@@ -29,19 +29,16 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
 
   FeedBloc({required this.getFeedUseCase, required this.realtimeService})
     : super(const FeedInitial()) {
-    // List handlers
     on<GetFeedEvent>(_onGetFeed);
     on<LoadMoreFeedEvent>(_onLoadMoreFeed);
     on<RefreshFeedEvent>(_onRefreshFeed);
 
-    // Realtime handlers
     on<StartFeedRealtime>(_onStartFeedRealtime);
     on<StopFeedRealtime>(_onStopFeedRealtime);
     on<_RealtimeFeedPostReceived>(_onRealtimePostReceived);
     on<_RealtimeFeedPostDeleted>(_onRealtimePostDeleted);
     on<_RealtimeFeedPostUpdated>(_onRealtimeFeedPostUpdated);
 
-    // Local update handlers
     on<AddPostToFeed>(_onAddPostToFeed);
     on<RemovePostFromFeed>(_onRemovePostFromFeed);
   }
@@ -50,7 +47,6 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     AppLogger.info('GetFeedEvent triggered');
     _currentFeedUserId = event.userId;
     emit(const FeedLoading());
-    // NOTE: Initial load does not pass a completer, so refreshCompleter is null here.
     await _safeFetchFeed(emit, isRefresh: true);
   }
 
@@ -70,7 +66,6 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
         ? (state as FeedLoadMoreError).posts
         : <PostEntity>[];
 
-    // REFACTORED: Use 'posts'
     emit(FeedLoadingMore(posts: currentPostsSnapshot));
     await _safeFetchFeed(
       emit,
@@ -87,104 +82,11 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     _hasMoreFeed = true;
     _lastFeedCreatedAt = null;
     _lastFeedId = null;
-    // NOTE: Do NOT emit FeedLoading here, the RefreshIndicator shows the spinner
     await _safeFetchFeed(
       emit,
       isRefresh: true,
-      refreshCompleter: event.refreshCompleter, // Pass the completer
+      refreshCompleter: event.refreshCompleter,
     );
-  }
-
-  Future<void> _safeFetchFeed(
-    Emitter<FeedState> emit, {
-    required bool isRefresh,
-    List<PostEntity>? existingPosts,
-    // ADDED: Optional completer for refresh indicator
-    Completer<void>? refreshCompleter,
-  }) async {
-    if (_isFetchingFeed) return;
-    _isFetchingFeed = true;
-    try {
-      final result = await getFeedUseCase(
-        GetFeedParams(
-          currentUserId: _currentFeedUserId!,
-          pageSize: _pageSize,
-          lastCreatedAt: isRefresh ? null : _lastFeedCreatedAt,
-          lastId: isRefresh ? null : _lastFeedId,
-        ),
-      );
-
-      result.fold(
-        (failure) {
-          final message = ErrorMessageMapper.getErrorMessage(failure);
-          AppLogger.error('Get feed failed: $message');
-          if (isRefresh) {
-            // Emit FeedError with the completer
-            emit(FeedError(message, refreshCompleter: refreshCompleter));
-          } else {
-            final currentPosts = existingPosts ?? [];
-            emit(FeedLoadMoreError(message, posts: currentPosts));
-          }
-          refreshCompleter?.complete(); // Complete on error
-        },
-        (newPosts) {
-          List<PostEntity> updatedPosts;
-          if (isRefresh) {
-            updatedPosts = newPosts;
-          } else {
-            updatedPosts = List<PostEntity>.from(existingPosts ?? []);
-            updatedPosts.addAll(newPosts);
-          }
-
-          if (newPosts.isNotEmpty) {
-            _lastFeedCreatedAt = newPosts.last.createdAt;
-            _lastFeedId = newPosts.last.id;
-          }
-          _hasMoreFeed = newPosts.length == _pageSize;
-
-          emit(
-            FeedLoaded(
-              updatedPosts,
-              hasMore: _hasMoreFeed,
-              isRealtimeActive: _isSubscribedToService,
-              refreshCompleter: refreshCompleter, // Pass the completer
-            ),
-          );
-          AppLogger.info('Feed loaded with ${updatedPosts.length} posts');
-          refreshCompleter?.complete(); // Complete on success
-        },
-      );
-    } finally {
-      _isFetchingFeed = false;
-    }
-  }
-
-  Future<void> _onAddPostToFeed(
-    AddPostToFeed event,
-    Emitter<FeedState> emit,
-  ) async {
-    final currentState = state;
-    if (currentState is FeedLoaded) {
-      final updatedPosts = [event.post, ...currentState.posts];
-      // Preserve the completer if one exists in the current state
-      emit(currentState.copyWith(posts: updatedPosts));
-    }
-    // You might want to handle other states (e.g. FeedLoadingMore) too
-  }
-
-  Future<void> _onRemovePostFromFeed(
-    RemovePostFromFeed event,
-    Emitter<FeedState> emit,
-  ) async {
-    final currentState = state;
-    if (currentState is FeedLoaded) {
-      final updatedPosts = currentState.posts
-          .where((p) => p.id != event.postId)
-          .toList();
-      // Preserve the completer if one exists in the current state
-      emit(currentState.copyWith(posts: updatedPosts));
-    }
-    // You might want to handle other states (e.g. FeedLoadingMore) too
   }
 
   Future<void> _onStartFeedRealtime(
@@ -214,7 +116,6 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     );
     _isSubscribedToService = true;
     if (state is FeedLoaded) {
-      // Preserve the completer if one exists in the current state
       emit((state as FeedLoaded).copyWith(isRealtimeActive: true));
     }
   }
@@ -230,7 +131,6 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     await _realtimePostDeletedSub?.cancel();
     _isSubscribedToService = false;
     if (state is FeedLoaded) {
-      // Preserve the completer if one exists in the current state
       emit((state as FeedLoaded).copyWith(isRealtimeActive: false));
     }
   }
@@ -243,7 +143,6 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
     if (currentState is FeedLoaded &&
         !currentState.posts.any((p) => p.id == event.post.id)) {
       final updatedPosts = [event.post, ...currentState.posts];
-      // Preserve the completer if one exists in the current state
       emit(currentState.copyWith(posts: updatedPosts));
       AppLogger.info('New post added to feed realtime: ${event.post.id}');
     }
@@ -258,46 +157,17 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
       final updatedPosts = currentState.posts
           .where((p) => p.id != event.postId)
           .toList();
-      // Preserve the completer if one exists in the current state
       emit(currentState.copyWith(posts: updatedPosts));
       AppLogger.info('Post removed from feed realtime: ${event.postId}');
-    }
-    // Also handle other states
-    else if (currentState is FeedLoadingMore) {
-      final updatedPosts = currentState.posts
-          .where((p) => p.id != event.postId)
-          .toList();
-      emit(FeedLoadingMore(posts: updatedPosts));
-    } else if (currentState is FeedLoadMoreError) {
-      final updatedPosts = currentState.posts
-          .where((p) => p.id != event.postId)
-          .toList();
-      emit(FeedLoadMoreError(currentState.message, posts: updatedPosts));
-    }
-  }
-
-  List<PostEntity> getPostsFromState(FeedState state) {
-    if (state is FeedLoaded) {
-      return state.posts;
-    } else if (state is FeedLoadingMore) {
-      return state.posts;
-    } else if (state is FeedLoadMoreError) {
-      return state.posts;
-    }
-    return [];
-  }
-
-  void _emitUpdatedState(
-    Emitter<FeedState> emit,
-    List<PostEntity> updatedPosts,
-  ) {
-    final currentState = state;
-    if (currentState is FeedLoaded) {
-      // Preserve the completer if one exists in the current state
-      emit(currentState.copyWith(posts: updatedPosts));
     } else if (currentState is FeedLoadingMore) {
+      final updatedPosts = currentState.posts
+          .where((p) => p.id != event.postId)
+          .toList();
       emit(FeedLoadingMore(posts: updatedPosts));
     } else if (currentState is FeedLoadMoreError) {
+      final updatedPosts = currentState.posts
+          .where((p) => p.id != event.postId)
+          .toList();
       emit(FeedLoadMoreError(currentState.message, posts: updatedPosts));
     }
   }
@@ -323,6 +193,117 @@ class FeedBloc extends Bloc<FeedEvent, FeedState> {
 
     _emitUpdatedState(emit, updatedPosts);
     AppLogger.info('Realtime post updated in feed: ${event.postId}');
+  }
+
+  Future<void> _onAddPostToFeed(
+    AddPostToFeed event,
+    Emitter<FeedState> emit,
+  ) async {
+    final currentState = state;
+    if (currentState is FeedLoaded) {
+      final updatedPosts = [event.post, ...currentState.posts];
+      emit(currentState.copyWith(posts: updatedPosts));
+    }
+  }
+
+  Future<void> _onRemovePostFromFeed(
+    RemovePostFromFeed event,
+    Emitter<FeedState> emit,
+  ) async {
+    final currentState = state;
+    if (currentState is FeedLoaded) {
+      final updatedPosts = currentState.posts
+          .where((p) => p.id != event.postId)
+          .toList();
+      emit(currentState.copyWith(posts: updatedPosts));
+    }
+  }
+
+  Future<void> _safeFetchFeed(
+    Emitter<FeedState> emit, {
+    required bool isRefresh,
+    List<PostEntity>? existingPosts,
+    Completer<void>? refreshCompleter,
+  }) async {
+    if (_isFetchingFeed) return;
+    _isFetchingFeed = true;
+    try {
+      final result = await getFeedUseCase(
+        GetFeedParams(
+          currentUserId: _currentFeedUserId!,
+          pageSize: _pageSize,
+          lastCreatedAt: isRefresh ? null : _lastFeedCreatedAt,
+          lastId: isRefresh ? null : _lastFeedId,
+        ),
+      );
+
+      result.fold(
+        (failure) {
+          final message = ErrorMessageMapper.getErrorMessage(failure);
+          AppLogger.error('Get feed failed: $message');
+          if (isRefresh) {
+            emit(FeedError(message, refreshCompleter: refreshCompleter));
+          } else {
+            final currentPosts = existingPosts ?? [];
+            emit(FeedLoadMoreError(message, posts: currentPosts));
+          }
+          refreshCompleter?.complete();
+        },
+        (newPosts) {
+          List<PostEntity> updatedPosts;
+          if (isRefresh) {
+            updatedPosts = newPosts;
+          } else {
+            updatedPosts = List<PostEntity>.from(existingPosts ?? []);
+            updatedPosts.addAll(newPosts);
+          }
+
+          if (newPosts.isNotEmpty) {
+            _lastFeedCreatedAt = newPosts.last.createdAt;
+            _lastFeedId = newPosts.last.id;
+          }
+          _hasMoreFeed = newPosts.length == _pageSize;
+
+          emit(
+            FeedLoaded(
+              updatedPosts,
+              hasMore: _hasMoreFeed,
+              isRealtimeActive: _isSubscribedToService,
+              refreshCompleter: refreshCompleter,
+            ),
+          );
+          AppLogger.info('Feed loaded with ${updatedPosts.length} posts');
+          refreshCompleter?.complete();
+        },
+      );
+    } finally {
+      _isFetchingFeed = false;
+    }
+  }
+
+  List<PostEntity> getPostsFromState(FeedState state) {
+    if (state is FeedLoaded) {
+      return state.posts;
+    } else if (state is FeedLoadingMore) {
+      return state.posts;
+    } else if (state is FeedLoadMoreError) {
+      return state.posts;
+    }
+    return [];
+  }
+
+  void _emitUpdatedState(
+    Emitter<FeedState> emit,
+    List<PostEntity> updatedPosts,
+  ) {
+    final currentState = state;
+    if (currentState is FeedLoaded) {
+      emit(currentState.copyWith(posts: updatedPosts));
+    } else if (currentState is FeedLoadingMore) {
+      emit(FeedLoadingMore(posts: updatedPosts));
+    } else if (currentState is FeedLoadMoreError) {
+      emit(FeedLoadMoreError(currentState.message, posts: updatedPosts));
+    }
   }
 
   @override

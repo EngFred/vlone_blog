@@ -67,29 +67,21 @@ class PostHeader extends StatelessWidget {
   }
 
   void _showDeleteDialog(BuildContext context) {
-    // The dialog itself is theme-aware, but we must ensure we use the
-    // root navigator pop to prevent GoRouter conflicts.
     showCustomDialog(
       context: context,
       title: 'Delete Post?',
       content: Text(
         'This action cannot be undone. All likes, comments, and favorites will be removed.',
-        // Use the onSurface color from the theme context for visibility
         style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
       ),
       actions: [
-        // Use the reusable Cancel button
         DialogActions.createCancelButton(context, label: 'Cancel'),
-
-        // Manually create a TextButton for the destructive 'Delete' action
         TextButton(
           onPressed: () {
-            // FIX: Pop the dialog using the root navigator before dispatching the action
             Navigator.of(context, rootNavigator: true).pop();
             context.read<PostActionsBloc>().add(DeletePostEvent(post.id));
           },
           style: TextButton.styleFrom(
-            // Use the theme's error color for a destructive action
             foregroundColor: Theme.of(context).colorScheme.error,
           ),
           child: const Text('Delete'),

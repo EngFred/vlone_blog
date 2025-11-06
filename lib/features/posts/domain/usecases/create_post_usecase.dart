@@ -6,14 +6,15 @@ import 'package:vlone_blog_app/core/domain/usecases/usecase.dart';
 import 'package:vlone_blog_app/features/posts/domain/entities/media_file_type.dart';
 import 'package:vlone_blog_app/features/posts/domain/repositories/posts_repository.dart';
 
-// 🎯 FIX: Changed UseCase return type from PostEntity to Unit
+/// Use case for creating a new post.
+///
+/// Returns [Unit] upon successful post creation, or [Failure] on error.
 class CreatePostUseCase implements UseCase<Unit, CreatePostParams> {
   final PostsRepository repository;
 
   CreatePostUseCase(this.repository);
 
   @override
-  // 🎯 FIX: Changed call method return type from PostEntity to Unit
   Future<Either<Failure, Unit>> call(CreatePostParams params) {
     return repository.createPost(
       userId: params.userId,
@@ -24,6 +25,7 @@ class CreatePostUseCase implements UseCase<Unit, CreatePostParams> {
   }
 }
 
+/// Parameters required for [CreatePostUseCase].
 class CreatePostParams {
   final String userId;
   final String? content;
