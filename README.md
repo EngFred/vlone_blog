@@ -1,7 +1,7 @@
 # Vlone Blog App — A Modern Instagram Clone Built with Flutter
 
 ## Overview
-**Vlone Blog App** is a modern **social media platform** inspired by Instagram’s clean design and user experience — built entirely with **Flutter** and following **Clean Architecture principles**.  
+**Vlone Blog** is a modern **social media platform** inspired by Instagram’s clean design and user experience — built entirely with **Flutter** and following **Clean Architecture principles**.  
 It delivers a fast, smooth, and visually stunning social experience featuring **posts, reels, likes, comments, profile management, and more**, optimized for performance and scalability.
 
 This app is a demonstration of how to build **a production-ready, modular Flutter social app** using **Bloc**, and **Supabase** as Baas — all designed for a seamless cross-platform experience.
