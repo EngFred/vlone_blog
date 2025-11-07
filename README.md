@@ -16,7 +16,7 @@ Get the latest release of **Vlone Blog App** here:
 
 **Release Notes v1.0.0:**
 - Initial public release of Vlone Blog App  
-- Features include authentication, posts, reels, likes/comments, profiles, and notifications  
+- Features include authentication, posts, reels, likes/comments, profiles, and notifications etc..
 - Light & dark theme support  
 - Optimized feed loading with caching and smooth video playback  
 
