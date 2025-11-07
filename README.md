@@ -6,35 +6,32 @@ It delivers a fast, smooth, and visually stunning social experience featuring **
 
 This app is a demonstration of how to build **a production-ready, modular Flutter social app** using **Bloc**, and **Supabase** as Baas — all designed for a seamless cross-platform experience.
 
----
-
 ## 🎨 App Screenshots (Light Theme)
 
-<div style="display: flex; overflow-x: auto; gap: 10px; padding: 10px 0; scrollbar-width: thin;">
-  <img src="assets/screenshots/flutter_01.png" alt="Light Theme Screenshot 1" height="400"/>
-  <img src="assets/screenshots/flutter_02.png" alt="Light Theme Screenshot 2" height="400"/>
-  <img src="assets/screenshots/flutter_03.png" alt="Light Theme Screenshot 3" height="400"/>
-  <img src="assets/screenshots/flutter_04.png" alt="Light Theme Screenshot 4" height="400"/>
-  <img src="assets/screenshots/flutter_05.png" alt="Light Theme Screenshot 5" height="400"/>
-  <img src="assets/screenshots/flutter_06.png" alt="Light Theme Screenshot 6" height="400"/>
-  <img src="assets/screenshots/flutter_07.png" alt="Light Theme Screenshot 7" height="400"/>
-  <img src="assets/screenshots/flutter_08.png" alt="Light Theme Screenshot 8" height="400"/>
+<div style="display: flex; overflow-x: auto; gap: 20px; padding: 10px 0; scrollbar-width: thin; scroll-behavior: smooth;">
+  <img src="assets/screenshots/flutter_01.png" alt="Light Theme Screenshot 1" style="height:400px; flex: 0 0 auto;"/>
+  <img src="assets/screenshots/flutter_02.png" alt="Light Theme Screenshot 2" style="height:400px; flex: 0 0 auto;"/>
+  <img src="assets/screenshots/flutter_03.png" alt="Light Theme Screenshot 3" style="height:400px; flex: 0 0 auto;"/>
+  <img src="assets/screenshots/flutter_04.png" alt="Light Theme Screenshot 4" style="height:400px; flex: 0 0 auto;"/>
+  <img src="assets/screenshots/flutter_05.png" alt="Light Theme Screenshot 5" style="height:400px; flex: 0 0 auto;"/>
+  <img src="assets/screenshots/flutter_06.png" alt="Light Theme Screenshot 6" style="height:400px; flex: 0 0 auto;"/>
+  <img src="assets/screenshots/flutter_07.png" alt="Light Theme Screenshot 7" style="height:400px; flex: 0 0 auto;"/>
+  <img src="assets/screenshots/flutter_08.png" alt="Light Theme Screenshot 8" style="height:400px; flex: 0 0 auto;"/>
 </div>
 
 ---
 
 ## 🌙 App Screenshots (Dark Theme)
 
-<div style="display: flex; overflow-x: auto; gap: 10px; padding: 10px 0; scrollbar-width: thin;">
-  <img src="assets/screenshots/flutter_09.png" alt="Dark Theme Screenshot 1" height="400"/>
-  <img src="assets/screenshots/flutter_10.png" alt="Dark Theme Screenshot 2" height="400"/>
-  <img src="assets/screenshots/flutter_11.png" alt="Dark Theme Screenshot 3" height="400"/>
-  <img src="assets/screenshots/flutter_12.png" alt="Dark Theme Screenshot 4" height="400"/>
-  <img src="assets/screenshots/flutter_13.png" alt="Dark Theme Screenshot 5" height="400"/>
-  <img src="assets/screenshots/flutter_14.png" alt="Dark Theme Screenshot 6" height="400"/>
+<div style="display: flex; overflow-x: auto; gap: 20px; padding: 10px 0; scrollbar-width: thin; scroll-behavior: smooth;">
+  <img src="assets/screenshots/flutter_09.png" alt="Dark Theme Screenshot 1" style="height:400px; flex: 0 0 auto;"/>
+  <img src="assets/screenshots/flutter_10.png" alt="Dark Theme Screenshot 2" style="height:400px; flex: 0 0 auto;"/>
+  <img src="assets/screenshots/flutter_11.png" alt="Dark Theme Screenshot 3" style="height:400px; flex: 0 0 auto;"/>
+  <img src="assets/screenshots/flutter_12.png" alt="Dark Theme Screenshot 4" style="height:400px; flex: 0 0 auto;"/>
+  <img src="assets/screenshots/flutter_13.png" alt="Dark Theme Screenshot 5" style="height:400px; flex: 0 0 auto;"/>
+  <img src="assets/screenshots/flutter_14.png" alt="Dark Theme Screenshot 6" style="height:400px; flex: 0 0 auto;"/>
 </div>
 
----
 
 ## ✨ Features
 
