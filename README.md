@@ -30,6 +30,8 @@ This app is a demonstration of how to build **a production-ready, modular Flutte
   <img src="assets/screenshots/flutter_12.png" alt="Dark Theme Screenshot 4" style="flex: 1 1 25%; max-width: 25%; height: 400px; object-fit: cover;"/>
   <img src="assets/screenshots/flutter_13.png" alt="Dark Theme Screenshot 5" style="flex: 1 1 25%; max-width: 25%; height: 400px; object-fit: cover;"/>
   <img src="assets/screenshots/flutter_14.png" alt="Dark Theme Screenshot 6" style="flex: 1 1 25%; max-width: 25%; height: 400px; object-fit: cover;"/>
+  <img src="assets/screenshots/flutter_15.png" alt="Dark Theme Screenshot 7" style="flex: 1 1 25%; max-width: 25%; height: 400px; object-fit: cover;"/>
+  <img src="assets/screenshots/flutter_16.png" alt="Dark Theme Screenshot 8" style="flex: 1 1 25%; max-width: 25%; height: 400px; object-fit: cover;"/>
 </div>
 
 
