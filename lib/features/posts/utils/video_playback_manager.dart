@@ -72,9 +72,9 @@ class VideoPlaybackManager {
   /// Pauses the currently active controller.
   ///
   /// - If [invokeCallback] is true (default), the stored `_onPauseCallback` is
-  ///   invoked (deferred to the next frame).
+  /// invoked (deferred to the next frame).
   /// - If [invokeCallback] is false, the callback is cleared without invocation.
-  ///   This is useful when the widget owning the callback is disposing.
+  /// This is useful when the widget owning the callback is disposing.
   ///
   /// Consumers (like [VisibilityDetector]) should check [pauseSuppressed] before
   /// calling this method to skip pausing during navigation transitions.

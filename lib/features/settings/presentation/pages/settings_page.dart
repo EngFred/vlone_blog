@@ -39,7 +39,7 @@ class SettingsPage extends StatelessWidget {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
         statusBarBrightness: Theme.of(context).brightness,
-        systemNavigationBarColor: Theme.of(context).colorScheme.background,
+        systemNavigationBarColor: Theme.of(context).colorScheme.surface,
       ),
       child: Scaffold(
         body: BlocBuilder<SettingsBloc, SettingsState>(
@@ -59,7 +59,7 @@ class SettingsPage extends StatelessWidget {
                         'Settings',
                         style: theme.textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: colorScheme.onBackground,
+                          color: colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -223,7 +223,7 @@ class _SettingsSection extends StatelessWidget {
             color: theme.colorScheme.surface,
             boxShadow: [
               BoxShadow(
-                color: theme.colorScheme.onBackground.withOpacity(0.05),
+                color: theme.colorScheme.onSurface.withOpacity(0.05),
                 blurRadius: 20,
                 offset: const Offset(0, 4),
               ),
@@ -264,14 +264,14 @@ class _ModernThemeSelector extends StatelessWidget {
             'Theme Preference',
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
-              color: colorScheme.onBackground,
+              color: colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 12),
           Text(
             'Choose how the app looks and feels',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onBackground.withOpacity(0.6),
+              color: colorScheme.onSurface.withOpacity(0.6),
             ),
           ),
           const SizedBox(height: 20),
@@ -279,10 +279,8 @@ class _ModernThemeSelector extends StatelessWidget {
             height: 72,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              color: colorScheme.onBackground.withOpacity(0.02),
-              border: Border.all(
-                color: colorScheme.onBackground.withOpacity(0.1),
-              ),
+              color: colorScheme.onSurface.withOpacity(0.02),
+              border: Border.all(color: colorScheme.onSurface.withOpacity(0.1)),
             ),
             child: Row(
               children: options.map((opt) {
@@ -334,7 +332,7 @@ class _ModernThemeSelector extends StatelessWidget {
                                     size: 20,
                                     color: isSelected
                                         ? colorScheme.onPrimary
-                                        : colorScheme.onBackground.withOpacity(
+                                        : colorScheme.onSurface.withOpacity(
                                             0.6,
                                           ),
                                   ),
@@ -348,7 +346,7 @@ class _ModernThemeSelector extends StatelessWidget {
                                         : FontWeight.w500,
                                     color: isSelected
                                         ? colorScheme.onPrimary
-                                        : colorScheme.onBackground.withOpacity(
+                                        : colorScheme.onSurface.withOpacity(
                                             0.6,
                                           ),
                                   ),
@@ -421,14 +419,14 @@ class _ModernSettingsTile extends StatelessWidget {
                           title,
                           style: theme.textTheme.bodyLarge?.copyWith(
                             fontWeight: FontWeight.w600,
-                            color: colorScheme.onBackground,
+                            color: colorScheme.onSurface,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           subtitle,
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onBackground.withOpacity(0.6),
+                            color: colorScheme.onSurface.withOpacity(0.6),
                           ),
                         ),
                       ],
@@ -437,7 +435,7 @@ class _ModernSettingsTile extends StatelessWidget {
                   Icon(
                     trailing,
                     size: 18,
-                    color: colorScheme.onBackground.withOpacity(0.4),
+                    color: colorScheme.onSurface.withOpacity(0.4),
                   ),
                 ],
               ),
@@ -450,7 +448,7 @@ class _ModernSettingsTile extends StatelessWidget {
             child: Divider(
               height: 1,
               thickness: 1,
-              color: colorScheme.onBackground.withOpacity(0.1),
+              color: colorScheme.onSurface.withOpacity(0.1),
             ),
           ),
       ],
@@ -472,13 +470,13 @@ class _AppFooter extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: colorScheme.onBackground.withOpacity(0.05),
+              color: colorScheme.onSurface.withOpacity(0.05),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
               'Vlone Blog v2.4.1',
               style: theme.textTheme.labelSmall?.copyWith(
-                color: colorScheme.onBackground.withOpacity(0.6),
+                color: colorScheme.onSurface.withOpacity(0.6),
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -487,7 +485,7 @@ class _AppFooter extends StatelessWidget {
           Text(
             'Crafted with ❤️ by Engineer Fred',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onBackground.withOpacity(0.4),
+              color: colorScheme.onSurface.withOpacity(0.4),
             ),
             textAlign: TextAlign.center,
           ),
@@ -495,7 +493,7 @@ class _AppFooter extends StatelessWidget {
           Text(
             'Inspired by modern design systems',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onBackground.withOpacity(0.3),
+              color: colorScheme.onSurface.withOpacity(0.3),
             ),
             textAlign: TextAlign.center,
           ),

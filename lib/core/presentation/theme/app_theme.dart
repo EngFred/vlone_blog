@@ -27,7 +27,7 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
       visualDensity: VisualDensity.adaptivePlatformDensity,
-      scaffoldBackgroundColor: colorScheme.background,
+      scaffoldBackgroundColor: colorScheme.surface,
     );
 
     return base.copyWith(
@@ -76,7 +76,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(Constants.radiusMedium),
           borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
-        fillColor: colorScheme.surfaceVariant.withOpacity(0.6),
+        fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.6),
         filled: true,
       ),
 
@@ -151,7 +151,7 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
       visualDensity: VisualDensity.adaptivePlatformDensity,
-      scaffoldBackgroundColor: colorScheme.background,
+      scaffoldBackgroundColor: colorScheme.surface,
       brightness: Brightness.dark,
     );
 
@@ -201,7 +201,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(Constants.radiusMedium),
           borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
-        fillColor: colorScheme.surfaceVariant,
+        fillColor: colorScheme.surfaceContainerHighest,
         filled: true,
       ),
 

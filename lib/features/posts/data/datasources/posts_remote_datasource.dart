@@ -173,7 +173,7 @@ class PostsRemoteDataSource {
 
         mediaWidth = dimensions.width;
         mediaHeight = dimensions.height;
-        AppLogger.info('Media dimensions: ${mediaWidth}x${mediaHeight}');
+        AppLogger.info('Media dimensions: ${mediaWidth}x$mediaHeight');
       }
 
       // --- 2. Upload Media ---
