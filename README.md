@@ -6,6 +6,24 @@ It delivers a fast, smooth, and visually stunning social experience featuring **
 
 This app is a demonstration of how to build **a production-ready, modular Flutter social app** using **Bloc**, and **Supabase** as Baas — all designed for a seamless cross-platform experience.
 
+---
+
+## 📥 Download APK
+
+Get the latest release of **Vlone Blog App** here:
+
+[Download v1.0.0 APK](https://github.com/EngFred/Vlone-B_SOCIAL-MEDIA-APP-CLONE/releases/download/v1.0.0/vlone_blog_v1.0.0.apk)
+
+**Release Notes v1.0.0:**
+- Initial public release of Vlone Blog App  
+- Features include authentication, posts, reels, likes/comments, profiles, and notifications  
+- Light & dark theme support  
+- Optimized feed loading with caching and smooth video playback  
+
+> 💡 Tip: Check [Releases](https://github.com/EngFred/Vlone-B_SOCIAL-MEDIA-APP-CLONE/releases) for future updates.
+
+---
+
 ## 🎨 App Screenshots (Light Theme)
 
 <div style="display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 0;">
@@ -34,6 +52,7 @@ This app is a demonstration of how to build **a production-ready, modular Flutte
   <img src="assets/screenshots/flutter_16.png" alt="Dark Theme Screenshot 8" style="flex: 1 1 25%; max-width: 25%; height: 400px; object-fit: cover;"/>
 </div>
 
+---
 
 ## ✨ Features
 
@@ -173,7 +192,7 @@ The app draws inspiration from **Instagram’s modern visual language**, includi
 - [ ] Implement Stories feature  
 - [ ] Add Direct Messaging (chat)  
 - [ ] Add Explore tab with content recommendations  
-- [ ] Implement video compression before upload  
+- [ ] Implement video creation within the app with filters 
 - [ ] Integrate in-app analytics dashboard  
 
 ---
