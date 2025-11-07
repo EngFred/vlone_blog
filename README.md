@@ -8,16 +8,30 @@ This app is a demonstration of how to build **a production-ready, modular Flutte
 
 ---
 
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/fb133223-1db3-45b5-b8b9-74b7d41ddf42" alt="Screenshot 1" width="30%"/>
-  <img src="https://github.com/user-attachments/assets/42e122af-8ef7-49b7-911a-7d19c783f44d" alt="Screenshot 2" width="30%"/>
-  <img src="https://github.com/user-attachments/assets/2214a2ef-66bb-47db-a420-b27a31b7a17a" alt="Screenshot 3" width="30%"/>
+## 🎨 App Screenshots (Light Theme)
+
+<div style="display: flex; overflow-x: auto; gap: 10px; padding: 10px 0; scrollbar-width: thin;">
+  <img src="assets/screenshots/flutter_01.png" alt="Light Theme Screenshot 1" height="400"/>
+  <img src="assets/screenshots/flutter_02.png" alt="Light Theme Screenshot 2" height="400"/>
+  <img src="assets/screenshots/flutter_03.png" alt="Light Theme Screenshot 3" height="400"/>
+  <img src="assets/screenshots/flutter_04.png" alt="Light Theme Screenshot 4" height="400"/>
+  <img src="assets/screenshots/flutter_05.png" alt="Light Theme Screenshot 5" height="400"/>
+  <img src="assets/screenshots/flutter_06.png" alt="Light Theme Screenshot 6" height="400"/>
+  <img src="assets/screenshots/flutter_07.png" alt="Light Theme Screenshot 7" height="400"/>
+  <img src="assets/screenshots/flutter_08.png" alt="Light Theme Screenshot 8" height="400"/>
 </div>
 
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/2e80a3cc-8c82-4f4e-a7ce-d1b59428f7e5" alt="Screenshot 4" width="30%"/>
-  <img src="https://github.com/user-attachments/assets/96f14a8b-2b44-4d3b-9912-0b0f899ec9b1" alt="Screenshot 5" width="30%"/>
-  <img src="https://github.com/user-attachments/assets/a86b9ef9-2817-47b4-b72a-3aef0ec8c2dd" alt="Screenshot 6" width="30%"/>
+---
+
+## 🌙 App Screenshots (Dark Theme)
+
+<div style="display: flex; overflow-x: auto; gap: 10px; padding: 10px 0; scrollbar-width: thin;">
+  <img src="assets/screenshots/flutter_09.png" alt="Dark Theme Screenshot 1" height="400"/>
+  <img src="assets/screenshots/flutter_10.png" alt="Dark Theme Screenshot 2" height="400"/>
+  <img src="assets/screenshots/flutter_11.png" alt="Dark Theme Screenshot 3" height="400"/>
+  <img src="assets/screenshots/flutter_12.png" alt="Dark Theme Screenshot 4" height="400"/>
+  <img src="assets/screenshots/flutter_13.png" alt="Dark Theme Screenshot 5" height="400"/>
+  <img src="assets/screenshots/flutter_14.png" alt="Dark Theme Screenshot 6" height="400"/>
 </div>
 
 ---
