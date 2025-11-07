@@ -10,7 +10,7 @@ This app is a demonstration of how to build **a production-ready, modular Flutte
 
 ## 📥 Download APK
 
-Get the latest release of **Vlone Blog App** here:
+Get the latest release of **Vlone Blog** here(JUST FOR TEST PURPOSES):
 
 [Download v1.0.0 APK](https://github.com/EngFred/Vlone-B_SOCIAL-MEDIA-APP-CLONE/releases/download/v1.0.0/vlone_blog_v1.0.0.apk)
 
