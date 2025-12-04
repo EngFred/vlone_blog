@@ -8,23 +8,15 @@ This app is a demonstration of how to build **a production-ready, modular Flutte
 
 ---
 
-## 📥 Download APK
+## Download APK
 
 Get the latest release of **Vlone Blog** here( - JUST FOR TEST PURPOSES - ):
 
 [Download v1.0.0 APK](https://github.com/EngFred/Vlone-B_SOCIAL-MEDIA-APP-CLONE/releases/download/v1.0.0/vlone_blog_v1.0.0.apk)
 
-**Release Notes v1.0.0:**
-- Initial public release of Vlone Blog App  
-- Features include authentication, posts, reels, likes/comments, profiles, and notifications etc..
-- Light & dark theme support  
-- Optimized feed loading with caching and smooth video playback  
-
-> 💡 Tip: Check [Releases](https://github.com/EngFred/Vlone-B_SOCIAL-MEDIA-APP-CLONE/releases) for future updates.
-
 ---
 
-## 🎨 App Screenshots (Light Theme)
+## App Screenshots (Light Theme)
 
 <div style="display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 0;">
   <img src="assets/screenshots/flutter_01.png" alt="Light Theme Screenshot 1" style="flex: 1 1 25%; max-width: 25%; height: 400px; object-fit: cover;"/>
@@ -39,7 +31,7 @@ Get the latest release of **Vlone Blog** here( - JUST FOR TEST PURPOSES - ):
 
 ---
 
-## 🌙 App Screenshots (Dark Theme)
+## App Screenshots (Dark Theme)
 
 <div style="display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 0;">
   <img src="assets/screenshots/flutter_09.png" alt="Dark Theme Screenshot 1" style="flex: 1 1 25%; max-width: 25%; height: 400px; object-fit: cover;"/>
@@ -54,42 +46,42 @@ Get the latest release of **Vlone Blog** here( - JUST FOR TEST PURPOSES - ):
 
 ---
 
-## ✨ Features
+## Features
 
-✅ **Authentication & Onboarding**  
+**Authentication & Onboarding**  
 - Email and password login/signup using **Supabase Auth**  
 - Persistent sessions and auto-login  
 - Smooth onboarding flow with animated transitions  
 
-✅ **Post Management**  
+**Post Management**  
 - Create, edit, and delete posts with images or videos  
 - Media upload via **Cloudinary**  
 - Optimized feed loading using lazy pagination  
 
-✅ **Reels (Short Videos)**  
+**Reels (Short Videos)**  
 - Smooth vertical scroll experience with **video preloading and caching**  
 - Double-tap to like animations and gesture detection  
 - Interactive action buttons (like, comment, share)  
 
-✅ **Likes, Comments & Engagement**  
+**Likes, Comments & Engagement**  
 - Real-time like count updates  
 - Threaded comments  
 - Optimistic UI for instant feedback  
 
-✅ **User Profiles & Following System**  
+**User Profiles & Following System**  
 - View and edit profile info and profile picture  
 - Follow/unfollow other users  
 - Display follower/following counts  
 
-✅ **Notifications & Activity Feed**  
+**Notifications & Activity Feed**  
 - Real-time updates for likes, comments, and follows  
 - Push notifications powered by Firebase  
 
-✅ **Theme & Personalization**  
+**Theme & Personalization**  
 - Beautiful **light/dark mode** support  
 - Modern, minimal UI inspired by Instagram’s aesthetic  
 
-✅ **Performance & Architecture**  
+**Performance & Architecture**  
 - Offline-first data caching strategy  
 - Optimized rebuilds and image caching  
 - Modular structure for scalability and testability  
@@ -122,7 +114,7 @@ lib/
 
 ---
 
-## 🧩 Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |-------|-------------|
@@ -142,32 +134,32 @@ lib/
 
 ## Setup Instructions
 
-### 1️⃣ Clone the repository
+### Clone the repository
 ```bash
 git clone https://github.com/EngFred/vlone_blog.git
 cd vlone_blog_app
 ```
 
-### 2️⃣ Install dependencies
+### Install dependencies
 ```bash
 flutter pub get
 ```
 
-### 3️⃣ Configure environment
+### Configure environment
 Create a `.env` file at the root and add your credentials:
 ```env
 SUPABASE_URL=https://your-supabase-url
 SUPABASE_ANON_KEY=your-anon-key
 ```
 
-### 4️⃣ Run the app
+### Run the app
 ```bash
 flutter run
 ```
 
 ---
 
-## 🧪 Testing
+## Testing
 Run the full test suite with:
 ```bash
 flutter test
@@ -188,7 +180,7 @@ The app draws inspiration from **Instagram’s modern visual language**, includi
 
 ---
 
-## 🚀 Roadmap
+## Roadmap
 - [ ] Implement Stories feature  
 - [ ] Add Direct Messaging (chat)  
 - [ ] Add Explore tab with content recommendations  
@@ -197,18 +189,8 @@ The app draws inspiration from **Instagram’s modern visual language**, includi
 
 ---
 
-## 👨‍💻 Developer
-**Developed by Engineer Fred**  
-A passionate **Flutter Developer** specializing in building scalable, production-ready mobile apps with clean architecture, beautiful UI, and great UX.
-
 [engfred88@gmail.com]   
 [LinkedIn](https://www.linkedin.com/in/fred-omongole-a5943b2b0/)
-
----
-
-## 📄 License
-This project is licensed under the **MIT License** – feel free to use and modify for personal or educational purposes.
-
 ---
 
 <div align="center">
