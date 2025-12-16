@@ -143,7 +143,7 @@ Follow these steps to run the project locally.
 
 ### 1. Clone the repository
 ```bash
-git clone [https://github.com/EngFred/vlone_blog.git](https://github.com/EngFred/vlone_blog.git)
+git clone [https://github.com/EngFred/Vlone_Blog.git](https://github.com/EngFred/Vlone_Blog.git)
 cd vlone_blog
 ```
 
@@ -158,6 +158,7 @@ flutter pub get
 Create a .env file at the root of your project:
 
 SUPABASE_URL=your_supabase_url
+
 SUPABASE_ANON_KEY=your_supabase_anon_key
 
 ---
