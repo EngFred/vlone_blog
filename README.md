@@ -47,10 +47,10 @@ Try the latest build of **Vlone Blog** on your Android device:
 
 ### Light Theme
 <div style="display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 0;">
-  <img src="assets/screenshots/flutter_01.png" alt="Light Theme" width="180" />
-  <img src="assets/screenshots/flutter_02.png" alt="Light Theme" width="180" />
-  <img src="assets/screenshots/flutter_03.png" alt="Light Theme" width="180" />
-  <img src="assets/screenshots/flutter_04.png" alt="Light Theme" width="180" />
+  <img src="assets/screenshots/flutter_01.png" alt="Light Theme" width="200" />
+  <img src="assets/screenshots/flutter_02.png" alt="Light Theme" width="200" />
+  <img src="assets/screenshots/flutter_03.png" alt="Light Theme" width="200" />
+  <img src="assets/screenshots/flutter_04.png" alt="Light Theme" width="200" />
 </div>
 
 ### Dark Theme
