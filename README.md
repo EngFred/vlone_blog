@@ -55,10 +55,10 @@ Try the latest build of **Vlone Blog** on your Android device:
 
 ### Dark Theme
 <div style="display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 0;">
-  <img src="assets/screenshots/flutter_09.png" alt="Dark Theme" width="180" />
-  <img src="assets/screenshots/flutter_10.png" alt="Dark Theme" width="180" />
-  <img src="assets/screenshots/flutter_11.png" alt="Dark Theme" width="180" />
-  <img src="assets/screenshots/flutter_12.png" alt="Dark Theme" width="180" />
+  <img src="assets/screenshots/flutter_09.png" alt="Dark Theme" width="200" />
+  <img src="assets/screenshots/flutter_10.png" alt="Dark Theme" width="200" />
+  <img src="assets/screenshots/flutter_11.png" alt="Dark Theme" width="200" />
+  <img src="assets/screenshots/flutter_12.png" alt="Dark Theme" width="200" />
 </div>
 
 ---
